@@ -1,5 +1,5 @@
 local C = terralib.includecstring[[
-    #include <cblas.h>
+    #include <openblas/cblas.h>
 ]]
 terralib.linklibrary("libcblas.so")
 
