@@ -8,24 +8,31 @@ local complexFloat = complex(float)
 local complexDouble = complex(double)
 
 terra main()
-    var x: complexDouble = {1, 2}
+    var x = complexDouble {1, 2}
+    C.printf("Testing type %s\n", [tostring(complexDouble)])
     C.printf("%e %e\n", x.re, x.im) 
-    C.printf("%zu\n", sizeof(complexFloat))
-    C.printf("%zu\n", sizeof(complexDouble))
+    C.printf("Size of %s is %zu\n", [tostring(complexFloat)],
+                                    sizeof(complexFloat))
+    C.printf("Size of %s is %zu\n", [tostring(complexDouble)],
+                                    sizeof(complexDouble))
     var p = [&double](&x)
     C.printf("%e %e\n", @p, @(p + 1))
 
-    var y: complexDouble = x * x
+    var y = x * x
     C.printf("%e %e\n", y.re, y.im)
 
-    var z: complexDouble = x + x
+    var z = x + x
     C.printf("%e %e\n", z.re, z.im)
 
-    var w: complexDouble = x * x - x
+    var w = x * x - x
     C.printf("%e %e\n", w.re, w.im)
 
-    var a: complexDouble = x * x / x
+    var a = x * x / x
     C.printf("%e %e\n", a.re, a.im)
+
+    C.printf("Testing now implicit cast\n")
+    var c = 2 * x + y
+    C.printf("%e %e\n", c.re, c.im)
 end
 
 main()
