@@ -4,8 +4,8 @@ local C = terralib.includecstring[[
 
 local complex = require("complex")
 
-local complexFloat = complex(float)
-local complexDouble = complex(double)
+local complexFloat, If = unpack(complex(float))
+local complexDouble, I = unpack(complex(double))
 
 terra main()
     var x = complexDouble {1, 2}
@@ -30,9 +30,13 @@ terra main()
     var a = x * x / x
     C.printf("%e %e\n", a.re, a.im)
 
-    C.printf("Testing now implicit cast\n")
+    C.printf("Testing implicit cast\n")
     var c = 2 * x + y
     C.printf("%e %e\n", c.re, c.im)
+
+    C.printf("Testing complex unit\n")
+    var d = -2 * I
+    C.printf("%e %e\n", d.re, d.im)
 end
 
 main()

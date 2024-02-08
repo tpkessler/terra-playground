@@ -63,10 +63,11 @@ local function complex(T)
         return self * other:inverse()
     end
 
-    return complex
+    local I = `complex {0, 1}
+    return {complex, I}
 end
 
-complex = terralib.memoize(complex)
+local complex = terralib.memoize(complex)
 
 
 return complex
