@@ -44,6 +44,18 @@ local function complex(T)
         return self.re * self.re + self.im * self.im
     end
 
+    terra complex:real()
+        return self.re
+    end
+
+    terra complex:imag()
+        return self.im
+    end
+
+    terra complex:conj()
+        return complex {self.re, -self.im}
+    end
+
     if T == double or T == float then
         terra complex:norm(): T
             return sqrt(self:normsq())
