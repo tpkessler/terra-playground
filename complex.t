@@ -14,6 +14,8 @@ local function complex(T)
     }
     complex:setconvertible("array")
 
+    complex.scalar_type = T
+
     function complex.metamethods.__cast(from, to, exp)
         local expT = `[T](exp)
         if to == complex then
@@ -80,6 +82,12 @@ local function complex(T)
 end
 
 local complex = terralib.memoize(complex)
+
+import "terratest/terratest"
+
+local complexDouble, I = unpack(complex(double))
+
+assert(complexDouble.scalar_type == double)
 
 
 return complex
