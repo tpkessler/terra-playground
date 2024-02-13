@@ -30,6 +30,12 @@ terra main()
                     C.printf("%lu: %g\n", i, y[i])
                 end
                 C.printf("\n")
+                var nrm = blas.nrm2(n, y, incy)
+                C.printf("L_2 norm is %g\n", nrm)
+                nrm = blas.asum(n, y, incy)
+                C.printf("L_1 norm is %g\n", nrm)
+                var idx = blas.iamax(n, y, incy)
+                C.printf("Index of maximal value is %d\n", idx)
 
                 mem.del(x)
                 mem.del(y)
