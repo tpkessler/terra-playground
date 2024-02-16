@@ -61,21 +61,27 @@ local function generate_blas_args(prefix, T, signature, return_val)
     local result = nil
     for _, arg in pairs(return_val) do
         if arg == "real_scalar" then
-            local Ts = T.scalar_type and T.scalar_type or T
+            local Ts = T.scalar_type or T
             result = symbol(Ts)
             return_statement:insert(quote
                 return [result]
             end)
         elseif arg == "scalar" then
             local result_cast = symbol(T)
+            statements:insert(quote
+                var [result_cast]
+            end)
             if has_opaque_interface(prefix) then
                 local call_by_ref = symbol(&opaque)
+                statements:insert(quote
+                    var [call_by_ref]
+                end)
                 c_arg:insert(call_by_ref)
                 return_statement:insert(quote
-                    var [result_cast] = @[&T](call_by_ref)
+                    [result_cast] = @[&T](call_by_ref)
                 end)
             else
-                local Ts = T.scalar_type and T.scalar_type or T
+                local Ts = T.scalar_type or T
                 result = symbol(Ts)
             end
             return_statement:insert(quote
@@ -94,11 +100,12 @@ local function generate_blas_args(prefix, T, signature, return_val)
     return terra_arg, statements, c_arg, result, return_statement
 end
 
-local function blas_factory(name, types, signature, return_val)
+local function blas_factory(name, types, suffix_types, signature, return_val)
     local methods = terralib.newlist()
     for prefix, T in pairs(types) do
-        local tname = string.format(name, "")
-        local pname = string.format(name, prefix)
+        local tname = string.format(name, "", "")
+        local suffix = suffix_types[prefix] or ""
+        local pname = string.format(name, prefix, suffix)
         local cname = "cblas_" .. pname
         local terra_arg, statements, c_arg, result, return_statement
             = generate_blas_args(prefix, T, signature, return_val)
@@ -134,6 +141,14 @@ local default_types = {
     ["c"] = complexFloat,
     ["z"] = complexDouble}
 
+local dot_suffix = {
+    ["c"] = "c_sub",
+    ["z"] = "c_sub"}
+
+local ger_suffix = {
+    ["c"] = "c",
+    ["z"] = "c"}
+
 local nrm_types = {
     ["s"] = float,
     ["d"] = double,
@@ -142,38 +157,39 @@ local nrm_types = {
 
 local blas = {
     -- BLAS 1
-    {"%sswap", default_types,
+    {"%sswap", default_types, {},
         {"integer", "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%sscal", default_types,
+    {"%sscal", default_types, {},
         {"integer", "scalar", "scalar_array", "integer"}, {}},
-    {"%scopy", default_types,
+    {"%scopy", default_types, {},
         {"integer", "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%saxpy", default_types,
+    {"%saxpy", default_types, {},
         {"integer", "scalar", "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%snrm2", nrm_types,
+    {"%sdot%s", default_types, dot_suffix,
+        {"integer", "scalar_array", "integer", "scalar_array", "integer"}, {"scalar"}},
+    {"%snrm2", nrm_types, {},
         {"integer", "scalar_array", "integer"}, {"real_scalar"}},
-    {"%sasum", nrm_types,
+    {"%sasum", nrm_types, {},
         {"integer", "scalar_array", "integer"}, {"real_scalar"}},
-    {"i%samax", default_types,
+    {"i%samax", default_types, {},
         {"integer", "scalar_array", "integer"}, {"integer"}},
     -- BLAS 2
-    {"%sgemv", default_types,
+    {"%sgemv", default_types, {},
         {"integer", "integer", "integer", "integer", "scalar", "scalar_array",
          "integer", "scalar_array", "integer", "scalar", "scalar_array", "integer"}, {}},
+    {"%sger%s", default_types, ger_suffix,
+        {"integer", "integer", "integer", "scalar", "scalar_array", "integer",
+         "scalar_array", "integer", "scalar_array", "integer"}, {}},
     -- BLAS 3
-    {"%sgemm", default_types,
+    {"%sgemm", default_types, {},
         {"integer", "integer", "integer", "integer", "integer", "integer",
          "scalar", "scalar_array", "integer", "scalar_array", "integer",
          "scalar", "scalar_array", "integer"}, {}}
 }
 
 for _, func in pairs(blas) do
-    local name = string.format(func[1], "")
+    local name = string.format(func[1], "", "")
     S[name] = blas_factory(unpack(func))
-end
-
-for k, v in pairs(S) do
-    print(k, v)
 end
 
 return S
