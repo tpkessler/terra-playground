@@ -77,6 +77,10 @@ local function complex(T)
         return self * other:inverse()
     end
 
+    terra complex.metamethods.__eq(self: complex, other: complex)
+        return self:real() == other:real() and self:imag() == other:imag()
+    end
+
     local I = `complex {0, 1}
     return {complex, I}
 end
