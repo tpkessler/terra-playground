@@ -4,7 +4,7 @@ terratest is a simple unittesting library for use in the [terra programming lang
 The design is kept simple and allows for
 * Inline testing, directly in your code
 * Scoped evaluation of tests inside code blocks `testset` and `testenv`
-* Tests and testsets inside `testenv` are only run if the command-line-option `testing=on` is passed to terra
+* Tests and testsets inside `testenv` are only run if the command-line-option `--test` or `-t` is passed to terra. Inline tests are always run and print out passed / failed.
 * `testset` and `testenv` can be parameterized by lua code
 
 The keyword `test` always expects a boolean result.
@@ -58,9 +58,9 @@ testenv "my test environement" do
   test a+b+c==x+y+11
 end 
 ```
-To evaluate the tests in the testenvironment, you need to run terra with the command-line-option `testing=on`
+To evaluate the tests in the testenvironment, you need to run terra with the command-line-option `--test` or `-t`
 ```
-terra test3.t testing=on
+terra test3.t --test
 ```
 which prints out
 ```
