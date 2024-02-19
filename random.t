@@ -1,4 +1,3 @@
-local Assert = require "assert"
 local C = terralib.includecstring[[
   #include <math.h>
   #include <stdio.h>
