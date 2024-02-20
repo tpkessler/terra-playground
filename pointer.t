@@ -8,12 +8,12 @@ terra set(p: &double)
 end
 
 testenv "pointer" do
-    terradef
+    terracode
         var x = 0.0
     end
 
     testset "pointer set value" do
-	terradef
+	terracode
 	    set(&x)
 	end
         test x == 1.0
