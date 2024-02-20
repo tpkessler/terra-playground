@@ -1,5 +1,5 @@
 # terratest
-terratest is a simple unittesting library for use in the [terra programming language](https://github.com/terralang/terra). It is written as a language extension of terra and provides several keywords: `test`, `testenv`, `testset`, and `terradef`. `test` signals a boolean lua/terra expression, `testenv` provides a safe environment for writing tests, which may be organized in `testset`'s. Finally, `terradef` represents a block of terra code.
+terratest is a simple unittesting library for use in the [terra programming language](https://github.com/terralang/terra). It is written as a language extension of terra and provides several keywords: `test`, `testenv`, `testset`, and `terracode`. `test` signals a boolean lua/terra expression, `testenv` provides a safe environment for writing tests, which may be organized in `testset`'s. Finally, `terracode` represents a block of terra code.
 
 The design is kept simple and allows for
 * Inline testing, directly in your code
@@ -47,7 +47,7 @@ local b = 3
    
 testenv "my test environement" do
   local c = 10
-  terradef   
+  terracode   
     var x = 1
     var y = 2
   end
@@ -73,7 +73,7 @@ Test Environment: 	my test environement
   test failed in test3.t, linenumber 13
   test failed in test3.t, linenumber 15
 ```
-Notice that the test environment is given a name, which gets printed to stdout. Lua variables may be directly declared and terra variables are declared inside a `terradef` block. Notice that terra variables and lua variables may be logically combined and that lexical scoping rules apply.
+Notice that the test environment is given a name, which gets printed to stdout. Lua variables may be directly declared and terra variables are declared inside a `terracode` block. Notice that terra variables and lua variables may be logically combined and that lexical scoping rules apply.
 
 ### Organizing tests using `testset`
 `testset` provides another scoped environment that can be used within a `testenv`. A testset is also given a name and test statistics are printed out separately for each testset inside a test environment. For example,
@@ -82,19 +82,19 @@ import "terratest"
 
 testenv "first test environement" do
   local z = 10
-  terradef
+  terracode
     var x = 1 
   end
  
   testset "my first testset" do
-    terradef
+    terracode
       var y = 2 
     end 
     test x+y+z==13
   end
  
   testset "my second testset" do
-    terradef
+    terracode
       var p = 5 
     end 
     test x+z+p==16
@@ -151,7 +151,7 @@ for _,T in pairs{int32,int64} do
     --parameterized testset      
     testset(N,T) "fill" do
       local SVec = SVector(T,N)                      
-      terradef                              
+      terracode                              
         var y = SVec.fill(3)
       end
       test y:size()==N
@@ -192,7 +192,7 @@ for _,T in pairs{int32,int64} do
       --parameterized testset          
       testset "fill" do
         local SVec = SVector(T,N)                          
-        terradef                                  
+        terracode                                  
           var y = SVec.fill(3)
         end 
         test y:size()==N

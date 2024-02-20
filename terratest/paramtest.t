@@ -10,7 +10,7 @@ local N = 2
 for N=1,6 do
 testset(N) "my first testset" do
 
-  terradef
+  terracode
     var p = 1
   end
 

@@ -5,7 +5,7 @@ local b = 3
 
 testenv "my test environement" do
   local c = 10
-  terradef
+  terracode
     var x = 1
     var y = 2
   end

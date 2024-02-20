@@ -11,7 +11,7 @@ testenv "first test environement" do
 
 local c = 10
 
-terradef
+terracode
   var x = 1
   var y = 2
 end
@@ -21,7 +21,7 @@ test x*y==2
 local N = 2
 testset(N) "my first testset" do
 
-  terradef
+  terracode
     var p = 0
   end
 
@@ -31,7 +31,7 @@ testset(N) "my first testset" do
   test a+b+c==14
 end
 
-terradef
+terracode
   var z = 2.0
 end
 
@@ -39,7 +39,7 @@ test z==2
 
 testset "my second testset"  do
 
-  terradef
+  terracode
     var t1 = 1
     var t2 = 2
   end
@@ -56,7 +56,7 @@ end
 
 testenv "second test environement" do
              
-terradef      
+terracode   
   var x = 1   
   var y = 3       
 end           
@@ -64,7 +64,7 @@ end
 test x*y==3
 
 testset "first testset" do
-    terradef 
+    terracode 
 	var z = 4
     end
     test x*y*z==12

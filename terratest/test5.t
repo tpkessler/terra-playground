@@ -36,7 +36,7 @@ for _,T in pairs{int32,int64} do
     --parameterized testset      
     testset(N,T) "fill" do
       local SVec = SVector(T,N)                      
-      terradef                              
+      terracode
         var y = SVec.fill(3)
       end
       test y:size()==N
@@ -60,7 +60,7 @@ for _,T in pairs{int32,int64} do
       --parameterized testset          
       testset "fill" do
         local SVec = SVector(T,N)                          
-        terradef                                  
+        terracode                                  
           var y = SVec.fill(3)
         end 
         test y:size()==N
