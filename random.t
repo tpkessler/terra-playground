@@ -169,9 +169,9 @@ local MinimalPCG = function(F)
 
   terra pcg:rand_int(): uint32
     var oldstate = self.state
-    self.state = oldstate * 6364136223846793005ULL + (self.inc or 1u)
-    var xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u
-    var rot = oldstate >> 59u
+    self.state = oldstate * [uint64](6364136223846793005ull) + (self.inc or 1u)
+    var xorshifted: uint32 = ((oldstate >> 18u) ^ oldstate) >> 27u
+    var rot: uint32 = oldstate >> 59u
 	return (xorshifted >> rot) or (xorshifted << ((-rot) and 31))
   end
 
@@ -193,17 +193,16 @@ local MinimalPCG = function(F)
   return self
 end
 
--- FIXME pcg does not work correctly
 local pcg = MinimalPCG(double)
 local libc = LibC(double)
 local kiss = KISS(float)
 
 terra main()
-  var rng = libc.new(25789)
+  var rng = pcg.new(124)
   var n: int64 = 2000001
   var mean: double = 0
-  for i = 0, n do
-	var u = rng:rand_normal(1.2, 0.3)
+  for i: int64 = 0, n do
+	var u = rng:rand_uniform()
     mean = i * mean + u
 	mean = mean / (i + 1)
   end
