@@ -67,26 +67,23 @@ local function generate_blas_args(prefix, T, signature, return_val)
                 return [result]
             end)
         elseif arg == "scalar" then
-            local result_cast = symbol(T)
-            statements:insert(quote
-                var [result_cast]
-            end)
             if has_opaque_interface(prefix) then
                 local call_by_ref = symbol(&opaque)
+                local result_cast = symbol(T)
                 statements:insert(quote
-                    var [call_by_ref]
+                    var [result_cast]
+                    var [call_by_ref] = &[result_cast]
                 end)
                 c_arg:insert(call_by_ref)
                 return_statement:insert(quote
-                    [result_cast] = @[&T](call_by_ref)
+                    return [result_cast]
                 end)
             else
-                local Ts = T.scalar_type or T
-                result = symbol(Ts)
+                result = symbol(T)
+                return_statement:insert(quote
+                    return [result]
+                end)
             end
-            return_statement:insert(quote
-                return [result_cast]
-            end)
         elseif arg == "integer" then
             result = symbol(int32)
             return_statement:insert(quote
