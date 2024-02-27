@@ -5,12 +5,25 @@ local C = terralib.includecstring[[
     #include <stdio.h>
 ]]
 local complexFloat, If = unpack(complex(float))
-local complexDouble, I = unpack(complex(double))
+local complexDouble, Id = unpack(complex(double))
+
+local types = {
+	["s"] = float,
+	["d"] = double,
+	["c"] = complexFloat,
+	["z"] = complexDouble}
+
+local unit = {
+	["s"] = `float(0),
+	["d"] = `double(0),
+	["c"] = If,
+	["z"] = Id}
 
 import "terratest/terratest"
 
-for _, T in ipairs({float, double, complexFloat, complexDouble}) do
-testenv(T) "BLAS level 1" do
+for prefix, T in pairs(types) do
+	local I = unit[prefix]
+	testenv(T) "BLAS level 1" do
         testset "swap scalar" do
             terracode
                 var x = T(1)
@@ -31,9 +44,9 @@ testenv(T) "BLAS level 1" do
                 var xold: T[n * incx]
                 var yold: T[n * incy]
                 for i = 0, n do
-                    x[i * incx] = T(i)
+                    x[i * incx] = T(i) + I * T(n - i)
                     xold[i * incx] = x[i * incx]
-                    y[i * incy] = T(n - i)
+                    y[i * incy] = T(n - i) + I * T(i)
                     yold[i * incy] = y[i * incy]
                 end
                 blas.swap(n, &x[0], incx, &y[0], incy)
@@ -61,9 +74,9 @@ testenv(T) "BLAS level 1" do
             terracode
                 var x: T[n * incx]
                 var xold: T[n * incx]
-                var a = T(5)
+                var a = T(5) + I * T(2)
                 for i = 0, n do
-                    x[i * incx] = T(i)
+                    x[i * incx] = T(i) + I * T(i * i)
                     xold[i * incx] = x[i * incx]
                 end
                 blas.scal(n, a, &x[0], incx)
@@ -93,7 +106,7 @@ testenv(T) "BLAS level 1" do
                 var y: T[n * incy]
 
                 for i = 0, n do
-                    x[i * incx] = T(i)
+                    x[i * incx] = T(i) + I * T(n * n - i + 1)
                 end
                 blas.copy(n, &x[0], incx, &y[0], incy)
             end
@@ -120,14 +133,14 @@ testenv(T) "BLAS level 1" do
             local incx = 3
             local incy = 2
             terracode
-                var a = T(2)
+                var a = T(2) + I * T(-3)
                 var x: T[n * incx]
                 var y: T[n * incy]
                 var yold: T[n * incy]
 
                 for i = 0, n do
-                    x[i * incx] = T(i)
-                    y[i * incy] = T(n - i)
+                    x[i * incx] = T(i) + I * T(-2 * n - i)
+                    y[i * incy] = T(n - i) + I * T(3 * i)
                     yold[i * incy] = y[i * incy]
                 end
 
@@ -139,22 +152,24 @@ testenv(T) "BLAS level 1" do
             end
         end -- testenv axpy
 
-        testset "dot vectors real" do
+        testset "dot vectors" do
             local n = 4
             local incx = 3
             local incy = 2
             terracode
                 var x: T[n * incx]
+				var xconj: T[n * incx]
                 var y: T[n * incy]
 
                 for i = 0, n do
-                    x[i * incx] = T(i)
-                    y[i * incy] = T(n - i)
+                    x[i * incx] = T(i) + I * T(i * i - n)
+                    xconj[i * incx] = T(i) - I * T(i * i - n)
+                    y[i * incy] = T(n - i) + I * T(-n - i)
                 end
                 var num = blas.dot(n, &x[0], incx, &y[0], incy)
                 var ref = T(0)
                 for i = 0, n do
-                    ref = ref + x[i * incx] * y[i * incy]
+                    ref = ref + xconj[i * incx] * y[i * incy]
                 end
             end
 
