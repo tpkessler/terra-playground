@@ -3,6 +3,7 @@ local C = terralib.includecstring[[
   #include <stdio.h>
   #include <stdlib.h>
 ]]
+local interface = require("interface")
 
 local ldexp = terralib.overloadedfunction("ldexp",
   {
@@ -28,50 +29,6 @@ local log = terralib.overloadedfunction("log",
     terra(x: float): float return C.logf(x) end
   })
 
-local function has_key(tab, key)
-  for k, v in pairs(tab) do
-    if k == key then
-      return true
-    end
-  end
-  return false
-end
-
-local function assert_equal_signature(actual, desired)
-  local desired_sig = desired.type.parameters
-  local actual_sig = actual.type.parameters
-
-  assert(#desired_sig == #actual_sig,
-	  "Number of function parameters don't match\n" ..
-	  string.format("Desired signature has %d parameters but %d were given",
-	  	#desired_sig, #actual_sig))
-
-  for k, v in pairs(desired_sig) do
-	  assert(actual_sig[k] == desired_sig[k],
-	  	"Actual signature doesn't match desired signature\n" ..
-		string.format("At position %s the desired value is %s but %s was given.",
-			k, tostring(v), tostring(actual_sig[k])))
-  end
-
-  -- Return type is a complicated table that includes function pointers.
-  -- However, tostring() returns a unique identifier to check if the
-  -- return values agree.
-  local desired_ret = desired.type.returntype
-  local actual_ret = actual.type.returntype
-  assert(tostring(desired_ret) == tostring(actual_ret),
-  	"Actual return type " .. tostring(desired_ret) ..
-	" doesn't match the given " .. tostring(actual_ret))
-end
-
-local function assert_interface_constraint(T, must_implement)
-  local methods = T.methods
-  for func, sig in pairs(must_implement) do
-    assert(has_key(methods, func),
-      "Missing implementation of " .. func .. " for type " .. tostring(T))
-	assert_equal_signature(methods[func], sig)
-  end
-end
-
 local RandomInterface = function(G, F, I, exp)
   F = F or double
   I = I or uint32
@@ -80,12 +37,12 @@ local RandomInterface = function(G, F, I, exp)
     error("Unsupported floating point type " .. tostring(F))
   end
   local must_implement = {["rand_int"] = {&G} -> {I}}
-  assert_interface_constraint(G, must_implement)
+  interface.assert_implemented(G, must_implement)
 
   local self = {}
   self.generator = G
 
-  -- Turn random integers to random floating point numbers
+  -- Turn random integers into random floating point numbers
   -- http://mumble.net/~campbell/tmp/random_real.c
   terra self.generator:rand_uniform(): F
     var rand_int = self:rand_int()
@@ -111,11 +68,11 @@ end
 
 local LibC = function(F)
   local struct libc {}
-  terra libc:rand_int(): int32
-    return [int32](C.random())
+  terra libc:rand_int(): int64
+    return [int64](C.random())
   end
 
-  local self = RandomInterface(libc, F, int32, 31)
+  local self = RandomInterface(libc, F, int64, 31)
 
   self.new = macro(function(seed)
 	  	return quote
@@ -198,7 +155,7 @@ local libc = LibC(double)
 local kiss = KISS(float)
 
 terra main()
-  var rng = pcg.new(124)
+  var rng = libc.new(124)
   var n: int64 = 2000001
   var mean: double = 0
   for i: int64 = 0, n do
