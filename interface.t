@@ -84,6 +84,7 @@ Returns:
     the reference.
 --]]
   local methods = T.methods
+  assert(methods, "Argument does not implement any methods")
   for func, sig in pairs(must_implement) do
     assert(has_key(methods, func),
       "Missing implementation of " .. func .. " for type " .. tostring(T))

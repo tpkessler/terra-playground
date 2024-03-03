@@ -48,6 +48,16 @@ testenv "Working interface" do
     test ok == true
 end
 
+testenv "No methods" do
+    local ok, ret = pcall(FullyImplemented, int)
+    test ok == false
+
+    local len = #ret
+    local i, j = string.find(ret, "Argument does not implement any methods")
+    test i > 1
+    test j == len
+end
+
 testenv "Wrong return type" do
     local ok, ret = pcall(FullyImplemented, A, int, float)
     test ok == false
