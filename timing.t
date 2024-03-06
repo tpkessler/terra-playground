@@ -1,4 +1,5 @@
 local time = terralib.includec("time.h")
+local omp = terralib.includec("omp.h")
 
 local timer = function()
 	local struct timer{
@@ -19,7 +20,7 @@ local timer = function()
 		self.old = [now()]
 	end
 
-	terra timer:stop()
+	terra timer:stop(): double
 		var cur = [now()]
 		return cur - self.old
 	end
@@ -37,6 +38,38 @@ local timer = function()
 	return S
 end
 
-local default_timer = timer()
+local omp = function()
+	local struct timer{
+		old: double
+	}
 
-return {default_timer = default_timer}
+	local function now()
+		return `omp.omp_get_wtime()
+	end
+
+	terra timer:start()
+		self.old = [now()]
+	end
+
+	terra timer:stop(): double
+		var cur = [now()]
+		return cur - self.old
+	end
+
+	local S = {}
+	S.type = timer
+	S.new = macro(function()
+		return quote
+			var sw: timer
+		in
+			sw
+		end
+	end)
+
+	return S
+end
+
+local default_timer = timer()
+local omp_timer = omp()
+
+return {default_timer = default_timer, parallel_timer = omp_timer}
