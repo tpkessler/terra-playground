@@ -3,6 +3,7 @@ local mem = require("mem")
 local complex = require("complex")
 local C = terralib.includecstring[[
     #include <stdio.h>
+    #include <math.h>
 ]]
 local complexFloat, If = unpack(complex(float))
 local complexDouble, Id = unpack(complex(double))
@@ -175,5 +176,60 @@ for prefix, T in pairs(types) do
 
             test ref == num
         end --testset dot
+
+        testset "norm scalar" do
+            local nrm = 3
+            if not T:isfloat() then
+                nrm = nrm + 2
+            end
+            terracode
+                var x = 3 + 4 * I
+                var xconj = 3 - 4 * I
+
+                var num = blas.nrm2(1, &x, 1)
+            end
+
+            test num == nrm
+
+        end --testset norm
+
+        testset "norm vectors" do
+            local n = 4
+            local incx = 3
+            local sqrt = terralib.overloadedfunction("sqrt", {C.sqrt, C.sqrtf})
+            local Ts = T.scalar_type or T
+            terracode
+                var x: T[n * incx]
+                var xre: Ts[n * incx]
+                var xim: Ts[n * incx]
+                
+                for i = 0, n do
+                    xre[i * incx] = i
+                    xim[i * incx] = n - i
+                    x[i * incx] = xre[i * incx] + I * xim[i * incx] 
+                end
+
+                var num: Ts = blas.nrm2(n, &x[0], incx)
+
+                var ref: Ts = 0
+                for i = 0, n do
+                    ref = ref + xre[i * incx] * xre[i * incx]
+                end
+                escape
+                    if T.scalar_type then
+                        emit quote
+                            for i = 0, n do
+                                ref = ref + xim[i * incx] * xim[i * incx]
+                            end
+                        end --quote
+                    end --if
+                end --escape
+
+                ref = sqrt(ref)
+            end
+
+            test num == ref
+
+        end
     end -- testenv BLAS level 1
 end -- for
