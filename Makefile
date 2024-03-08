@@ -19,7 +19,7 @@ tinymt64.o: tinymt/tinymt64.c
 
 test: libexport.so libtinymt.so
 	terra import.t
-	terra random.t
+	terra test_random.t
 
 .PHONY: clean realclean
 
