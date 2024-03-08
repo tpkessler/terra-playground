@@ -1,5 +1,13 @@
 require("export_decl")
-terralib.linklibrary("./libexport.so")
+
+local uname = io.popen("uname","r"):read("*a")
+if uname == "Darwin\n" then
+	terralib.linklibrary("./libexport.dylib")
+elseif uname == "Linux\n" then
+	terralib.linklibrary("./libexport.so")
+else
+	error("OS Unknown")
+end
 
 local function emit_wrapper(name, signature)
 	local func = terralib.externfunction(name, signature)

@@ -4,7 +4,15 @@ local C = terralib.includecstring[[
   #include <stdlib.h>
   #include "tinymt/tinymt64.h"
 ]]
-terralib.linklibrary("./libtinymt.so")
+
+local uname = io.popen("uname","r"):read("*a")
+if uname == "Darwin\n" then
+	terralib.linklibrary("./libtinymt.dylib")
+elseif uname == "Linux\n" then
+	terralib.linklibrary("./libtinymt.so")
+else
+	error("OS Unknown")
+end
 
 local interface = require("interface")
 
