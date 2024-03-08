@@ -132,6 +132,12 @@ S.NoTrans = C.CblasNoTrans
 S.Trans = C.CblasTrans
 S.ConjTrans = C.CblasConjTrans
 
+S.Upper = C.CblasUpper
+S.Lower = C.CblasLower
+
+S.Unit = C.CblasUnit
+S.NonUnit = C.CblasNonUnit
+
 local default_types = {
     ["s"] = float,
     ["d"] = double,
@@ -177,6 +183,9 @@ local blas = {
     {"%sger%s", default_types, ger_suffix,
         {"integer", "integer", "integer", "scalar", "scalar_array", "integer",
          "scalar_array", "integer", "scalar_array", "integer"}, {}},
+    {"%strsv", default_types, {},
+        {"integer", "integer", "integer", "integer", "integer", "scalar_array", "integer",
+         "scalar_array", "integer"}, {}},
     -- BLAS 3
     {"%sgemm", default_types, {},
         {"integer", "integer", "integer", "integer", "integer", "integer",

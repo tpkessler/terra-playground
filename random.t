@@ -2,32 +2,25 @@ local C = terralib.includecstring[[
   #include <math.h>
   #include <stdio.h>
   #include <stdlib.h>
+  #include "tinymt/tinymt64.h"
 ]]
+
+local uname = io.popen("uname","r"):read("*a")
+if uname == "Darwin\n" then
+	terralib.linklibrary("./libtinymt.dylib")
+elseif uname == "Linux\n" then
+	terralib.linklibrary("./libtinymt.so")
+else
+	error("OS Unknown")
+end
+
 local interface = require("interface")
 
-local ldexp = terralib.overloadedfunction("ldexp",
-  {
-    terra(x: double, exp: int): double return C.ldexp(x, exp) end,
-    terra(x: float, exp: int): float return C.ldexpf(x, exp) end
-  })
+local ldexp = terralib.overloadedfunction("ldexp", {C.ldexp, C.ldexpf})
+local sqrt = terralib.overloadedfunction("sqrt", {C.sqrt, C.sqrtf})
+local cos = terralib.overloadedfunction("cos", {C.cos, C.cosf})
+local log = terralib.overloadedfunction("log", {C.log, C.logf})
 
-local sqrt = terralib.overloadedfunction("sqrt",
-  {
-    terra(x: double): double return C.sqrt(x) end,
-    terra(x: float): float return C.sqrtf(x) end
-  })
-
-local cos = terralib.overloadedfunction("cos",
-  {
-    terra(x: double): double return C.cos(x) end,
-    terra(x: float): float return C.cosf(x) end
-  })
-
-local log = terralib.overloadedfunction("log",
-  {
-    terra(x: double): double return C.log(x) end,
-    terra(x: float): float return C.logf(x) end
-  })
 
 local RandomInterface = function(G, F, I, exp)
   F = F or double
@@ -66,6 +59,28 @@ local RandomInterface = function(G, F, I, exp)
   return self
 end
 
+function read_urandom(T)
+    local terra impl()
+        var f = C.fopen("/dev/urandom", "r")
+        if f == nil then
+            C.fprintf(C.stderr, "Cannot open /dev/urandom")
+            C.abort()
+        end
+
+        var x: T
+        var num_read = C.fread(&x, sizeof(T), 1, f)
+        if num_read ~= 1 then
+            C.fprintf(C.stderr, "Cannot read from /dev/urandom")
+            C.abort()
+        end
+        C.fclose(f)
+
+        return x
+    end
+
+    return impl
+end
+
 local LibC = function(F)
   local struct libc {}
   terra libc:rand_int(): int64
@@ -73,8 +88,10 @@ local LibC = function(F)
   end
 
   local self = RandomInterface(libc, F, int64, 31)
+  local random_seed = read_urandom(int64)
 
   self.new = macro(function(seed)
+        seed = seed or random_seed()
 	  	return quote
 		    C.srandom(seed)
           in
@@ -83,6 +100,38 @@ local LibC = function(F)
 	end)
 
   return self
+end
+
+-- http://www.math.sci.hiroshima-u.ac.jp/m-mat/MT/TINYMT/
+local TinyMT = function(F)
+    local struct tinymt {
+        state: C.tinymt64_t
+    }
+
+    terra tinymt:rand_int(): uint64
+        return C.tinymt64_generate_uint64_public(&self.state)
+    end
+
+	local self = RandomInterface(tinymt, F, uint64, 64)
+	local random_seed = read_urandom(uint64)
+
+	self.new = macro(function(seed)
+		seed = seed or random_seed()
+		return quote
+				var tiny: C.tinymt64_t
+				-- Starting values from readme.
+				tiny.mat1 = 0
+				tiny.mat2 = 0x65980cb3
+				tiny.tmat = 0xeb38facf
+				C.tinymt64_init(&tiny, seed)
+				var rand = self.generator {tiny}
+			in
+				rand
+		end
+
+	end)
+
+	return self
 end
 
 -- https://digitalcommons.wayne.edu/jmasm/vol2/iss1/2/
@@ -108,15 +157,16 @@ local KISS = function(F)
   end
 
   local self = RandomInterface(kiss, F, uint32, 32)
+  local random_seed = read_urandom(uint32)
 
   self.new = macro(function(seed)
+      seed = seed or random_seed()
 	  return `self.generator {seed, 362436000, 521288629, 7654321}
     end)
 
   return self
 end
 
--- FIXME Does not work
 -- https://www.pcg-random.org/download.html
 local MinimalPCG = function(F)
   local struct pcg {
@@ -133,12 +183,14 @@ local MinimalPCG = function(F)
   end
 
   local self = RandomInterface(pcg, F, uint32, 32)
+  local random_seed = read_urandom(uint32) 
 
-  self.new = macro(function(seed)
+  self.new = macro(function(seed, stream)
+      seed = seed or random_seed()
+      stream = stream or 1
       return quote
-	  	  var incseq = 1
-	  	  var rand = self.generator {0, incseq}
-		  rand.inc = (incseq << 1u) or 1u
+	  	  var rand = self.generator {0, stream}
+		  rand.inc = (stream << 1u) or 1u
 		  rand:rand_int()
 		  rand.state = rand.state + seed
 		  rand:rand_int()
@@ -150,20 +202,6 @@ local MinimalPCG = function(F)
   return self
 end
 
-local pcg = MinimalPCG(double)
-local libc = LibC(double)
-local kiss = KISS(float)
+local S = {Default = LibC, PCG = MinimalPCG, KISS = KISS, TinyMT = TinyMT}
 
-terra main()
-  var rng = libc.new(124)
-  var n: int64 = 2000001
-  var mean: double = 0
-  for i: int64 = 0, n do
-	var u = rng:rand_uniform()
-    mean = i * mean + u
-	mean = mean / (i + 1)
-  end
-  C.printf("%u %g\n", n, mean)
-end
-
-main()
+return S
