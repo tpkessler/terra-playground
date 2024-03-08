@@ -27,7 +27,7 @@ tinymt32.o: tinymt/tinymt32.c
 tinymt64.o: tinymt/tinymt64.c
 	$(CC) $(CFLAGS) $^ -c -o $@
 
-test: libexport.so libtinymt.so
+test: libexport.$(dyn) libtinymt.$(dyn)
 	terra import.t
 	terra test_random.t
 
