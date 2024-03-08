@@ -1,27 +1,52 @@
 require("export_decl")
 local io = terralib.includec("stdio.h")
+local lib = terralib.includec("stdlib.h")
 
 terra addtwo(x: int, y: int): int
 	return x + y
 end
 
+local function matrix(T)
+	return struct{
+		a: T
+	}
+end
+
 local function matrix_impl(T)
 	local matrixT = matrix(T)
 
-	local terra setone(a: &matrixT)
-		io.printf("Calling from type %s\n", [tostring(T)])
+	terra matrixT:setone()
+		io.printf("Calling from type %s with value %g\n", [tostring(T)], self.a)
 	end
 
-	return setone
+	local terra new(a: T)
+		var ret = [&matrixT](lib.malloc(sizeof(matrixT)))
+		ret.a = a
+		return ret
+	end
+
+	local terra del(m: &matrixT)
+		lib.free(m)
+	end
+
+	local self = {type = matrixT, new = new, del = del}
+
+	return self
 end
 
-setone_float = matrix_impl(float)
-setone_double = matrix_impl(double)
+mat_float = matrix_impl(float)
+mat_double = matrix_impl(double)
 
 local export = {
 	addtwo = addtwo,
-	setone_float = setone_float,
-	setone_double = setone_double
+	-- float
+	new_float = mat_float.new,
+	del_float = mat_float.del,
+	setone_float = mat_float.type.methods["setone"],
+	-- double
+	new_double = mat_double.new,
+	del_double = mat_double.del,
+	setone_double = mat_double.type.methods["setone"]
 }
 
 terralib.saveobj("export.o", "object", export)

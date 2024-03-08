@@ -1,15 +1,11 @@
 terra addtwo :: {int, int} -> {int}
 
-function matrix(T)
-	return struct{
-		a: &T
-		rows: int64
-		cols: int64
-		ld: int64
-	}
-end
-
-matrixDouble = matrix(double)
+struct matrixDouble
+terra new_double :: {double} -> {&matrixDouble}
+terra del_double :: {&matrixDouble} -> {}
 terra setone_double :: {&matrixDouble} -> {}
-matrixFloat = matrix(float)
+
+struct matrixFloat
+terra new_float :: {float} -> {&matrixFloat}
+terra del_float :: {&matrixFloat} -> {}
 terra setone_float :: {&matrixFloat} -> {}
