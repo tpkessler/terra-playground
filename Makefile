@@ -1,15 +1,25 @@
+uname_s := $(shell uname -s)
+ifeq ($(uname_s),Linux)
+	dyn := so
+else ifeq ($(uname_s),Darwin)
+	dyn := dylib
+else
+	$(error Unsupported build environment!)
+endif
+
+
 CFLAGS=-O2 -march=native
 
-all: libexport.so libtinymt.so
+all: libexport.$(dyn) libtinymt.$(dyn)
 
-libexport.so: export.o
-	$(CC) -shared $^ -o $@
+libexport.$(dyn): export.o
+	$(CC) -fPIC -shared $^ -o $@
 
 export.o: export.t export_decl.t
 	terra export.t
 
-libtinymt.so: tinymt32.o tinymt64.o
-	$(CC) -shared $^ -o $@
+libtinymt.$(dyn): tinymt32.o tinymt64.o
+	$(CC) -fPIC -shared $^ -o $@
 
 tinymt32.o: tinymt/tinymt32.c
 	$(CC) $(CFLAGS) $^ -c -o $@
@@ -27,5 +37,5 @@ clean:
 	$(RM) export.o tinymt32.o tinymt64.o
 
 realclean: clean
-	$(RM) libexport.so libtinymt.so
+	$(RM) libexport.$(dyn) libtinymt.$(dyn)
 
