@@ -1,23 +1,25 @@
 require("export_decl")
 terralib.linklibrary("./libexport.so")
 
-local function emit_wrapper(name, signature)
-	local func = terralib.externfunction(name, signature)
+local function load_external_implementation(func, name)
+	assert(terralib.isfunction(func), tostring(func) .. " is not a function")
+	name = name or func.name
 
-	local arg_type = signature.type.parameters
-	local arg = {}
-	for k, v in pairs(arg_type) do
-		arg[k] = symbol(v)
-	end
+	assert(func:isdefined() == false,
+		"Cannot load external implementation as "
+		.. func.name .. " already has an implementation")
 
-	return terra([arg])
-				return [func]([arg])
-		   end
+	local impl = terralib.externfunction(name, &func.type)
+	func:adddefinition(impl)
+
+	assert(func:isdefined())
 end
 
-addtwo = emit_wrapper("addtwo", {int, int} -> {int})
-setone_float = emit_wrapper("setone_float", {&matrixFloat} -> {})
-setone_double = emit_wrapper("setone_double", {&matrixDouble} -> {})
+for _, f in pairs(_G) do
+	if terralib.isfunction(f) then
+		load_external_implementation(f)
+	end
+end
 
 local io = terralib.includec("stdio.h")
 terra main()
@@ -27,5 +29,6 @@ terra main()
 	setone_float(nil)
 	io.printf("Test setone_double\n")
 	setone_double(nil)
+	foo()
 end
 main()
