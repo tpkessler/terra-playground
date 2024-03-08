@@ -4,6 +4,18 @@ local C = terralib.includecstring[[
   #include <stdlib.h>
   #include "tinymt/tinymt64.h"
 ]]
+-- terra does not import macros other than those that set a constant number
+-- this causes an issue on macos, where 'stderr', etc are defined by referencing
+-- to another implementation in a file. So we set them here. 
+if rawget(C,"stderr")==nil and rawget(C,"__stderrp")~=nil then
+    rawset(C,"stderr",C.__stderrp)
+end
+if rawget(C,"stdin")==nil and rawget(C,"__stdinp")~=nil then
+    rawset(C,"stdin",C.__stdinp)
+end 
+if rawget(C,"stdout")==nil and rawget(C,"__stdoutp")~=nil then
+    rawset(C,"stdout",C.__stdoutp)
+end 
 
 local uname = io.popen("uname","r"):read("*a")
 if uname == "Darwin\n" then
