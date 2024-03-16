@@ -6,7 +6,7 @@ terra main()
 		for name, gen in pairs(random) do
 			local rand = gen(double)
 			emit quote
-				var rng = [rand].new()
+				var rng = [rand].from()
 				var n: int64 = 2000001
 				var mean: double = 0
 				for i: int64 = 0, n do

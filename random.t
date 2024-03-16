@@ -7,17 +7,17 @@ local C = terralib.includecstring[[
 -- terra does not import macros other than those that set a constant number
 -- this causes an issue on macos, where 'stderr', etc are defined by referencing
 -- to another implementation in a file. So we set them here. 
-if rawget(C,"stderr")==nil and rawget(C,"__stderrp")~=nil then
-    rawset(C,"stderr",C.__stderrp)
+if rawget(C, "stderr") == nil and rawget(C, "__stderrp") ~= nil then
+    rawset(C, "stderr", C.__stderrp)
 end
-if rawget(C,"stdin")==nil and rawget(C,"__stdinp")~=nil then
-    rawset(C,"stdin",C.__stdinp)
+if rawget(C, "stdin") == nil and rawget(C, "__stdinp") ~= nil then
+    rawset(C, "stdin", C.__stdinp)
 end 
-if rawget(C,"stdout")==nil and rawget(C,"__stdoutp")~=nil then
-    rawset(C,"stdout",C.__stdoutp)
+if rawget(C, "stdout") == nil and rawget(C, "__stdoutp") ~= nil then
+    rawset(C, "stdout", C.__stdoutp)
 end 
 
-local uname = io.popen("uname","r"):read("*a")
+local uname = io.popen("uname", "r"):read("*a")
 if uname == "Darwin\n" then
 	terralib.linklibrary("./libtinymt.dylib")
 elseif uname == "Linux\n" then
@@ -26,7 +26,7 @@ else
 	error("OS Unknown")
 end
 
-local interface = require("interface")
+local Interface, AbstractSelf = unpack(require("interface"))
 
 local ldexp = terralib.overloadedfunction("ldexp", {C.ldexp, C.ldexpf})
 local sqrt = terralib.overloadedfunction("sqrt", {C.sqrt, C.sqrtf})
@@ -34,27 +34,30 @@ local cos = terralib.overloadedfunction("cos", {C.cos, C.cosf})
 local log = terralib.overloadedfunction("log", {C.log, C.logf})
 
 
-local RandomInterface = function(G, F, I, exp)
-  F = F or double
-  I = I or uint32
-  exp = exp or 31
+local RandomGenerator = function(I)
+	return Interface{
+		rand_int = &AbstractSelf -> I
+	}
+end
+
+local RandomNumber = function(G, I, F, range)
   if F ~= double and F ~= float then
     error("Unsupported floating point type " .. tostring(F))
   end
-  local must_implement = {["rand_int"] = {&G} -> {I}}
-  interface.assert_implemented(G, must_implement)
+  local RandomGenerator = RandomGenerator(I)
+  RandomGenerator:isimplemented(G)
 
   local self = {}
-  self.generator = G
+  self.type = G
 
   -- Turn random integers into random floating point numbers
   -- http://mumble.net/~campbell/tmp/random_real.c
-  terra self.generator:rand_uniform(): F
+  terra self.type:rand_uniform(): F
     var rand_int = self:rand_int()
-    return ldexp([F](rand_int) , -exp)
+    return ldexp([F](rand_int) , -range)
   end
 
-  terra self.generator:rand_normal(m: F, s: F): F
+  terra self.type:rand_normal(m: F, s: F): F
     var u1 = self:rand_uniform()
     var u2 = self:rand_uniform()
 
@@ -63,7 +66,7 @@ local RandomInterface = function(G, F, I, exp)
     return m + s * r * cos(theta)
   end
 
-  terra self.generator:rand_exp(lambda: F): F
+  terra self.type:rand_exp(lambda: F): F
     var u = self:rand_uniform()
     return -log(u) / lambda
   end
@@ -96,13 +99,13 @@ end
 local LibC = function(F)
   local struct libc {}
   terra libc:rand_int(): int64
-    return [int64](C.random())
+    return C.random()
   end
 
-  local self = RandomInterface(libc, F, int64, 31)
-  local random_seed = read_urandom(int64)
+  local self = RandomNumber(libc, int64, F, 31)
+  local random_seed = read_urandom(uint32)
 
-  self.new = macro(function(seed)
+  self.from = macro(function(seed)
         seed = seed or random_seed()
 	  	return quote
 		    C.srandom(seed)
@@ -124,10 +127,10 @@ local TinyMT = function(F)
         return C.tinymt64_generate_uint64_public(&self.state)
     end
 
-	local self = RandomInterface(tinymt, F, uint64, 64)
+	local self = RandomNumber(tinymt, uint64, F, 64)
 	local random_seed = read_urandom(uint64)
 
-	self.new = macro(function(seed)
+	self.from = macro(function(seed)
 		seed = seed or random_seed()
 		return quote
 				var tiny: C.tinymt64_t
@@ -136,7 +139,7 @@ local TinyMT = function(F)
 				tiny.mat2 = 0x65980cb3
 				tiny.tmat = 0xeb38facf
 				C.tinymt64_init(&tiny, seed)
-				var rand = self.generator {tiny}
+				var rand = self.type {tiny}
 			in
 				rand
 		end
@@ -168,12 +171,12 @@ local KISS = function(F)
   	return self.x + self.y + self.z
   end
 
-  local self = RandomInterface(kiss, F, uint32, 32)
+  local self = RandomNumber(kiss, uint32, F, 32)
   local random_seed = read_urandom(uint32)
 
-  self.new = macro(function(seed)
+  self.from = macro(function(seed)
       seed = seed or random_seed()
-	  return `self.generator {seed, 362436000, 521288629, 7654321}
+	  return `self.type {seed, 362436000, 521288629, 7654321}
     end)
 
   return self
@@ -194,14 +197,14 @@ local MinimalPCG = function(F)
 	return (xorshifted >> rot) or (xorshifted << ((-rot) and 31))
   end
 
-  local self = RandomInterface(pcg, F, uint32, 32)
+  local self = RandomNumber(pcg, uint32, F, 32)
   local random_seed = read_urandom(uint32) 
 
-  self.new = macro(function(seed, stream)
+  self.from = macro(function(seed, stream)
       seed = seed or random_seed()
       stream = stream or 1
       return quote
-	  	  var rand = self.generator {0, stream}
+	  	  var rand = self.type {0, stream}
 		  rand.inc = (stream << 1u) or 1u
 		  rand:rand_int()
 		  rand.state = rand.state + seed
