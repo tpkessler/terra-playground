@@ -1,10 +1,5 @@
-local sqrt = terralib.overloadedfunction("sqrt")
-for tname, ttype in pairs{f32 = float, f64 = double} do
-    local d = terra(x: ttype) return [
-        terralib.intrinsic("llvm.sqrt."..tname, ttype -> ttype)](x)
-    end
-    sqrt:adddefinition(d)
-end
+local C = terralib.includec("math.h")
+local sqrt = terralib.overloadedfunction("sqrt", {C.sqrt, C.sqrtf})
 
 local function complex(T)
 

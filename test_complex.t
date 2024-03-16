@@ -1,42 +1,116 @@
-local C = terralib.includecstring[[
-    #include <stdio.h>
-]]
+import "terratest/terratest"
 
 local complex = require("complex")
 
-local complexFloat, If = unpack(complex(float))
-local complexDouble, I = unpack(complex(double))
+for _, T in pairs({float, double}) do
+	local complexT, It = unpack(complex(T))
+	testenv(T) "Initialization" do
+		terracode
+			var x = complexT {1, 2} 
+			var y = 1 + 2 * It
+		end
+		test x == y
+	end
 
-terra main()
-    var x = complexDouble {1, 2}
-    C.printf("Testing type %s\n", [tostring(complexDouble)])
-    C.printf("%e %e\n", x.re, x.im) 
-    C.printf("Size of %s is %zu\n", [tostring(complexFloat)],
-                                    sizeof(complexFloat))
-    C.printf("Size of %s is %zu\n", [tostring(complexDouble)],
-                                    sizeof(complexDouble))
-    var p = [&double](&x)
-    C.printf("%e %e\n", @p, @(p + 1))
+	testenv(T) "Copy" do
+		terracode
+			var x = 2 + 3 * It
+			var y = x
+		end
+		test x == y
+	end
 
-    var y = x * x
-    C.printf("%e %e\n", y.re, y.im)
+	testenv(T) "Cast" do
+		terracode
+			var x: T = 2
+			var y: complexT = x
+			var xc = complexT {x, 0}
+		end
+		test y == xc
+	end
 
-    var z = x + x
-    C.printf("%e %e\n", z.re, z.im)
+	testenv(T) "Add" do
+		terracode
+			var x = 1 + 1 * It
+			var y = 2 + 3 * It
+			var z = 3 + 4 * It
+		end
+		test x + y == z
+	end
 
-    var w = x * x - x
-    C.printf("%e %e\n", w.re, w.im)
+	testenv(T) "Mul" do
+		terracode
+			var x = -1 + It
+			var y = 2 - 3 * It
+			var z = 1 + 5 * It
+		end
+		test x * y == z
+	end
 
-    var a = x * x / x
-    C.printf("%e %e\n", a.re, a.im)
+	testenv(T) "Neg" do
+		terracode
+			var x = -1 + 2 * It
+			var y = 1 - 2 * It
+		end
+		test x == -y
+	end
 
-    C.printf("Testing implicit cast\n")
-    var c = 2 * x + y
-    C.printf("%e %e\n", c.re, c.im)
+	testenv(T) "Normsq" do
+		terracode
+			var x = 3 + 4 * It
+			var y = 25
+		end
+		test x:normsq() == y
+	end
 
-    C.printf("Testing complex unit\n")
-    var d = -2 * I
-    C.printf("%e %e\n", d.re, d.im)
+	testenv(T) "Real and imaginary parts" do
+		terracode
+			var x = -3 + 5 * It
+			var xre = -3
+			var xim = 5
+		end
+		test x:real() == xre
+		test x:imag() == xim
+	end
+
+	testenv(T) "Conj" do
+		terracode
+			var x = 5 - 3 * It
+			var xc = 5 + 3 * It
+		end
+		test x:conj() == xc
+	end
+
+	testenv(T) "Inverse" do
+		terracode
+			var x = -3 + 5 * It
+			var y = -[T](3) / 34 - [T](5) / 34 * It
+		end
+		test x:inverse() == y
+	end
+
+	testenv(T) "Sub" do
+		terracode
+			var x = 2 - 3 * It
+			var y = 5 + 4 * It
+			var z = - 3 - 7 * It
+		end
+		test x - y == z
+	end
+
+	testenv(T) "Div" do
+		terracode
+			var x = -5 + It
+			var y = 1 + It
+			var z = -2 + 3 * It
+		end
+		test x / y == z
+	end
+
+	testenv(T) "Unit" do
+		terracode
+			var u = complexT {0, 1}
+		end
+		test u == It
+	end
 end
-
-main()
