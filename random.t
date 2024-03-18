@@ -3,6 +3,7 @@ local C = terralib.includecstring[[
   #include <stdio.h>
   #include <stdlib.h>
   #include "tinymt/tinymt64.h"
+  #include "pcg/pcg_variants.h"
 ]]
 -- terra does not import macros other than those that set a constant number
 -- this causes an issue on macos, where 'stderr', etc are defined by referencing
@@ -20,8 +21,10 @@ end
 local uname = io.popen("uname", "r"):read("*a")
 if uname == "Darwin\n" then
 	terralib.linklibrary("./libtinymt.dylib")
+	terralib.linklibrary("./libpcg.dylib")
 elseif uname == "Linux\n" then
 	terralib.linklibrary("./libtinymt.so")
+	terralib.linklibrary("./libpcg.so")
 else
 	error("OS Unknown")
 end
@@ -217,6 +220,33 @@ local MinimalPCG = function(F)
   return self
 end
 
-local S = {Default = LibC, PCG = MinimalPCG, KISS = KISS, TinyMT = TinyMT}
+local PCG = function(F)
+	local struct pcg{
+		state: C.pcg64_random_t
+	}
+
+	terra pcg:rand_int(): uint64
+		return C.pcg_setseq_128_xsl_rr_64_random_r(&self.state)
+	end
+
+	local self = RandomNumber(pcg, uint64, F, 64)
+	local uint128 = uint64[2]
+	local random_seed = read_urandom(uint128)
+
+	self.from = macro(function(seed, stream)
+		seed = seed or quote var a = random_seed() in &a end
+		stream = stream or quote var a: uint128; a[0] = 0; a[1] = 1 in &a end
+		return quote
+				var rand: self.type
+				C.pcg_setseq_128_void_srandom_r(&rand.state, [seed], [stream])
+			in
+				rand
+		end
+	end)
+
+	return self
+end
+
+local S = {Default = LibC, PCG = PCG, MinimalPCG = MinimalPCG, KISS = KISS, TinyMT = TinyMT}
 
 return S
