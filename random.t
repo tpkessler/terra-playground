@@ -229,19 +229,31 @@ local PCG = function(F)
 		return C.pcg_setseq_128_xsl_rr_64_random_r(&self.state)
 	end
 
+	local struct uint128 {
+		lo: uint64
+		hi: uint64
+	}
+
+	function uint128.metamethods.__cast(from, to, exp)
+		if to == uint128 then
+			return `uint128 {exp, 0}
+		else
+			error("Invalid integer type for uint128")
+		end
+	end
+
 	local self = RandomNumber(pcg, uint64, F, 64)
-	local uint128 = uint64[2]
 	local random_seed = read_urandom(uint128)
 
 	self.from = macro(function(seed, stream)
-		seed = seed or quote var a = random_seed() in &a end
-		stream = stream or quote var a: uint128; a[0] = 0; a[1] = 1 in &a end
+		seed = seed and quote var a: uint128 = [seed] in &a end or quote var a = random_seed() in &a end
+		stream = stream and quote var a: uint128 = [stream] in &a end or quote var a: uint128 = 1 in &a end
 		return quote
 				var rand: self.type
 				C.pcg_setseq_128_void_srandom_r(&rand.state, [seed], [stream])
 			in
 				rand
-		end
+			end
 	end)
 
 	return self
