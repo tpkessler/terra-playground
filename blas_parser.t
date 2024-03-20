@@ -1,13 +1,8 @@
 local C = terralib.includecstring[[
     #include <openblas/cblas.h>
 ]]
-terralib.linklibrary("libcblas.so")
 
-local complex = require("complex")
-
-local complexFloat = complex(float)[1]
-local complexDouble = complex(double)[1]
-
+-- Check if pointers to type have to pass as void * pointers to BLAS
 local function has_opaque_interface(prefix)
     if prefix == "c" or prefix == "z" then
         return true
@@ -18,7 +13,29 @@ local function has_opaque_interface(prefix)
     end
 end
 
-local function generate_blas_args(prefix, T, signature, return_val)
+-- Generate building blocks for terra wrappers for BLAS/LAPACK
+-- prefix: String indicating the type for which terra statements are emitted
+-- T: scalar type. Can a be a real or complex floating point type
+-- signature: Abstraction of the actual BLAS call. A list of strings.
+-- 			  Supported types are:
+--			  					  * integer for lengths, increments or enums
+--								  * scalar for the scaling of arrays
+--								  * scalar_array for pointers to arrays of type scalar
+--			  An example signature for ?axpy is
+--			  		{"integer", "scalar", "scalar_array", "integer", "scalar_array", "integer"}
+-- return_val: Abstraction of return values of the BLAS call. A list of strings.
+--			   Supported types are:
+--			   					   * real_scalar for the return values of norms or similar
+--								   * scalar for general scalar-valued functions
+--								   * integer for indices
+-- Returns
+-- terra_arg: A list of symbols for the terra function call
+-- statements: Optional casts from terra types to BLAS arguments
+-- c_arg: A list of symbols for the C function call
+-- result: If nil then the BLAS function has no return value.
+--         Otherwise it contains a symbol and must be assigned the return of the C call.
+-- return_statement: List of terra symbols that close the terra function call
+local function parser(prefix, T, signature, return_val)
     local terra_arg = terralib.newlist()
     local statements = terralib.newlist()
     local c_arg = terralib.newlist()
@@ -97,7 +114,13 @@ local function generate_blas_args(prefix, T, signature, return_val)
     return terra_arg, statements, c_arg, result, return_statement
 end
 
-local function blas_factory(name, types, suffix_types, signature, return_val)
+-- Generate an overloaded terra function for a given BLAS function
+-- name: Format string to include the name of the BLAS function with prefix and optional suffix.
+-- types: table that maps prefixes to terra types.
+-- suffix_types: table that maps the type prefix to optional suffixes.
+-- signature: Table of strings for the arguments of the BLAS call as described in parser().
+-- return_val: Table of strings for the return values of the BLAS call as described in parser().
+local function factory(name, types, suffix_types, signature, return_val)
     local methods = terralib.newlist()
     for prefix, T in pairs(types) do
         local tname = string.format(name, "", "")
@@ -105,7 +128,7 @@ local function blas_factory(name, types, suffix_types, signature, return_val)
         local pname = string.format(name, prefix, suffix)
         local cname = "cblas_" .. pname
         local terra_arg, statements, c_arg, result, return_statement
-            = generate_blas_args(prefix, T, signature, return_val)
+            = parser(prefix, T, signature, return_val)
 
         local c_call
         if result == nil then
@@ -124,78 +147,4 @@ local function blas_factory(name, types, suffix_types, signature, return_val)
     return terralib.overloadedfunction(name, methods)
 end
 
-local S = {}
-S.RowMajor = C.CblasRowMajor
-S.ColMajor = C.CblasColMajor
-
-S.NoTrans = C.CblasNoTrans
-S.Trans = C.CblasTrans
-S.ConjTrans = C.CblasConjTrans
-
-S.Upper = C.CblasUpper
-S.Lower = C.CblasLower
-
-S.Unit = C.CblasUnit
-S.NonUnit = C.CblasNonUnit
-
-local default_types = {
-    ["s"] = float,
-    ["d"] = double,
-    ["c"] = complexFloat,
-    ["z"] = complexDouble}
-
-local dot_suffix = {
-    ["c"] = "c_sub",
-    ["z"] = "c_sub"}
-
-local ger_suffix = {
-    ["c"] = "c",
-    ["z"] = "c"}
-
-local nrm_types = {
-    ["s"] = float,
-    ["d"] = double,
-    ["sc"] = complexFloat,
-    ["dz"] = complexDouble}
-
-local blas = {
-    -- BLAS 1
-    {"%sswap", default_types, {},
-        {"integer", "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%sscal", default_types, {},
-        {"integer", "scalar", "scalar_array", "integer"}, {}},
-    {"%scopy", default_types, {},
-        {"integer", "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%saxpy", default_types, {},
-        {"integer", "scalar", "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%sdot%s", default_types, dot_suffix,
-        {"integer", "scalar_array", "integer", "scalar_array", "integer"}, {"scalar"}},
-    {"%snrm2", nrm_types, {},
-        {"integer", "scalar_array", "integer"}, {"real_scalar"}},
-    {"%sasum", nrm_types, {},
-        {"integer", "scalar_array", "integer"}, {"real_scalar"}},
-    {"i%samax", default_types, {},
-        {"integer", "scalar_array", "integer"}, {"integer"}},
-    -- BLAS 2
-    {"%sgemv", default_types, {},
-        {"integer", "integer", "integer", "integer", "scalar", "scalar_array",
-         "integer", "scalar_array", "integer", "scalar", "scalar_array", "integer"}, {}},
-    {"%sger%s", default_types, ger_suffix,
-        {"integer", "integer", "integer", "scalar", "scalar_array", "integer",
-         "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%strsv", default_types, {},
-        {"integer", "integer", "integer", "integer", "integer", "scalar_array", "integer",
-         "scalar_array", "integer"}, {}},
-    -- BLAS 3
-    {"%sgemm", default_types, {},
-        {"integer", "integer", "integer", "integer", "integer", "integer",
-         "scalar", "scalar_array", "integer", "scalar_array", "integer",
-         "scalar", "scalar_array", "integer"}, {}}
-}
-
-for _, func in pairs(blas) do
-    local name = string.format(func[1], "", "")
-    S[name] = blas_factory(unpack(func))
-end
-
-return S
+return {factory = factory}
