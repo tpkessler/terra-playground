@@ -18,6 +18,7 @@ if rawget(C, "stdout") == nil and rawget(C, "__stdoutp") ~= nil then
     rawset(C, "stdout", C.__stdoutp)
 end 
 
+-- Compile C libraries with make first before using this module
 local uname = io.popen("uname", "r"):read("*a")
 if uname == "Darwin\n" then
 	terralib.linklibrary("./libtinymt.dylib")
@@ -37,30 +38,50 @@ local cos = terralib.overloadedfunction("cos", {C.cos, C.cosf})
 local log = terralib.overloadedfunction("log", {C.log, C.logf})
 
 
-local RandomGenerator = function(I)
+-- Interface for pseudo random number generator.
+-- Given an interal state, subsequent calls to rand_int() generate
+-- a sequence of uncorrelated integers of type I.
+local PseudoRandomizer = function(I)
+	assert(I:isintegral(), "Return value of PRNG must be an integral type")
 	return Interface{
 		rand_int = &AbstractSelf -> I
 	}
 end
 
-local RandomNumber = function(G, I, F, range)
+-- Interface for the sampling of random numbers according to probability distributions.
+-- Currently supported are:
+-- the uniform distribution on [0, 1];
+-- the normal distribution with given mean and standard deviation;
+-- the exponential distribution with given rate.
+local RandomDistributer = function(F)
+	assert(F:isfloat(), "Return value must be float or double")
+	return Interface{
+		rand_uniform = &AbstractSelf -> F,
+		rand_normal = {&AbstractSelf, F, F} -> F,
+		rand_exp = {&AbstractSelf, F} -> F
+	}
+end
+
+-- Implementation of RandomDistributer on top of PseudoRandomizer
+-- G is an implementation of RandomDistributer;
+-- I is the integral return type of G;
+-- F is the return type for the RandomDistributer interface;
+-- range is the number of random bytes, typically 32 or 64.
+local PRNG = function(G, I, F, range)
   if F ~= double and F ~= float then
     error("Unsupported floating point type " .. tostring(F))
   end
-  local RandomGenerator = RandomGenerator(I)
-  RandomGenerator:isimplemented(G)
-
-  local self = {}
-  self.type = G
+  local PseudoRandomizer = PseudoRandomizer(I)
+  PseudoRandomizer:isimplemented(G)
 
   -- Turn random integers into random floating point numbers
   -- http://mumble.net/~campbell/tmp/random_real.c
-  terra self.type:rand_uniform(): F
+  terra G:rand_uniform(): F
     var rand_int = self:rand_int()
     return ldexp([F](rand_int) , -range)
   end
 
-  terra self.type:rand_normal(m: F, s: F): F
+  terra G:rand_normal(m: F, s: F): F
     var u1 = self:rand_uniform()
     var u2 = self:rand_uniform()
 
@@ -69,14 +90,18 @@ local RandomNumber = function(G, I, F, range)
     return m + s * r * cos(theta)
   end
 
-  terra self.type:rand_exp(lambda: F): F
+  terra G:rand_exp(lambda: F): F
     var u = self:rand_uniform()
     return -log(u) / lambda
   end
 
-  return self
+  local RandomDistributer = RandomDistributer(F)
+  RandomDistributer:isimplemented(G)
+
+  return G
 end
 
+-- Read a truely random value of type T from /dev/urandom
 function read_urandom(T)
     local terra impl()
         var f = C.fopen("/dev/urandom", "r")
@@ -99,13 +124,16 @@ function read_urandom(T)
     return impl
 end
 
+-- Wrapper around the random number generator of the C standard library
 local LibC = function(F)
   local struct libc {}
   terra libc:rand_int(): int64
     return C.random()
   end
 
-  local self = RandomNumber(libc, int64, F, 31)
+  local self = {}
+  self.type = PRNG(libc, int64, F, 31)
+
   local random_seed = read_urandom(uint32)
 
   self.from = macro(function(seed)
@@ -120,6 +148,7 @@ local LibC = function(F)
   return self
 end
 
+-- The tiny Mersenner twister (64 bit), see
 -- http://www.math.sci.hiroshima-u.ac.jp/m-mat/MT/TINYMT/
 local TinyMT = function(F)
     local struct tinymt {
@@ -130,7 +159,8 @@ local TinyMT = function(F)
         return C.tinymt64_generate_uint64_public(&self.state)
     end
 
-	local self = RandomNumber(tinymt, uint64, F, 64)
+	local self = {}
+	self.type = PRNG(tinymt, uint64, F, 64)
 	local random_seed = read_urandom(uint64)
 
 	self.from = macro(function(seed)
@@ -152,6 +182,8 @@ local TinyMT = function(F)
 	return self
 end
 
+-- A simple random number generator,
+-- Keep It Simple Stupid, see
 -- https://digitalcommons.wayne.edu/jmasm/vol2/iss1/2/
 -- page 12
 local KISS = function(F)
@@ -174,7 +206,8 @@ local KISS = function(F)
   	return self.x + self.y + self.z
   end
 
-  local self = RandomNumber(kiss, uint32, F, 32)
+  local self = {}
+  self.type = PRNG(kiss, uint32, F, 32)
   local random_seed = read_urandom(uint32)
 
   self.from = macro(function(seed)
@@ -185,6 +218,7 @@ local KISS = function(F)
   return self
 end
 
+-- A minimal, 32 bit implemenation of the PCG generator, see
 -- https://www.pcg-random.org/download.html
 local MinimalPCG = function(F)
   local struct pcg {
@@ -200,7 +234,8 @@ local MinimalPCG = function(F)
 	return (xorshifted >> rot) or (xorshifted << ((-rot) and 31))
   end
 
-  local self = RandomNumber(pcg, uint32, F, 32)
+  local self = {}
+  self.type = PRNG(pcg, uint32, F, 32)
   local random_seed = read_urandom(uint32) 
 
   self.from = macro(function(seed, stream)
@@ -220,6 +255,8 @@ local MinimalPCG = function(F)
   return self
 end
 
+-- Wrapper around the full implementation of the PCG generator (64 bit), see
+-- https://www.pcg-random.org/
 local PCG = function(F)
 	local struct pcg{
 		state: C.pcg64_random_t
@@ -242,7 +279,8 @@ local PCG = function(F)
 		end
 	end
 
-	local self = RandomNumber(pcg, uint64, F, 64)
+	local self = {}
+	self.type = PRNG(pcg, uint64, F, 64)
 	local random_seed = read_urandom(uint128)
 
 	self.from = macro(function(seed, stream)
@@ -259,6 +297,12 @@ local PCG = function(F)
 	return self
 end
 
-local S = {Default = LibC, PCG = PCG, MinimalPCG = MinimalPCG, KISS = KISS, TinyMT = TinyMT}
+local S = {PseudoRandomizer = PseudoRandomizer,
+		   RandomDistributer = RandomDistributer,
+		   Default = LibC,
+		   PCG = PCG,
+		   MinimalPCG = MinimalPCG,
+		   KISS = KISS,
+		   TinyMT = TinyMT}
 
 return S

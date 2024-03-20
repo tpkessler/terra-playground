@@ -3,7 +3,8 @@ local C = terralib.includec("stdio.h")
 
 terra main()
 	escape
-		for name, gen in pairs(random) do
+		for _, name in ipairs({"Default", "PCG", "MinimalPCG", "KISS", "TinyMT"}) do
+			local gen = random[name]
 			local rand = gen(double)
 			emit quote
 				var rng = [rand].from()
