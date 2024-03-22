@@ -27,9 +27,3 @@ testenv "Default allocator" do
 	end
 end
 
-terra main()
-	var A: Alloc
-	var x: &double = [&double](A:alloc(10 * sizeof(double)))
-	A:free(x)
-end
-main()
