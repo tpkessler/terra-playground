@@ -2,6 +2,7 @@ local alloc = require("alloc")
 local err = require("assert")
 local complex = require("complex")
 local blas = require("blas")
+local base = require("vector_base")
 
 local complexFloat = complex(float)[1]
 local complexDouble = complex(double)[1]
@@ -17,12 +18,13 @@ local function is_blas_type(T)
     return false
 end
 
-local Vector = function(T, A)
+local VectorHeap = function(T, A)
     A = A or alloc.Default
     alloc.Allocater:isimplemented(A)
 
     local struct vector{
         data: &T
+        is_owner: bool
         size: int64
         inc: int64
         buf: int64
@@ -35,23 +37,18 @@ local Vector = function(T, A)
         var mem: A
         var buf = size + DEFAULT_BUF_SIZE
         var data = [&T](mem:alloc(sizeof(T) * buf))
-        return vector {data, size, 1, buf, mem}
+        var is_owner = true
+        return vector {data, is_owner, size, 1, buf, mem}
     end
 
     terra vector:free()
-        self.mem:free(self.data)
+        if self.is_owner then
+            self.mem:free(self.data)
+        end
     end
 
     terra vector:size()
         return self.size
-    end
-
-    terra vector:inc()
-        return self.inc
-    end
-
-    terra vector:data()
-        return self.data
     end
 
     terra vector:get(i: int64)
@@ -61,9 +58,12 @@ local Vector = function(T, A)
     end
 
     terra vector:set(i: int64, a: T)
+        err.assert(i >= 0)
         err.assert(i < self:size())
         self.data[self.inc * i] = a
     end
+
+    vector = base.VectorBase(vector, T, int64)
 
     terra vector:push(a: T): {}
         var idx = self.inc * self.size
@@ -90,32 +90,23 @@ local Vector = function(T, A)
         return x
     end
 
-    terra vector:fill(a: T)
-        for i = 0, self:size() do
-            self:set(i, a)
-        end
-    end
-
-    terra vector:clear()
-        self:fill(0)
-    end
-
-    terra vector:copy(y: vector)
-        err.assert(self:size() == y:size())
-
-        for i = 0, self:size() do
-            self:set(i, y:get(i))
-        end
-    end
-
     terra vector:subview(size: int64, offset: int64, inc: int64)
         -- TODO Check size and offset
         var new_data = self.data + offset * self.inc
+        var new_is_owner = false
         var new_size = size
         var new_inc = inc * self.inc
         var new_buf = self.buf
         var new_mem = self.mem
-        return vector {new_data, new_size, new_inc, new_buf, new_mem}
+        return vector {new_data, new_is_owner, new_size, new_inc, new_buf, new_mem}
+    end
+
+    terra vector:inc()
+        return self.inc
+    end
+
+    terra vector:data()
+        return self.data
     end
 
     terra vector:getblasinfo()
@@ -123,7 +114,7 @@ local Vector = function(T, A)
     end
 
     if is_blas_type(T) then
-        terra vector:swap(x: vector)
+        terra vector:swap(x: &vector)
             var x_size, x_data, x_inc = x:getblasinfo()
             var y_size, y_data, y_inc = self:getblasinfo()
 
@@ -138,7 +129,7 @@ local Vector = function(T, A)
             blas.scal(x_size, a, x_data, x_inc)
         end
         
-        terra vector:axpy(a: T, x: vector)
+        terra vector:axpy(a: T, x: &vector)
             var x_size, x_data, x_inc = x:getblasinfo()
             var y_size, y_data, y_inc = self:getblasinfo()
 
@@ -147,9 +138,9 @@ local Vector = function(T, A)
             blas.axpy(x_size, a, x_data, x_inc, y_data, y_inc)
         end
 
-        terra vector:dot(x: vector)
+        terra vector:dot(x: &vector)
             var x_size, x_data, x_inc = x:getblasinfo()
-            var y_size, y_data, y_inc = x:getblasinfo()
+            var y_size, y_data, y_inc = self:getblasinfo()
 
             err.assert(x_size == y_size)
 
@@ -226,6 +217,6 @@ local Vector = function(T, A)
     return self
 end
 
-Vector = terralib.memoize(Vector)
+VectorHeap = terralib.memoize(VectorHeap)
 
-return Vector
+return VectorHeap

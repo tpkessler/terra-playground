@@ -7,7 +7,6 @@ local C = terralib.includecstring [[
 
 local S = {}
 
-
 S.assert = macro(function(condition)
     local loc = condition.tree.filename..":"..condition.tree.linenumber
     return quote
@@ -25,12 +24,6 @@ S.error = macro(function(expr)
 	    C.abort()
     end -- quote
 end) -- macro
-
-S.NotImplementedError = macro(function() 
-    return quote 
-	    S.error("MethodError: Method is not implemented") 
-    end
-end)
 
 return S
 

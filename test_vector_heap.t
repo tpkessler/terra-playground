@@ -1,4 +1,4 @@
-local vector = require("vector")
+local vector = require("vector_heap")
 local io = terralib.includec("stdio.h")
 
 local VectorDouble = vector(double)
@@ -15,7 +15,7 @@ terra main()
     x:pop()
     x:fill(11)
     var y = VectorDouble.from(1, 2, 3)
-    x:axpy(-2, y)
+    x:axpy(-2, &y)
 
     io.printf("After push and pop and axpy\n")
     for xx in x do
@@ -33,7 +33,7 @@ terra main()
     w:set(0, -5)
     w:set(1, 7)
 
-    z:copy(w)
+    z:copy(&w)
 
     io.printf("Subview after copy\n")
     for zz in z do
@@ -54,7 +54,7 @@ terra main()
         io.printf("%g %g\n", a:get(i), b:get(i))
     end
 
-    a:swap(b)
+    a:swap(&b)
     
     io.printf("After swap\n")
     for i = 0, a:size() do
@@ -68,10 +68,11 @@ terra main()
         io.printf("%g\n", aa)
     end
 
-    io.printf("Inner product is %g\n", x:dot(a))
+    io.printf("Inner product is %g\n", x:dot(&a))
 
     x:free()
     y:free()
+    z:free()
     w:free()
     a:free()
     b:free()

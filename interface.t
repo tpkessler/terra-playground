@@ -56,10 +56,15 @@ local function Interface(S)
 			local T_method = T_methods[ref_name]
 			-- Cast abstract interface method to specific type self.
 			-- This is always a pointer to T.
-			local cast_parameters = {&T}
+			local cast_parameters = {}
 			local ref_parameters = ref_method.type.parameters
-			for i = 2, #ref_parameters do
-				cast_parameters[i] = ref_parameters[i]
+			for i = 1, #ref_parameters do
+				local param = ref_parameters[i]
+				if param == &AbstractSelf then
+					cast_parameters[i] = &T
+				else
+					cast_parameters[i] = ref_parameters[i]
+				end
 			end
 			-- From the updated parameter list, build the corresponding
 			-- function signature to check against the provided implementation.
