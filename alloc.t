@@ -18,7 +18,7 @@ terra stdlib:alloc(size: uint64): &opaque
 	var res = C.posix_memalign(&ptr, alignment, size)
 
 	if res ~= 0 then
-		var size_gib = 1.0 * size / 1024^3
+		var size_gib = 1.0 * size / (1024 * 1024 * 1024)
 		C.fprintf(C.stderr, "Cannot allocate memory for buffer of size %g GiB\n",
 							size_gib)
 		C.abort()
@@ -34,4 +34,4 @@ end
 Allocater:isimplemented(stdlib)
 
 
-return {Default = stdlib}
+return {Default = stdlib, Allocater = Allocater}
