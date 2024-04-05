@@ -55,6 +55,7 @@ local Vector = function(T, A)
     end
 
     terra vector:get(i: int64)
+        err.assert(i >= 0)
         err.assert(i < self:size())
         return self.data[self.inc * i]
     end
@@ -117,19 +118,60 @@ local Vector = function(T, A)
         return vector {new_data, new_size, new_inc, new_buf, new_mem}
     end
 
-    if is_blas_type(T) then
-        terra vector:axpy(a: T, x: vector)
-            var x_size = x:size()
-            var x_data = x:data()
-            var x_inc = x:inc()
+    terra vector:getblasinfo()
+        return self:size(), self:data(), self:inc()
+    end
 
-            var y_size = self:size()
-            var y_data = self:data()
-            var y_inc = self:inc()
+    if is_blas_type(T) then
+        terra vector:swap(x: vector)
+            var x_size, x_data, x_inc = x:getblasinfo()
+            var y_size, y_data, y_inc = self:getblasinfo()
+
+            err.assert(x_size == y_size)
+
+            blas.swap(x_size, x_data, x_inc, y_data, y_inc)
+        end
+
+        terra vector:scal(a: T)
+            var x_size, x_data, x_inc = self:getblasinfo()
+
+            blas.scal(x_size, a, x_data, x_inc)
+        end
+        
+        terra vector:axpy(a: T, x: vector)
+            var x_size, x_data, x_inc = x:getblasinfo()
+            var y_size, y_data, y_inc = self:getblasinfo()
 
             err.assert(x_size == y_size)
 
             blas.axpy(x_size, a, x_data, x_inc, y_data, y_inc)
+        end
+
+        terra vector:dot(x: vector)
+            var x_size, x_data, x_inc = x:getblasinfo()
+            var y_size, y_data, y_inc = x:getblasinfo()
+
+            err.assert(x_size == y_size)
+
+            return blas.dot(x_size, x_data, x_inc, y_data, y_inc)
+        end
+
+        terra vector:nrm2()
+            var x_size, x_data, x_inc = self:getblasinfo()
+
+            return blas.nrm2(x_size, x_data, x_inc)
+        end
+
+        terra vector:asum()
+            var x_size, x_data, x_inc = self:getblasinfo()
+
+            return blas.asum(x_size, x_data, x_inc)
+        end
+
+        terra vector:iamax()
+            var x_size, x_data, x_inc = self:getblasinfo()
+
+            return blas.iamax(x_size, x_data, x_inc)
         end
     end
 

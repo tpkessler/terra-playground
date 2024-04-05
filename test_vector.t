@@ -45,9 +45,36 @@ terra main()
         io.printf("%g\n", xx)
     end
 
+    var a = VectorDouble.zeros_like(x)
+    var b = VectorDouble.like(a)
+    b:fill(1)
+
+    io.printf("Before swap\n")
+    for i = 0, a:size() do
+        io.printf("%g %g\n", a:get(i), b:get(i))
+    end
+
+    a:swap(b)
+    
+    io.printf("After swap\n")
+    for i = 0, a:size() do
+        io.printf("%g %g\n", a:get(i), b:get(i))
+    end
+
+    a:scal(-3.14)
+
+    io.printf("Scaled vector\n")
+    for aa in a do
+        io.printf("%g\n", aa)
+    end
+
+    io.printf("Inner product is %g\n", x:dot(a))
+
     x:free()
     y:free()
     w:free()
+    a:free()
+    b:free()
 end
 
 main()
