@@ -24,8 +24,10 @@ terra main()
 
     a:axpy(-1, &b)
 
+    var ah = a:asheap()
+
     for i = 0, a:size() do
-        io.printf("%ld %ld\n", a:get(i), b:get(i))
+        io.printf("%ld %ld %ld\n", a:get(i), ah:get(i), b:get(i))
     end
 end
 

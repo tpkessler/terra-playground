@@ -1,8 +1,10 @@
 local base = require("vector_base")
 local err = require("assert")
+local VectorHeap = require("vector_heap")
 
 local VectorStatic = function(T, N)
     local SIMD = vector(T, N)
+    local VectorHeap = VectorHeap(T)
 
     local struct vector{
         union{
@@ -35,12 +37,20 @@ local VectorStatic = function(T, N)
 
     vector = base.VectorBase(vector, T, int64)
 
+    terra vector:data()
+        return &self.data[0]
+    end
+
     terra vector:scal(a: T)
         self.simd = a * self.simd
     end
 
     terra vector:axpy(a: T, x: &vector)
         self.simd = self.simd + a * x.simd
+    end
+
+    terra vector:asheap()
+        return VectorHeap.from_buffer(self:size(), self:data(), 1)
     end
 
     local from = macro(function(...)
@@ -57,7 +67,7 @@ local VectorStatic = function(T, N)
                    [set]
                in
                    [vec]
-            end
+               end
     end)
 
     return {

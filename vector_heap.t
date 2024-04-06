@@ -66,6 +66,8 @@ local VectorHeap = function(T, A)
     vector = base.VectorBase(vector, T, int64)
 
     terra vector:push(a: T): {}
+        err.assert(self.is_owner)
+        
         var idx = self.inc * self.size
         if self.buf > idx then
             self.data[idx] = a
@@ -84,6 +86,7 @@ local VectorHeap = function(T, A)
     end
 
     terra vector:pop()
+        err.assert(self.is_owner)
         err.assert(self:size() > 0)
         var x = self:get(self:size() - 1)
         self.size = self.size - 1
@@ -193,6 +196,10 @@ local VectorHeap = function(T, A)
                    end
         end)
 
+    local terra from_buffer(size: int64, data: &T, inc: int64)
+        return vector {data, false, size, inc, size, @[&A](nil)}
+    end
+
     local terra like(x: vector)
         var size = x:size()
         var y = new(size)
@@ -207,14 +214,13 @@ local VectorHeap = function(T, A)
         return y
     end
 
-    local self = {type = vector,
-                  new = new,
-                  from = from,
-                  like = like,
-                  zeros_like = zeros_like
-                 }
-
-    return self
+    return {type = vector,
+            new = new,
+            from = from,
+            from_buffer = from_buffer,
+            like = like,
+            zeros_like = zeros_like
+            }
 end
 
 VectorHeap = terralib.memoize(VectorHeap)
