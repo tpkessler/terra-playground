@@ -2,9 +2,13 @@ local base = require("vector_base")
 local err = require("assert")
 
 local VectorStatic = function(T, N)
+    local SIMD = vector(T, N)
 
     local struct vector{
-        data: T[N]
+        union{
+            data: T[N]
+            simd: SIMD
+        }
     }
 
     local terra new()
@@ -30,6 +34,14 @@ local VectorStatic = function(T, N)
     end
 
     vector = base.VectorBase(vector, T, int64)
+
+    terra vector:scal(a: T)
+        self.simd = a * self.simd
+    end
+
+    terra vector:axpy(a: T, x: &vector)
+        self.simd = self.simd + a * x.simd
+    end
 
     local from = macro(function(...)
         local arg = {...}

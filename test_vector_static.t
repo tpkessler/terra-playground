@@ -20,6 +20,9 @@ terra main()
     var a = vectorInt3.from(1, 2, 3)
     var b = vectorInt3.new()
     b:fill(2)
+    b:scal(-1)
+
+    a:axpy(-1, &b)
 
     for i = 0, a:size() do
         io.printf("%ld %ld\n", a:get(i), b:get(i))
