@@ -76,10 +76,26 @@ local function Interface(S)
 			local cast_method = terralib.types.functype(List{unpack(cast_parameters)},
 													    ref_method.type.returntype,
 													    false)
-			assert(T_method.type == cast_method,
-				   "Wrong type for method " .. ref_name .. ".\n" ..
-				   "Expected " .. tostring(cast_method) ..
-				   " but got " .. tostring(T_method.type))
+
+			if terralib.isoverloadedfunction(T_method) then
+				local has_matching_overload = false
+				for _, implemented in pairs(T_method.definitions) do
+					if implemented.type == cast_method then
+						has_matching_overload = true
+						break
+					end
+				end
+
+				if has_matching_overload == false then
+					error("Overloaded method " .. T_method.name ..
+						  " has no implementation for " .. tostring(cast_method))
+				end
+			else
+				assert(T_method.type == cast_method,
+					   "Wrong type for method " .. ref_name .. ".\n" ..
+					   "Expected " .. tostring(cast_method) ..
+					   " but got " .. tostring(T_method.type))
+			end
 		end
 	end
 
