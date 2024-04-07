@@ -12,7 +12,9 @@ terra main()
     print2x2(&a[0])
     io.printf("\n")
     
-    lapack.geqrf(lapack.ROW_MAJOR, 2, 2, &a[0], 2, &q[0])
+    var info = lapack.geqrf(lapack.ROW_MAJOR, 2, 2, &a[0], 2, &q[0])
+
+    io.printf("QR finished with info %d\n", info)
 
     print2x2(&a[0])
     io.printf("%g %g\n", q[0], q[1])
