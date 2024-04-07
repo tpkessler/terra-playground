@@ -1,19 +1,3 @@
-local C = terralib.includecstring([[
-        typedef struct{
-        double re;
-        double im;
-    } terra_complex_double;
-
-    typedef struct{
-        float re;
-        float im;
-    } terra_complex_float;
-
-    #include <openblas/cblas.h>
-    #include <openblas/lapacke.h>
-]], {"-Dlapack_complex_float=terra_complex_float",
-     "-Dlapack_complex_double=terra_complex_double"})
-
 local function tuple_type_to_list(tpl)
     --[=[
         Return list of types in given tuple type
