@@ -149,7 +149,7 @@ local function generate_terra_wrapper(T, c_func, TRef, r_func)
     local c_call
     -- If the number of arguments match, then the return value of the
     -- C call is passed via the return statement.
-    -- If the number of arguments of the C call is larger then the number of
+    -- If the number of arguments of the C call is larger than the number of
     -- arguments of the reference call, we assume that the return value is
     -- passed by reference, so we declare the return value, assign its address
     -- to a pointer of matching c type, call the C function and return
