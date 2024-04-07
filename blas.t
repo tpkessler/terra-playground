@@ -8,7 +8,7 @@ local complex = require("complex")
 local complexFloat = complex(float)[1]
 local complexDouble = complex(double)[1]
 
-local blas_parser = require("blas_parser")
+local wrapper = require("wrapper")
 
 local S = {}
 S.RowMajor = C.CblasRowMajor
@@ -24,64 +24,48 @@ S.Lower = C.CblasLower
 S.Unit = C.CblasUnit
 S.NonUnit = C.CblasNonUnit
 
-local default_types = {
-    ["s"] = float,
-    ["d"] = double,
-    ["c"] = complexFloat,
-    ["z"] = complexDouble}
+-- All tables follow this ordering
+local type = {
+    float, double, complexFloat, complexDouble
+}
 
-local dot_suffix = {
-    ["c"] = "c_sub",
-    ["z"] = "c_sub"}
-
-local ger_suffix = {
-    ["c"] = "c",
-    ["z"] = "c"}
-
-local nrm_types = {
-    ["s"] = float,
-    ["d"] = double,
-    ["sc"] = complexFloat,
-    ["dz"] = complexDouble}
+local function default_blas(C, name)
+    local prefix = terralib.newlist{"s", "d", "c", "z"}
+    return prefix:map(function(pre)
+                          local c_name = string.format("cblas_%s%s", pre, name)
+                          return C[c_name]
+                      end)
+end
 
 local blas = {
-    -- BLAS 1
-    {"%sswap", default_types, {},
-        {"integer", "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%sscal", default_types, {},
-        {"integer", "scalar", "scalar_array", "integer"}, {}},
-    {"%scopy", default_types, {},
-        {"integer", "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%saxpy", default_types, {},
-        {"integer", "scalar", "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%sdot%s", default_types, dot_suffix,
-        {"integer", "scalar_array", "integer", "scalar_array", "integer"}, {"scalar"}},
-    {"%snrm2", nrm_types, {},
-        {"integer", "scalar_array", "integer"}, {"real_scalar"}},
-    {"%sasum", nrm_types, {},
-        {"integer", "scalar_array", "integer"}, {"real_scalar"}},
-    {"i%samax", default_types, {},
-        {"integer", "scalar_array", "integer"}, {"integer"}},
-    -- BLAS 2
-    {"%sgemv", default_types, {},
-        {"integer", "integer", "integer", "integer", "scalar", "scalar_array",
-         "integer", "scalar_array", "integer", "scalar", "scalar_array", "integer"}, {}},
-    {"%sger%s", default_types, ger_suffix,
-        {"integer", "integer", "integer", "scalar", "scalar_array", "integer",
-         "scalar_array", "integer", "scalar_array", "integer"}, {}},
-    {"%strsv", default_types, {},
-        {"integer", "integer", "integer", "integer", "integer", "scalar_array", "integer",
-         "scalar_array", "integer"}, {}},
-    -- BLAS 3
-    {"%sgemm", default_types, {},
-        {"integer", "integer", "integer", "integer", "integer", "integer",
-         "scalar", "scalar_array", "integer", "scalar_array", "integer",
-         "scalar", "scalar_array", "integer"}, {}}
+    -- BLAS level 1
+    {"swap", default_blas(C, "swap")},
+    {"scal", default_blas(C, "scal")},
+    {"copy", default_blas(C, "copy")},
+    {"axpy", default_blas(C, "axpy")},
+    {"dot", {C.cblas_sdot, C.cblas_ddot, C.cblas_cdotc_sub, C.cblas_zdotc_sub}},
+    {"nrm2", {C.cblas_snrm2, C.cblas_dnrm2, C.cblas_scnrm2, C.cblas_dznrm2}},
+    {"asum", {C.cblas_sasum, C.cblas_dasum, C.cblas_scasum, C.cblas_dzasum}},
+    {"iamax", {C.cblas_isamax, C.cblas_idamax, C.cblas_icamax, C.cblas_izamax}},
+
+    -- BLAS level 2
+    {"gemv", default_blas(C, "gemv")},
+    {"trsv", default_blas(C, "trsv")},
+
+    -- BLAS level 3
+    {"gemm", default_blas(C, "gemm")}
 }
 
 for _, func in pairs(blas) do
-    local name = string.format(func[1], "", "")
-    S[name] = blas_parser.factory(unpack(func))
+    local name = func[1]
+    local c_func = func[2]
+    S[name] = terralib.overloadedfunction(name)
+    for i = 1, 4 do
+        -- Use float implementation as reference for function signature
+        S[name]:adddefinition(
+            wrapper.generate_terra_wrapper(type[i], c_func[i], type[1], c_func[1])
+        )
+    end
 end
 
 return S
