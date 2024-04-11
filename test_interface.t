@@ -1,89 +1,93 @@
 import "terratest/terratest"
 
-local interface = require("interface")
+local Interface, AbstractSelf = unpack(require("interface"))
 
-local struct A {
-    x: double
+A = Interface{
+	add_one = &AbstractSelf -> {},
+	inc = {&AbstractSelf, int} -> double,
+	len = int64,
+	acc = &double
 }
 
-terra A:add_one()
-    self.x = self.x + 1.0
-end
-
-terra A:inc(y: int)
-    self.x = self.x + y
-    return self.x
-end
-
-local function FullyImplemented(T, I, R)
-    I = I or int
-    R = R or double
-    local must_implement = {
-        ["add_one"] = {&T} -> {},
-        ["inc"] = {&T, I} -> R
-    }
-    interface.assert_implemented(T, must_implement)
-    
-    return true
-end
-
-local function MissingMethod(T)
-    local must_implement = {
-        ["mult"] = {&T, T} -> {T}
-    }
-    interface.assert_implemented(T, must_implement)
-
-    return true
-end
-
-local function TooLongArgument(T)
-    local must_implement = {
-        ["add_one"] = {&T, int} -> {}
-    }
-    interface.assert_implemented(T, must_implement)
-end
-
 testenv "Working interface" do
-    local ok, ret = pcall(FullyImplemented, A)
+	local struct Full {
+		len: int64,
+		acc: &double
+	}
+	terra Full:add_one() end
+	terra Full:inc(y: int) return 1.0 end
+    local ok, ret = pcall(function(T) A:isimplemented(T) end, Full)
+	print(ret)
     test ok == true
 end
 
 testenv "No methods" do
-    local ok, ret = pcall(FullyImplemented, int)
+	local struct NoMethods {
+		len: int64,
+		acc: &double
+	}
+    local ok, ret = pcall(function(T) A:isimplemented(T) end, NoMethods)
     test ok == false
-
-    local len = #ret
-    local i, j = string.find(ret, "Argument does not implement any methods")
+ 
+    local i, j = string.find(ret, "Missing method called")
     test i > 1
-    test j == len
+	test j > 1
+end
+
+testenv "No entries" do
+	local struct NoEntries {
+	}
+	terra NoEntries:add_one() end
+	terra NoEntries:inc(y: int) return 1.0 end
+    local ok, ret = pcall(function(T) A:isimplemented(T) end, NoEntries)
+    test ok == false
+ 
+    local i, j = string.find(ret, "Cannot find struct entry named")
+    test i > 1
+	test j > 1
 end
 
 testenv "Wrong return type" do
-    local ok, ret = pcall(FullyImplemented, A, int, float)
+	local struct WrongReturn {
+		len: int64,
+		acc: &double
+	}
+	terra WrongReturn:add_one() end
+	terra WrongReturn:inc(y: int) return 1 end
+    local ok, ret = pcall(function(T) A:isimplemented(T) end, WrongReturn)
     test ok == false
-
-    local len = #ret
-    local i, j = string.find(ret, "Actual return type float doesn't match the desired double")
+ 
+    local i, j = string.find(ret, "Wrong type for method")
     test i > 1
-    test j == len 
+	test j > 1
 end
 
-testenv "Missing method" do
-    local ok, ret = pcall(MissingMethod, A)
+testenv "Wrong entry type" do
+	local struct WrongType {
+		len: uint,
+		acc: &double
+	}
+	terra WrongType:add_one() end
+	terra WrongType:inc(y: int) return 1.0 end
+    local ok, ret = pcall(function(T) A:isimplemented(T) end, WrongType)
     test ok == false
-
-    local len = #ret
-    local i, j = string.find(ret, "Missing implementation of mult for type A")
+ 
+    local i, j = string.find(ret, "Wrong type for entry")
     test i > 1
-    test j == len
+	test j > 1
 end
 
 testenv "Too many parameters" do
-    local ok, ret = pcall(TooLongArgument, A)
+	local struct TooMany {
+		len: int64,
+		acc: &double
+	}
+	terra TooMany:add_one(x: double) end
+	terra TooMany:inc(y: int) return 1.0 end
+    local ok, ret = pcall(function(T) A:isimplemented(T) end, TooMany)
     test ok == false
 
-    local len = #ret
-    local i, j = string.find(ret, "Number of function parameters don't match: Desired signature has 1 parameters but 2 were given")
+    local i, j = string.find(ret, "Wrong type for method")
     test i > 1
-    test j == len
+	test j > 1
 end

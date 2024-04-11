@@ -3,10 +3,11 @@ local C = terralib.includec("stdio.h")
 
 terra main()
 	escape
-		for name, gen in pairs(random) do
+		for _, name in ipairs({"Default", "PCG", "MinimalPCG", "KISS", "TinyMT"}) do
+			local gen = random[name]
 			local rand = gen(double)
 			emit quote
-				var rng = [rand].new()
+				var rng = [rand].from()
 				var n: int64 = 2000001
 				var mean: double = 0
 				for i: int64 = 0, n do

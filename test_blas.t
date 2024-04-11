@@ -1,5 +1,4 @@
-local blas = require("axpy")
-local mem = require("mem")
+local blas = require("blas")
 local complex = require("complex")
 local C = terralib.includecstring[[
     #include <stdio.h>
