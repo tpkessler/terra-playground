@@ -1,105 +1,170 @@
-local List = require("terralist")
+-- Start with an empty cache
+local Interface = {cached = terralib.newlist()}
 
-local function has_key(tab, key)
-	for k, _ in pairs(tab) do
-		if k == key then
-			return true
-		end
+--[[
+	Construct an interface with given methods.
+
+	Given a list of methods, that is a table of function pointers,
+	construct a wrapper struct to dynamically (at compile time) call the
+	implementation on the concrete type. The self object as first object
+	must not be specified in the function pointer but is added automatically.
+
+	Args:
+		methods: Table of function pointers that define the interface
+
+	Returns:
+		Interface to be used as an abstract type in terra function signatures.
+
+	Example:
+		Interface{
+				size = {} -> int64,
+				get = {int64} -> double,
+				set = {int64, double} -> {}
+		}
+
+		is an abstract interface for a stack with given size on which we can
+		define setter an getter methods for element access.
+--]]
+function Interface:new(methods)
+	methods = methods or {}
+	local interface = {methods = terralib.newlist()}
+	setmetatable(interface, {__index = self})
+	-- A vtable contains function pointers to the implementation of methods
+	-- defined on a concrete type that implements the given interface.
+	-- With terra we can dynamically build the struct at compile time.
+	-- These function pointers are stored as opaque pointers and will be cast
+	-- to the concrete implementation only when the method is called.
+	local vtable = terralib.types.newstruct("vtable")
+	-- Keep information on the underlying data as an opaque pointer
+	-- together with a lookup table for methods.
+	-- The actual cast to the underlying data is done in methods defined
+	-- on this struct.
+	local struct wrapper{
+			data: &opaque
+			tab:  &vtable
+	}
+
+	-- First implement all fields of the type, then iterate a second
+	-- time to generate the wrapper code
+	for name, method in pairs(methods) do
+		assert(method:ispointer() and method.type:isfunction(),
+				 "Interface takes table of function pointers but got " ..
+				 string.format("%s for key %s", tostring(method), name))
+		-- Add entries of the struct to a separate table so we can initialize
+		-- the struct from a list with the same ordering, see __cast.
+		interface.methods:insert({name = name, type = method.type})
+		vtable.entries:insert({field = name, type = &opaque})
 	end
-	return false
-end
 
-local function get_entry(tabt, key)
-	for _, v in pairs(tabt) do
-		if key == v.field then
-			return v.field, v.type
+	-- Second iteration for method wrappers
+	for _, method in pairs(interface.methods) do
+		-- Write a dynamic wrapper around the method call.
+		-- A method call on the wrapper struct mirrors the method call on the
+		-- concrete type.
+		local param = terralib.newlist{&opaque} -- First argument is always self
+		local sym = terralib.newlist()
+		-- Loop over arguments of the interface interface and prepare lists
+		-- for the meta programmed method call.
+		for _, typ in ipairs(method.type.parameters) do
+			param:insert(typ)
+			sym:insert(symbol(typ))
 		end
+		-- This function implements the method call of the concrete type
+		-- on the dummy wrapper type. Here, the self object is replaced
+		-- with the wrapper object such that we can access both the vtable
+		-- with the function pointers to the concrete implementation
+		-- and the concrete underlying data representation of the type.
+		-- Both are passed as opaque pointers and need to be cast first.
+		local signature = param -> method.type.returntype
+		local terra impl(self: &wrapper, [sym])
+			var func = [signature](self.tab.[method.name])
+			return func(self.data, [sym])
+		end
+
+		wrapper.methods[method.name] = impl
 	end
-	return nil
-end
 
-local struct AbstractSelf
-local function Interface(S)
-	local ref_entries = {}
-	local ref_methods = {}
-	for k, v in pairs(S) do
-		assert(terralib.types.istype(v),
-			   "Value of " .. k .. " must be a terra type")
-		if v:ispointertofunction() then
-			assert(v.type.parameters[1] == &AbstractSelf,
-				   "Interface methods must use the abstract self type ".. 
-				   "as their argument.")
-			ref_methods[k] = v
-		else
-			ref_entries[k] = v
-		end
-	end
-
-	local I = {}
-
-	function I:isimplemented(T)
-		assert(T:isstruct(),
-			   "Given type for interface is not a struct")
-		local T_entries = T:getentries()
-		for ref_name, ref_type in pairs(ref_entries) do
-			local T_name, T_type = get_entry(T_entries, ref_name)
-			assert(T_name == ref_name, "Cannot find struct entry named " .. ref_name)
-			assert(T_type == ref_type, "Wrong type for entry " .. ref_name .. ".\n" ..
-									   "Expected " .. tostring(ref_type) ..
-									   " but got " .. tostring(T_type))
-		end
-
-		local T_methods = T.methods
-		for ref_name, ref_method in pairs(ref_methods) do
-			assert(has_key(T_methods, ref_name),
-				   "Missing method called " .. ref_name)
-			local T_method = T_methods[ref_name]
-			-- Cast abstract interface method to specific type self.
-			-- This is always a pointer to T.
-			local cast_parameters = {}
-			local ref_parameters = ref_method.type.parameters
-			for i = 1, #ref_parameters do
-				local param = ref_parameters[i]
-				if param == &AbstractSelf then
-					cast_parameters[i] = &T
-				else
-					cast_parameters[i] = ref_parameters[i]
-				end
+	-- Cast from an abstract interface to a concrete type
+	function wrapper.metamethods.__cast(from, to, exp)
+		-- TODO Implement caching
+		if to:isstruct() and from:ispointertostruct() then
+			assert(interface:isimplemented(from.type))
+			assert(to == wrapper)
+			local impl = terralib.newlist()
+			-- interface.methods is ordered like vtable
+			for _, method in ipairs(interface.methods) do
+				impl:insert(from.type.methods[method.name])
 			end
-			-- From the updated parameter list, build the corresponding
-			-- function signature to check against the provided implementation.
-			--
-			-- Convert the general lua table to a terralist to force all elements
-			-- of the parameter list to be of type "Type", see
-			-- https://github.com/terralang/terra/blob/4d32a10ffe632694aa973c1457f1d3fb9372c737/src/terralib.lua#L1148
-			-- TODO support vararg, see last argument
-			local cast_method = terralib.types.functype(List{unpack(cast_parameters)},
-													    ref_method.type.returntype,
-													    false)
-
-			if terralib.isoverloadedfunction(T_method) then
-				local has_matching_overload = false
-				for _, implemented in pairs(T_method.definitions) do
-					if implemented.type == cast_method then
-						has_matching_overload = true
-						break
-					end
-				end
-
-				if has_matching_overload == false then
-					error("Overloaded method " .. T_method.name ..
-						  " has no implementation for " .. tostring(cast_method))
-				end
-			else
-				assert(T_method.type == cast_method,
-					   "Wrong type for method " .. ref_name .. ".\n" ..
-					   "Expected " .. tostring(cast_method) ..
-					   " but got " .. tostring(T_method.type))
-			end
+			-- The built-in function constant forces the expression to be an lvalue,
+			-- so we use its address in the construction of the wrapper.
+			local tab = constant(`vtable { [impl] })
+			return `wrapper { [&opaque](exp), &tab }
 		end
 	end
 
-	return I
+	interface.type = wrapper
+	return interface
 end
 
-return {Interface, AbstractSelf}
+-- Check if the interface is implemented on a given type
+function Interface:isimplemented(T)
+	assert(T:isstruct(), "Can't check interface implementation as " ..
+						 "type " .. tostring(T) .. " is not a struct")
+	for _, method in pairs(self.methods) do
+		local T_method = T.methods[method.name]
+		assert(T_method and T_method.type:isfunction(),
+			   "Method " .. method.name .. " is not implemented for type " .. tostring(T))
+		local ref_param = terralib.newlist{&T}
+		for _, p in ipairs(method.type.parameters) do
+			ref_param:insert(p)
+		end
+		local ref_method = ref_param -> method.type.returntype
+		assert(T_method.type == ref_method.type,
+			   "Expected signature " .. tostring(ref_method.type) ..
+			   " but found " .. tostring(T_method.type) ..
+			   " for method" .. method.name)
+	end
+
+	return true
+end
+
+local I = Interface:new{
+	size = {} -> int64,
+	get = {int64} -> double,
+	set = {int64, double} -> {}
+}
+
+local J = Interface:new{
+	size = {} -> int64,
+	get = {int64} -> double,
+	set = {int64, double} -> {}
+}
+
+local struct A {}
+terra A:size(): int64 return 1 end
+terra A:get(i: int64) return 1.3 end
+terra A:set(i: int64, a: double) end
+
+local struct B {}
+terra B:size(): int64 return 2 end
+terra B:get(i: int64) return -0.33 end
+terra B:set(i: int64, a: double) end
+
+terra foo(a: I.type)
+	return 2 * a:get(0)
+end
+
+local io = terralib.includec("stdio.h")
+terra main()
+	var a: A
+	var b: B
+
+	io.printf("for A it's %g\n", foo(&a))
+	io.printf("for B it's %g\n", foo(&b))
+end
+
+main()
+
+return {
+	Interface = Interface
+}
