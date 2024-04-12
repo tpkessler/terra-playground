@@ -1,6 +1,4 @@
--- Start with an empty cache
-local Interface = {cached = terralib.newlist()}
-
+local Interface = {}
 --[[
 	Construct an interface with given methods.
 
@@ -16,7 +14,7 @@ local Interface = {cached = terralib.newlist()}
 		Interface to be used as an abstract type in terra function signatures.
 
 	Example:
-		Interface{
+		Interface:new{
 				size = {} -> int64,
 				get = {int64} -> double,
 				set = {int64, double} -> {}
@@ -27,7 +25,7 @@ local Interface = {cached = terralib.newlist()}
 --]]
 function Interface:new(methods)
 	methods = methods or {}
-	local interface = {methods = terralib.newlist()}
+	local interface = {methods = terralib.newlist(), cached = terralib.newlist()}
 	setmetatable(interface, {__index = self})
 	-- A vtable contains function pointers to the implementation of methods
 	-- defined on a concrete type that implements the given interface.
@@ -55,6 +53,7 @@ function Interface:new(methods)
 		interface.methods:insert({name = name, type = method.type})
 		vtable.entries:insert({field = name, type = &opaque})
 	end
+	-- vtable type is now complete
 
 	-- Second iteration for method wrappers
 	for _, method in pairs(interface.methods) do
@@ -86,19 +85,22 @@ function Interface:new(methods)
 
 	-- Cast from an abstract interface to a concrete type
 	function wrapper.metamethods.__cast(from, to, exp)
-		-- TODO Implement caching
 		if to:isstruct() and from:ispointertostruct() then
 			assert(interface:isimplemented(from.type))
 			assert(to == wrapper)
-			local impl = terralib.newlist()
-			-- interface.methods is ordered like vtable
-			for _, method in ipairs(interface.methods) do
-				impl:insert(from.type.methods[method.name])
+			if not interface.cached[from.type] then
+				local impl = terralib.newlist()
+				-- interface.methods is ordered like vtable
+				for _, method in ipairs(interface.methods) do
+					impl:insert(from.type.methods[method.name])
+				end
+				-- The built-in function constant forces the expression to be
+				-- an lvalue, so we use its address in the construction
+				-- of the wrapper.
+				interface.cached[from.type] = constant(`vtable {[impl]})
 			end
-			-- The built-in function constant forces the expression to be an lvalue,
-			-- so we use its address in the construction of the wrapper.
-			local tab = constant(`vtable { [impl] })
-			return `wrapper { [&opaque](exp), &tab }
+			local tab = interface.cached[from.type]
+			return `wrapper {[&opaque](exp), &tab}
 		end
 	end
 
@@ -127,43 +129,6 @@ function Interface:isimplemented(T)
 
 	return true
 end
-
-local I = Interface:new{
-	size = {} -> int64,
-	get = {int64} -> double,
-	set = {int64, double} -> {}
-}
-
-local J = Interface:new{
-	size = {} -> int64,
-	get = {int64} -> double,
-	set = {int64, double} -> {}
-}
-
-local struct A {}
-terra A:size(): int64 return 1 end
-terra A:get(i: int64) return 1.3 end
-terra A:set(i: int64, a: double) end
-
-local struct B {}
-terra B:size(): int64 return 2 end
-terra B:get(i: int64) return -0.33 end
-terra B:set(i: int64, a: double) end
-
-terra foo(a: I.type)
-	return 2 * a:get(0)
-end
-
-local io = terralib.includec("stdio.h")
-terra main()
-	var a: A
-	var b: B
-
-	io.printf("for A it's %g\n", foo(&a))
-	io.printf("for B it's %g\n", foo(&b))
-end
-
-main()
 
 return {
 	Interface = Interface
