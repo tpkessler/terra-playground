@@ -51,7 +51,7 @@ local function get_signature_list(func)
     return input, output
 end
 
-local function cast_blas_signature(T, func, TRef)
+local function cast_signature(T, func, TRef)
     --[=[
         Replace given type and references in function signature with new type
 
@@ -83,30 +83,48 @@ local function cast_blas_signature(T, func, TRef)
     return arg, ret
 end
 
-local function generate_blas_wrapper(T, c_func, TRef, r_func)
+local function generate_wrapper(T, c_func, TRef, r_func)
     --[=[
-        Generate uniform wrappers for BLAS functions
+        Generate uniform wrappers for BLAS and LAPACK functions
 
         Args:
             T: type for which the wrapper is generated
             c_func: Underlying C function, wrapped as a terra function
             TRef: Reference type for function signature
             r_func: Terra function with model function signature
+                    If not given, c_func is used to extract the function signature
 
         Returns:
             Wrapper around c_func for type T with same interface as r_func
     --]=]
-    local terra_arg, terra_ret = cast_blas_signature(T, r_func, TRef)
+    r_func = r_func or c_func
+    local terra_arg, terra_ret = cast_signature(T, r_func, TRef)
     local terra_sym = terra_arg:map(symbol)
-    local sym_ret = terra_ret:map(symbol)
 
     local c_arg, c_ret = get_signature_list(c_func)
 
     local statement = terralib.newlist()
     local c_sym = terralib.newlist()
+    -- BLAS or LAPACK functions can only have the following input types:
+    -- Enums: These are passed to terra as uint32
+    -- Integers: These are passed to terra as int32
+    -- Scalars: For real data, these are mapped to float or double. Complex
+    --          data types are passed as opaque pointers in C for BLAS.
+    -- Arrays: For complex data types these are passed as opaque pointers in BLAS
+    -- Integer arrays: These are passed to terra as &int32
+    -- 
+    -- This means that we need a reference signature to decide if a opaque
+    -- pointer refers to a scalar or an array.
+    --
+    -- To summarize, only scalars and arrays depend on the actual type, i.e.
+    -- the prefix of BLAS/LAPACK routine. Thus, when looping over the arguments
+    -- of the function
     for i = 1, #terra_arg do
+        -- As discussed above, only the cases if the terra argument is a sclar
+        -- or a scalar array need special treatment.
         if terra_arg[i] == T then
             local scalar = symbol(c_arg[i])
+            -- complex data types are passed by reference in BLAS
             if c_arg[i]:ispointer() then
                 statement:insert(quote
                                      var [scalar] = [ c_arg[i] ](&[ terra_sym[i] ])
@@ -161,5 +179,5 @@ local function generate_blas_wrapper(T, c_func, TRef, r_func)
 end
 
 return {
-    generate_blas_wrapper = generate_blas_wrapper
+    generate_wrapper = generate_wrapper
 }

@@ -1,3 +1,4 @@
+-- The complex data type is not understood by terra. Hence we provide our own type.
 local C = terralib.includecstring([[
     typedef struct{
         double re;
@@ -17,8 +18,8 @@ terralib.linklibrary("libcblas.so")
 
 local complex = require("complex")
 
-local complexFloat = complex(float)[1]
-local complexDouble = complex(double)[1]
+local complexFloat = complex.complex(float)
+local complexDouble = complex.complex(double)
 
 local wrapper = require("wrapper")
 
@@ -30,17 +31,96 @@ local type = {
     float, double, complexFloat, complexDouble
 }
 
-local function default_lapack(C, name)
+local lapack_type = {
+    float, double, C.terra_complex_float, C.terra_complex_double
+}
+
+local function lapack_name(pre, name)
+    return string.format("LAPACKE_%s%s", pre, name)
+end
+
+-- Return a list of terra functions that comprises the C calls for LAPACK
+-- calls of all four supported types.
+local function default_lapack(C, name, cname)
     local prefix = terralib.newlist{"s", "d", "c", "z"}
     return prefix:map(function(pre)
-                          local c_name = string.format("LAPACKE_%s%s", pre, name)
-                          return C[c_name]
+                          local c_name = lapack_name(pre, name)
+                          -- C namespaces in terra have an overloaded get.
+                          -- Use rawget to check if a function (that is key)
+                          -- exists.
+                          local func = rawget(C, c_name)
+                          if func then
+                              return C[c_name]
+                          else
+                              local c_name = lapack_name(pre, cname)
+                              return C[c_name]
+                          end
                       end)
 end
 
 
 local lapack = {
-    {"geqrf", default_lapack(C, "geqrf")}
+    --
+    -- LU
+    --
+    -- decomposition
+    {"getrf", default_lapack(C, "getrf")},
+    -- solve
+    {"getrs", default_lapack(C, "getrs")},
+
+    --
+    -- Cholesky
+    --
+    -- decomposition
+    {"potrf", default_lapack(C, "potrf")},
+    -- solve
+    {"potrs", default_lapack(C, "potrs")},
+
+    --
+    -- Brunch-Kaufman (LDL^T)
+    --
+    -- decomposition
+    {"sytrf", default_lapack(C, "sytrf")},
+    -- solve
+    {"sytrs", default_lapack(C, "sytrs")},
+
+    --
+    -- Eigenproblem
+    --
+    -- Symmetric
+    {"sytrs", default_lapack(C, "syev", "heev")},
+    -- General
+    {"geev", default_lapack(C, "geev")},
+
+    --
+    -- Generalized Eigenproblem
+    --
+    -- symmetric 
+    {"sygv", default_lapack(C, "sygv", "hegv")},
+    -- general
+    {"ggev", default_lapack(C, "ggev")},
+
+    --
+    -- QR
+    --
+    -- decomposition
+    {"geqrf", default_lapack(C, "geqrf")},
+    -- orthogonal matrix
+    {"ormqr", default_lapack(C, "ormqr", "unmqr")},
+    -- triangular solve
+    {"trtrs", default_lapack(C, "trtrs")},
+
+    --
+    -- SVD
+    --
+    -- decomposition
+    {"gesvd", default_lapack(C, "gesvd")},
+
+    --
+    -- Generalized SVD
+    --
+    -- decomposition
+    {"ggsvd", default_lapack(C, "ggsvd")},
 }
 
 
@@ -50,7 +130,7 @@ for _, func in pairs(lapack) do
     S[name] = terralib.overloadedfunction(name)
     for i = 1, 4 do
         S[name]:adddefinition(
-            wrapper.generate_terra_wrapper(type[i], c_func[i], type[1], c_func[1])
+            wrapper.generate_wrapper(type[i], c_func[i], lapack_type[i])
         )
     end
 end

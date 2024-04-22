@@ -63,7 +63,7 @@ for _, func in pairs(blas) do
     for i = 1, 4 do
         -- Use float implementation as reference for function signature
         S[name]:adddefinition(
-            wrapper.generate_blas_wrapper(type[i], c_func[i], type[1], c_func[1])
+            wrapper.generate_wrapper(type[i], c_func[i], type[1], c_func[1])
         )
     end
 end
