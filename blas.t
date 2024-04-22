@@ -5,8 +5,8 @@ terralib.linklibrary("libcblas.so")
 
 local complex = require("complex")
 
-local complexFloat = complex(float)[1]
-local complexDouble = complex(double)[1]
+local complexFloat = complex.complex(float)
+local complexDouble = complex.complex(double)
 
 local wrapper = require("wrapper")
 
@@ -63,7 +63,7 @@ for _, func in pairs(blas) do
     for i = 1, 4 do
         -- Use float implementation as reference for function signature
         S[name]:adddefinition(
-            wrapper.generate_terra_wrapper(type[i], c_func[i], type[1], c_func[1])
+            wrapper.generate_blas_wrapper(type[i], c_func[i], type[1], c_func[1])
         )
     end
 end

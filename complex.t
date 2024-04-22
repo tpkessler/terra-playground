@@ -36,7 +36,7 @@ local function complex(T)
         return complex {-self.re, -self.im}
     end
 
-    terra complex:normsq(): T
+    terra complex:normsq()
         return self.re * self.re + self.im * self.im
     end
 
@@ -52,7 +52,7 @@ local function complex(T)
         return complex {self.re, -self.im}
     end
 
-    if T == double or T == float then
+    if T:isfloat() then
         terra complex:norm(): T
             return sqrt(self:normsq())
         end
@@ -75,10 +75,38 @@ local function complex(T)
         return self:real() == other:real() and self:imag() == other:imag()
     end
 
-    local I = `complex {0, 1}
-    return {complex, I}
+    local terra from(x: T, y: T)
+        return complex {x , y}
+    end
+    
+    local I = `from(0, 1)
+
+    local staticmethods = {
+        from = from,
+        I = I,
+        unit = I
+    }
+
+    complex.metamethods.__getmethod = function(Self, methodname)
+        local method = complex.methods[methodname]
+        if method ~= nil then
+            return method
+        end
+
+        local method = staticmethods[methodname]
+        if method ~= nil then
+            return method
+        end
+
+        error("Method " .. methodname .. " not implemented for " ..
+              tostring(Self))
+    end
+    
+    return complex
 end
 
 local complex = terralib.memoize(complex)
 
-return complex
+return {
+    complex = complex
+}

@@ -51,7 +51,7 @@ local function get_signature_list(func)
     return input, output
 end
 
-local function cast_signature(T, func, TRef)
+local function cast_blas_signature(T, func, TRef)
     --[=[
         Replace given type and references in function signature with new type
 
@@ -83,9 +83,9 @@ local function cast_signature(T, func, TRef)
     return arg, ret
 end
 
-local function generate_terra_wrapper(T, c_func, TRef, r_func)
+local function generate_blas_wrapper(T, c_func, TRef, r_func)
     --[=[
-        Generate uniform wrappers for BLAS and LAPACK like functions
+        Generate uniform wrappers for BLAS functions
 
         Args:
             T: type for which the wrapper is generated
@@ -96,7 +96,7 @@ local function generate_terra_wrapper(T, c_func, TRef, r_func)
         Returns:
             Wrapper around c_func for type T with same interface as r_func
     --]=]
-    local terra_arg, terra_ret = cast_signature(T, r_func, TRef)
+    local terra_arg, terra_ret = cast_blas_signature(T, r_func, TRef)
     local terra_sym = terra_arg:map(symbol)
     local sym_ret = terra_ret:map(symbol)
 
@@ -128,7 +128,6 @@ local function generate_terra_wrapper(T, c_func, TRef, r_func)
         end
     end
 
-    -- TODO Return values
     local return_statement = terralib.newlist()
     local c_call
     -- If the number of arguments match, then the return value of the
@@ -162,5 +161,5 @@ local function generate_terra_wrapper(T, c_func, TRef, r_func)
 end
 
 return {
-    generate_terra_wrapper = generate_terra_wrapper
+    generate_blas_wrapper = generate_blas_wrapper
 }

@@ -4,8 +4,8 @@ local C = terralib.includecstring[[
     #include <stdio.h>
     #include <math.h>
 ]]
-local complexFloat, If = unpack(complex(float))
-local complexDouble, Id = unpack(complex(double))
+local complexFloat = complex.complex(float)
+local complexDouble = complex.complex(double)
 
 local types = {
 	["s"] = float,
@@ -16,8 +16,8 @@ local types = {
 local unit = {
 	["s"] = `float(0),
 	["d"] = `double(0),
-	["c"] = If,
-	["z"] = Id}
+	["c"] = `complexFloat.I,
+	["z"] = `complexDouble.I}
 
 import "terratest/terratest"
 
