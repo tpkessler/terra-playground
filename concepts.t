@@ -61,37 +61,27 @@ local function concept(args)
     local fns = {}  --table with methods
 
     --construct main type representing a convept
-    local self = {}
-    self.default = function (T) 
-        return T.name==name
-    end
-    self.name = name
-    self.type = "concept"
+    local self = terralib.types.newstruct(name)
+    rawset(self, "type", "concept")
+    rawset(self, "default", function(...) return false end)
 
     --metatable for self
-    local mt = {}
+    local mt = getmetatable(self)
 
     --overload the call operator to make the table act
     --as a functor
     function mt:__call(...)
         local signature = {}
-        --extract type-property of each input
-        for i,arg in ipairs {...} do
-            signature[i] = arg.name
+        for i,arg in ipairs{...} do
+            signature[1] = arg.name    
         end
-        --concatenate type-properties
         local s = table.concat(signature, "_")
-        --call the correct method
         return (fns[s] or self.default)(...)
     end
-    --prohibit table access
-    function mt:__index(key)
-        print(key)
-        print("No table access allowed?.", 2)
-    end
+    
     --custom set method for adding methods
-    function mt:__newindex(key, value)
-        fns[key] = value
+    function mt:__newindex(key, val)
+        fns[key] = val
     end
 
     --overloading the == operator
@@ -103,14 +93,14 @@ local function concept(args)
     -- turned of by default. LuaJIT needs to be built using 
     -- <DLUAJIT_ENABLE_LUA52COMPAT>, see https://luajit.org/extensions.html
     -- instead we introduce the following two methods
-    function self:subtypeof(other)
+    function self.subtypeof(other)
         return other(self) and not self(other)
     end
-    function self:supertypeof(other)
+    function self.supertypeof(other)
         return self(other) and not other(self)
     end
     --return table
-    return setmetatable(self, mt)
+    return self
 end
 
 concepts.concept = concept
