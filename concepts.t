@@ -47,23 +47,25 @@ A 'concept' defines an equivalence class, that is, a set with an equivalence rel
     assert(is_convertible_to(double, float)==false)
 ``` 
 --]]
-local function concept(args)
+local function concept(arg)
     local name
-    if type(args)=="table" then
-        name = args.name
-    elseif type(args)=="string" then
-        name = args
+    local default
+    if terralib.types.istype(arg) then
+        name = arg.name
+        default = function(T) return T.name==name end
+    elseif type(arg)=="string" then
+        name = arg
+        default = function(T) return false end
     else
         error("Specify name as a table entry or as an input string.", 2)
     end
     
-    --from each input in mt:__call( ... )
-    local fns = {}  --table with methods
-
     --construct main type representing a convept
     local self = terralib.types.newstruct(name)
+    rawset(self, "default", default)
+    rawset(self, "name", name)
     rawset(self, "type", "concept")
-    rawset(self, "default", function(...) return false end)
+    self.definitions = {}
 
     --metatable for self
     local mt = getmetatable(self)
@@ -71,34 +73,40 @@ local function concept(args)
     --overload the call operator to make the table act
     --as a functor
     function mt:__call(...)
-        local signature = {}
-        for i,arg in ipairs{...} do
-            signature[1] = arg.name    
+        local args = {...}
+        if #args==1 and args[1]==self then
+            --if input is the same as concept, then return true
+            --directly
+            return true
         end
+        local signature = {}
+        --extract type-property of each input
+        for i,arg in ipairs(args) do
+            signature[i] = arg.name
+        end
+        --concatenate type-properties
         local s = table.concat(signature, "_")
-        return (fns[s] or self.default)(...)
-    end
-    
-    --custom set method for adding methods
-    function mt:__newindex(key, val)
-        fns[key] = val
+        --call the correct method
+        return (self.definitions[s] or self.default)(...)
     end
 
-    --overloading the == operator
-    function mt:__eq(other)
-        return other(self) and self(other)
+    --custom method for adding method definitions
+    function self:adddefinition(key, method)
+        assert(type(method)=="function")
+        self.definitions[key] = method
     end
     -- Overloading the < and > operators does not currently work in terra, because 
     -- terra is based on LuaJIT 2.1, for which extensions with __lt and __le are 
     -- turned of by default. LuaJIT needs to be built using 
     -- <DLUAJIT_ENABLE_LUA52COMPAT>, see https://luajit.org/extensions.html
     -- instead we introduce the following two methods
-    function self.subtypeof(other)
+    function self:subtypeof(other)
         return other(self) and not self(other)
     end
-    function self.supertypeof(other)
+    function self:supertypeof(other)
         return self(other) and not other(self)
     end
+
     --return table
     return self
 end
