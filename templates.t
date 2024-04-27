@@ -164,19 +164,16 @@ local Int64   = concept(int64)
 
 -- abstract floating point numbers
 local Float = concept("Float")
-Float.float = Float32
-Float.double = Float64
+Float:adddefinition("float", function(T) return T.name=="float" end)
+Float:adddefinition("double", function(T) return T.name=="double" end)
 
 --abstract integers
 local Integer = concept("Integer")
--- the definition below where we use concepts as 
--- functors not longer works when we implement 
--- concepts as types
-Integer.int = Int32
-Integer.int8 = Int8
-Integer.int16 = Int16
-Integer.int32 = Int32
-Integer.int64 = Int64
+Integer:adddefinition("int", function(T) return T.name=="int" end)
+Integer:adddefinition("int8", function(T) return T.name=="int8" end)
+Integer:adddefinition("int16", function(T) return T.name=="int16" end)
+Integer:adddefinition("int32", function(T) return T.name=="int32" end)
+Integer:adddefinition("int64", function(T) return T.name=="int64" end)
 
 --test foo template implementation
 local foo = template()
