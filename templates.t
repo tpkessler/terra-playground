@@ -169,6 +169,9 @@ Float.double = Float64
 
 --abstract integers
 local Integer = concept("Integer")
+-- the definition below where we use concepts as 
+-- functors not longer works when we implement 
+-- concepts as types
 Integer.int = Int32
 Integer.int8 = Int8
 Integer.int16 = Int16
