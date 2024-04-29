@@ -29,10 +29,18 @@ local type = {
     float, double, complexFloat, complexDouble
 }
 
-local function default_blas(C, name)
+local function blas_name(pre, name)
+    return string.format("cblas_%s%s", pre, name)
+end
+
+local function default_blas(C, name, alt_name)
+    alt_name = alt_name or name
     local prefix = terralib.newlist{"s", "d", "c", "z"}
     return prefix:map(function(pre)
-                          local c_name = string.format("cblas_%s%s", pre, name)
+                          local c_name = blas_name(pre, name)
+                          if not rawget(C, c_name) then
+                              c_name = blas_name(pre, alt_name)
+                          end
                           return C[c_name]
                       end)
 end
@@ -43,7 +51,7 @@ local blas = {
     {"scal", default_blas(C, "scal")},
     {"copy", default_blas(C, "copy")},
     {"axpy", default_blas(C, "axpy")},
-    {"dot", {C.cblas_sdot, C.cblas_ddot, C.cblas_cdotc_sub, C.cblas_zdotc_sub}},
+    {"dot",  default_blas(C, "dot", "dotc_sub")},
     {"nrm2", {C.cblas_snrm2, C.cblas_dnrm2, C.cblas_scnrm2, C.cblas_dznrm2}},
     {"asum", {C.cblas_sasum, C.cblas_dasum, C.cblas_scasum, C.cblas_dzasum}},
     {"iamax", {C.cblas_isamax, C.cblas_idamax, C.cblas_icamax, C.cblas_izamax}},

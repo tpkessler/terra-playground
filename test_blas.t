@@ -230,5 +230,103 @@ for prefix, T in pairs(types) do
             test num == ref
 
         end
+
+        testset "L1 norm" do
+            local n = 5
+            local incx = 2
+
+            terracode
+                var x: T[n * incx]
+                for i = 0, n do
+                    x[incx * i] = terralib.select(i % 2 == 0, T(i), T(-i))
+                end
+                
+                var num = blas.asum(n, x, incx)
+                var ref = n * (n - 1) / 2
+            end
+
+            test num == ref
+
+        end
+
+        testset "L infinity norm" do
+            local n = 5
+            local incx = 2
+
+            terracode
+                var x: T[n * incx]
+                for i = 0, n do
+                    x[incx * i] = terralib.select(i % 2 == 0, T(i), T(-i))
+                end
+                
+                var num = blas.iamax(n, x, incx)
+                var ref = n - 1
+            end
+
+            test num == ref
+
+        end
     end -- testenv BLAS level 1
+
+    testenv(T) "BLAS level 2" do
+        testset "matrix-vector multiplication" do
+            terracode
+                var a = arrayof(T, 1, 2, 3, 4)
+                var x = arrayof(T, 1, 1)
+                var y: T[2]
+                var yref = arrayof(T, 3, 7)
+
+                var alpha = T(1)
+                var beta = T(0)
+
+                blas.gemv(blas.RowMajor, blas.NoTrans, 2, 2, alpha, &a[0], 2,
+                          &x[0], 1, beta, &y[0], 1)
+            end
+
+            for i = 0, 1 do
+                test y[i] == yref[i]
+            end
+        end
+    end
+   
+    testenv(T) "BLAS level 3" do
+        testset "triangular solve" do
+            terracode
+                var a = arrayof(T, 1, 2, 0, 3)
+                var x = arrayof(T, 1, 2)
+                var y = arrayof(T, 0, 0)
+
+                var alpha = T(1)
+                var beta = T(0)
+
+                blas.gemv(blas.RowMajor, blas.NoTrans, 2, 2, alpha, &a[0], 2,
+                          &x[0], 1, beta, &y[0], 1)
+
+                blas.trsv(blas.RowMajor, blas.Upper, blas.NoTrans, blas.NonUnit,
+                          2, &a[0], 2, &y[0], 1)
+            end
+
+            for i = 0, 1 do
+                test y[i] == x[i]
+            end
+        end
+
+        testset "matrix-matrix multiplication" do
+            terracode
+                var a = arrayof(T, 1, 2, 3, 4)
+                var b = arrayof(T, 0, 0, 0, 0)
+                var bref = arrayof(T, 5, 11, 11, 25)
+
+                var alpha = T(1)
+                var beta = T(0)
+
+                blas.gemm(blas.RowMajor, blas.NoTrans, blas.Trans, 2, 2, 2, alpha,
+                          &a[0], 2, &a[0], 2, beta, &b[0], 2)
+            end
+
+            for i = 0, 3 do
+                test b[i] == bref[i]
+            end
+        end
+    end
 end -- for
