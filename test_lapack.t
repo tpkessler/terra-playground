@@ -1,36 +1,30 @@
 local lapack = require("lapack")
 local io = terralib.includec("stdio.h")
 local complex = require("complex")
+local random = require("random")
 
+local complexFloat = complex.complex(float)
 local complexDouble = complex.complex(double)
 
-local terra print2x2(a: &double)
-    io.printf("%g %g\n", a[0], a[1])
-    io.printf("%g %g\n", a[2], a[3])
-end
+local types = {
+    ["s"] = float,
+    ["d"] = double,
+    ["c"] = complexFloat,
+    ["z"] = complexDouble,
+}
 
-terra main()
-    var a = arrayof(double, 1, 2, 3, 4)
-    var q = arrayof(double, 1, 2)
-    print2x2(&a[0])
-    io.printf("\n")
-    
-    var info = lapack.geqrf(lapack.ROW_MAJOR, 2, 2, &a[0], 2, &q[0])
+local unit = {
+    ["s"] = `float(0),
+    ["d"] = `double(0),
+    ["c"] = `complexFloat.I,
+    ["z"] = `complexDouble.I,
+}
 
-    io.printf("QR finished with info %d\n", info)
+import "terratest/terratest"
 
-    print2x2(&a[0])
-    io.printf("%g %g\n", q[0], q[1])
+for prefix, T in pairs(types) do
+    local I = unit[prefix]
+    testenv(T) "LU decomposition" do
 
-    var ac = 1 + complexDouble.I
-    var qc = 0 * complexDouble.I
-
-    info = lapack.geqrf(lapack.ROW_MAJOR, 1, 1, &ac, 1, &qc)
-
-    io.printf("Complex QR finished with info %d\n", info)
-
-    io.printf("%g + I %g\n", ac:real(), ac:imag())
-    io.printf("%g + I %g\n", qc:real(), qc:imag())
-end
-
-main()
+    end
+end --for type
