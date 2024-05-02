@@ -115,4 +115,37 @@ for prefix, T in pairs(types) do
             end
         end
     end -- Cholesky
-end --for type
+
+    testenv(T) "LDL decomposition" do
+        local n = 2
+        terracode
+            var ld = n
+            var a = arrayof(T, 1, 2, 2, 3)
+            var x = arrayof(T, 1, 2)
+            var y = arrayof(T, 0, 0)
+            var alpha = T(1)
+            var beta = T(0)
+            blas.gemv(blas.RowMajor, blas.NoTrans, n, n, alpha, &a[0], ld,
+                      &x[0], 1, beta, &y[0], 1)
+            var perm: int32[n]
+            var info = lapack.sytrf(lapack.ROW_MAJOR, @'L', n, &a[0], ld, &perm[0])
+        end
+
+        testset "Factorization step" do
+            test info == 0
+        end
+
+        testset "Solver step" do
+            terracode
+                info = lapack.systrs(lapack.ROW_MAJOR, n, 1, &a[0], ld,
+                                     &perm[0], &y[0], 1)
+            end
+
+            test info == 0
+            for i = 0, n - 1 do
+                test isclose(x[i], y[i], rtol, atol)
+            end
+        end
+
+    end -- LDL
+end -- for type
