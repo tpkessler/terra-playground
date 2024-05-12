@@ -239,7 +239,6 @@ local terra adaptive_levin(s: int, k: double, n: int, a: double, b: double,
   var interval = allocBires(2048)
   defer lib.free(interval)
   interval[0] = {a, b, val0}
-  var foo, bar, foobar = unpacktuple(interval[0])
   var size = 1
   while size > 0 do
     var a0, b0, val0 = unpacktuple(interval[size - 1])
