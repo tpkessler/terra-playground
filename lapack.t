@@ -111,6 +111,16 @@ local lapack = {
     {"trtrs", default_lapack(C, "trtrs")},
 
     --
+    -- QR with pivoting
+    --
+    --decomposition
+    {"geqp3", default_lapack(C, "geqp3")},
+    -- orthogonal matrix
+    -- ormqr, see above
+    -- triangular solve
+    -- trsm, see blas
+
+    --
     -- SVD
     --
     -- decomposition

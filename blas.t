@@ -21,6 +21,9 @@ S.ConjTrans = C.CblasConjTrans
 S.Upper = C.CblasUpper
 S.Lower = C.CblasLower
 
+S.Left = C.CblasLeft
+S.Right = C.CblasRight
+
 S.Unit = C.CblasUnit
 S.NonUnit = C.CblasNonUnit
 
@@ -59,9 +62,11 @@ local blas = {
     -- BLAS level 2
     {"gemv", default_blas(C, "gemv")},
     {"trsv", default_blas(C, "trsv")},
+    {"trmv", default_blas(C, "trmv")},
 
     -- BLAS level 3
-    {"gemm", default_blas(C, "gemm")}
+    {"gemm", default_blas(C, "gemm")},
+    {"trsm", default_blas(C, "trsm")},
 }
 
 for _, func in pairs(blas) do

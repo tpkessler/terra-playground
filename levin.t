@@ -5,11 +5,14 @@ local io = terralib.includec("stdio.h")
 local blas = require("blas")
 local lapack = require("lapack")
 local time = require("timing")
+local err = require("assert")
 terralib.linklibrary("libopenblas.so")
 
 local function alloc(T)
   local terra impl(n: uint64)
-    return [&T](lib.malloc(sizeof(T) * n))
+    var ptr = [&T](lib.malloc(sizeof(T) * n))
+    err.assert(ptr ~= nil)
+    return ptr
   end
   return impl
 end
@@ -144,6 +147,35 @@ local terra svd_solve(n: int, s: &double, u: &complexDouble, ldu: int,
   blas.gemv(blas.RowMajor, blas.ConjTrans, rank, n, 1.0, vt, ldvt, aux, 1, 0.0, x, incx)
 end
 
+local terra qrp(n: int, r: &complexDouble, ldr: int, jpvt: &int, tau: &complexDouble)
+  var info = lapack.geqp3(lapack.ROW_MAJOR, n, n, r, ldr, jpvt, tau)
+  return info
+end
+
+local terra qrp_solve(n: int, r: &complexDouble, ldr: int, jpvt: &int,
+                      tau: &complexDouble, x: &complexDouble, incx: int)
+  var tol = 1e-15
+  var rank = 0
+  while rank < n and r[rank + ldr * rank]:norm() > tol * r[0]:norm() do
+    rank = rank + 1
+  end
+  var y = allocComplexDouble(n)
+  defer lib.free(y)
+  blas.copy(n, x, incx, y, 1)
+  var info = lapack.ormqr(lapack.ROW_MAJOR, @'L', @'C', n, 1, n, r, ldr, tau, y, 1)
+  blas.trsv(blas.RowMajor, blas.Upper, blas.NoTrans, blas.NonUnit, rank,
+            r, ldr, y, 1)
+  for i = rank, n do
+    y[i] = 0.0
+  end
+  for i = 0, n do
+    x[ jpvt[i] - 1] = y[i]
+  end
+  return info
+end
+
+local USE_SVD = false
+local allocInt = alloc(int)
 local terra levin(s: int, k: double, n: int, a: double, b: double,
                   L: double)
 
@@ -159,23 +191,19 @@ local terra levin(s: int, k: double, n: int, a: double, b: double,
   defer lib.free(x)
   cheb_nodes(n, a, b, x)
 
-  var at = allocComplexDouble(n * s * s)
-  defer lib.free(at)
-  for i = 0, n do
-    var aloc = at + i * s * s
-    A(x[i], L * k, aloc)
-  end
-
   var ld = n * s
   var sys = allocComplexDouble(ld * ld)
   defer lib.free(sys)
+  var aloc = allocComplexDouble(s * s)
+  defer lib.free(aloc)
   for i = 0, n do
+    A(x[i], L * k, aloc)
     for alpha = 0, s do
       var idx = alpha + s * i
       for j = 0, n do
         for beta = 0, s do
           var jdx = beta + s * j
-          var aux = at[i * s * s + beta * s + alpha] * val[i * n + j]
+          var aux = aloc[beta * s + alpha] * val[i * n + j]
           if alpha == beta then
             aux = aux + 2.0 / (b - a) * der[i * n + j] 
           end
@@ -191,13 +219,25 @@ local terra levin(s: int, k: double, n: int, a: double, b: double,
     f(L * x[i], rhs + s * i)    
   end
 
-  var sigma = allocDouble(ld)
-  defer lib.free(sigma)
-  var u = allocComplexDouble(ld * ld)
-  defer lib.free(u)
-  var vt = allocComplexDouble(ld * ld)
-  svd(ld, sys, ld, sigma, u, ld, vt, ld)
-  svd_solve(ld, sigma, u, ld, vt, ld, rhs, 1)
+  if USE_SVD then
+    var sigma = allocDouble(ld)
+    defer lib.free(sigma)
+    var u = allocComplexDouble(ld * ld)
+    defer lib.free(u)
+    var vt = allocComplexDouble(ld * ld)
+    svd(ld, sys, ld, sigma, u, ld, vt, ld)
+    svd_solve(ld, sigma, u, ld, vt, ld, rhs, 1)
+  else
+    var tau = allocComplexDouble(ld)
+    defer lib.free(tau)
+    var jpvt = allocInt(ld)
+    defer lib.free(jpvt)
+    for i = 0, ld do
+      jpvt[i] = 0
+    end
+    qrp(ld, sys, ld, jpvt, tau)
+    qrp_solve(ld, sys, ld, jpvt, tau, rhs, 1)
+  end
 
   var wb = allocComplexDouble(s)
   defer lib.free(wb)
@@ -261,7 +301,7 @@ local terra adaptive_levin(s: int, k: double, n: int, a: double, b: double,
   return val
 end
 
-terra main()
+local terra main()
   var tol = 1e-15
   var s = 2
   var a = tol
