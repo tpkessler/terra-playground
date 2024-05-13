@@ -4,6 +4,7 @@ local lib = terralib.includec("stdlib.h")
 local io = terralib.includec("stdio.h")
 local blas = require("blas")
 local lapack = require("lapack")
+local time = require("timing")
 terralib.linklibrary("libopenblas.so")
 
 local function alloc(T)
@@ -236,11 +237,12 @@ local terra adaptive_levin(s: int, k: double, n: int, a: double, b: double,
   var val = complexDouble(0.0)
   var val0 = levin(s, k, n, a, b, L)
   -- HACK size has to grow dynamically
-  var interval = allocBires(2048)
+  var buf = 2028
+  var interval = allocBires(buf)
   defer lib.free(interval)
   interval[0] = {a, b, val0}
   var size = 1
-  while size > 0 do
+  while size > 0 and size < buf - 2 do
     var a0, b0, val0 = unpacktuple(interval[size - 1])
     size = size - 1
     var c0 = (a0 + b0) / 2
@@ -268,9 +270,12 @@ terra main()
   var n = 12
   var k = 2.5
 
+  var sw = time.parallel_timer.new()
+  sw:start()
   var res = adaptive_levin(s, k, n, a, b, L, tol)
+  var t = sw:stop()
 
-  io.printf("%.15e %.15e\n", res:real(), res:imag())
+  io.printf("%.2e %.15e %.15e\n", t * 1e3, res:real(), res:imag())
 
   return 0
 end
