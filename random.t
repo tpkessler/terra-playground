@@ -30,7 +30,7 @@ else
 	error("OS Unknown")
 end
 
-local Interface, AbstractSelf = unpack(require("interface"))
+local interface = require("interface")
 
 local ldexp = terralib.overloadedfunction("ldexp", {C.ldexp, C.ldexpf})
 local sqrt = terralib.overloadedfunction("sqrt", {C.sqrt, C.sqrtf})
@@ -41,33 +41,33 @@ local log = terralib.overloadedfunction("log", {C.log, C.logf})
 -- Interface for pseudo random number generator.
 -- Given an interal state, subsequent calls to rand_int() generate
 -- a sequence of uncorrelated integers of type I.
-local PseudoRandomizer = function(I)
+local PseudoRandomizer = terralib.memoize(function(I)
 	assert(I:isintegral(), "Return value of PRNG must be an integral type")
-	return Interface{
-		rand_int = &AbstractSelf -> I
+	return interface.Interface:new{
+		rand_int = {} -> I
 	}
-end
+end)
 
 -- Interface for the sampling of random numbers according to probability distributions.
 -- Currently supported are:
 -- the uniform distribution on [0, 1];
 -- the normal distribution with given mean and standard deviation;
 -- the exponential distribution with given rate.
-local RandomDistributer = function(F)
+local RandomDistributer = terralib.memoize(function(F)
 	assert(F:isfloat(), "Return value must be float or double")
-	return Interface{
-		rand_uniform = &AbstractSelf -> F,
-		rand_normal = {&AbstractSelf, F, F} -> F,
-		rand_exp = {&AbstractSelf, F} -> F
+	return interface.Interface:new{
+		rand_uniform = {} -> F,
+		rand_normal = {F, F} -> F,
+		rand_exp = F -> F
 	}
-end
+end)
 
 -- Implementation of RandomDistributer on top of PseudoRandomizer
 -- G is an implementation of RandomDistributer;
 -- I is the integral return type of G;
 -- F is the return type for the RandomDistributer interface;
 -- range is the number of random bytes, typically 32 or 64.
-local PRNG = function(G, I, F, range)
+local PRNG = terralib.memoize(function(G, I, F, range)
   if F ~= double and F ~= float then
     error("Unsupported floating point type " .. tostring(F))
   end
@@ -99,10 +99,10 @@ local PRNG = function(G, I, F, range)
   RandomDistributer:isimplemented(G)
 
   return G
-end
+end)
 
 -- Read a truely random value of type T from /dev/urandom
-function read_urandom(T)
+read_urandom = terralib.memoize(function(T)
     local terra impl()
         var f = C.fopen("/dev/urandom", "r")
         if f == nil then
@@ -122,21 +122,20 @@ function read_urandom(T)
     end
 
     return impl
-end
+end)
 
 -- Wrapper around the random number generator of the C standard library
-local LibC = function(F)
+local LibC = terralib.memoize(function(F)
   local struct libc {}
   terra libc:rand_int(): int64
     return C.random()
   end
 
-  local self = {}
-  self.type = PRNG(libc, int64, F, 31)
+  libc = PRNG(libc, int64, F, 31)
+
 
   local random_seed = read_urandom(uint32)
-
-  self.from = macro(function(seed)
+  local from = macro(function(seed)
         seed = seed or random_seed()
 	  	return quote
 		    C.srandom(seed)
@@ -145,12 +144,19 @@ local LibC = function(F)
 		  end
 	end)
 
-  return self
-end
+  local static_methods = {
+	from = from
+  }
+  libc.metamethods.__getmethod = function(Self, method)
+	return libc.methods[method] or static_methods[method]
+  end
+
+  return libc
+end)
 
 -- The tiny Mersenner twister (64 bit), see
 -- http://www.math.sci.hiroshima-u.ac.jp/m-mat/MT/TINYMT/
-local TinyMT = function(F)
+local TinyMT = terralib.memoize(function(F)
     local struct tinymt {
         state: C.tinymt64_t
     }
@@ -159,11 +165,10 @@ local TinyMT = function(F)
         return C.tinymt64_generate_uint64_public(&self.state)
     end
 
-	local self = {}
-	self.type = PRNG(tinymt, uint64, F, 64)
-	local random_seed = read_urandom(uint64)
+	tinymt = PRNG(tinymt, uint64, F, 64)
 
-	self.from = macro(function(seed)
+	local random_seed = read_urandom(uint64)
+	local from = macro(function(seed)
 		seed = seed or random_seed()
 		return quote
 				var tiny: C.tinymt64_t
@@ -172,21 +177,28 @@ local TinyMT = function(F)
 				tiny.mat2 = 0x65980cb3
 				tiny.tmat = 0xeb38facf
 				C.tinymt64_init(&tiny, seed)
-				var rand = self.type {tiny}
+				var rand = tinymt {tiny}
 			in
 				rand
 		end
 
 	end)
 
-	return self
-end
+	local static_methods = {
+		from = from
+	}
+	tinymt.metamethods.__getmethod = function(Self, method)
+		return tinymt.methods[method] or static_methods[method]
+	end
+
+	return tinymt
+end)
 
 -- A simple random number generator,
 -- Keep It Simple Stupid, see
 -- https://digitalcommons.wayne.edu/jmasm/vol2/iss1/2/
 -- page 12
-local KISS = function(F)
+local KISS = terralib.memoize(function(F)
   local struct kiss {
 	  x: uint32
 	  y: uint32
@@ -206,21 +218,27 @@ local KISS = function(F)
   	return self.x + self.y + self.z
   end
 
-  local self = {}
-  self.type = PRNG(kiss, uint32, F, 32)
+  kiss = PRNG(kiss, uint32, F, 32)
+
   local random_seed = read_urandom(uint32)
-
-  self.from = macro(function(seed)
+  local from = macro(function(seed)
       seed = seed or random_seed()
-	  return `self.type {seed, 362436000, 521288629, 7654321}
-    end)
+	  return `kiss {seed, 362436000, 521288629, 7654321}
+  end)
 
-  return self
-end
+  local static_methods = {
+	from = from
+  }
+  kiss.metamethods.__getmethod = function(Self, method)
+	return kiss.methods[method] or static_methods[method]
+  end
+
+  return kiss
+end)
 
 -- A minimal, 32 bit implemenation of the PCG generator, see
 -- https://www.pcg-random.org/download.html
-local MinimalPCG = function(F)
+local MinimalPCG = terralib.memoize(function(F)
   local struct pcg {
       state: uint64
       inc: uint64
@@ -234,15 +252,13 @@ local MinimalPCG = function(F)
 	return (xorshifted >> rot) or (xorshifted << ((-rot) and 31))
   end
 
-  local self = {}
-  self.type = PRNG(pcg, uint32, F, 32)
+  pcg = PRNG(pcg, uint32, F, 32)
   local random_seed = read_urandom(uint32) 
-
-  self.from = macro(function(seed, stream)
+  local from = macro(function(seed, stream)
       seed = seed or random_seed()
       stream = stream or 1
       return quote
-	  	  var rand = self.type {0, stream}
+	  	  var rand = pcg {0, stream}
 		  rand.inc = (stream << 1u) or 1u
 		  rand:rand_int()
 		  rand.state = rand.state + seed
@@ -252,12 +268,19 @@ local MinimalPCG = function(F)
 	  end
     end)
 
-  return self
-end
+  local static_methods = {
+	from = from
+  }
+  pcg.metamethods.__getmethod = function(Self, method)
+	return pcg.methods[method] or static_methods[method]
+  end
+
+  return pcg
+end)
 
 -- Wrapper around the full implementation of the PCG generator (64 bit), see
 -- https://www.pcg-random.org/
-local PCG = function(F)
+local PCG = terralib.memoize(function(F)
 	local struct pcg{
 		state: C.pcg64_random_t
 	}
@@ -266,11 +289,12 @@ local PCG = function(F)
 		return C.pcg_setseq_128_xsl_rr_64_random_r(&self.state)
 	end
 
+	pcg = PRNG(pcg, uint64, F, 64)
+
 	local struct uint128 {
 		lo: uint64
 		hi: uint64
 	}
-
 	function uint128.metamethods.__cast(from, to, exp)
 		if to == uint128 then
 			return `uint128 {exp, 0}
@@ -278,31 +302,34 @@ local PCG = function(F)
 			error("Invalid integer type for uint128")
 		end
 	end
-
-	local self = {}
-	self.type = PRNG(pcg, uint64, F, 64)
 	local random_seed = read_urandom(uint128)
-
-	self.from = macro(function(seed, stream)
+	local from = macro(function(seed, stream)
 		seed = seed and quote var a: uint128 = [seed] in &a end or quote var a = random_seed() in &a end
 		stream = stream and quote var a: uint128 = [stream] in &a end or quote var a: uint128 = 1 in &a end
 		return quote
-				var rand: self.type
+				var rand: pcg
 				C.pcg_setseq_128_void_srandom_r(&rand.state, [seed], [stream])
 			in
 				rand
 			end
 	end)
 
-	return self
-end
+	local static_methods = {
+		from = from
+	}
+	pcg.metamethods.__getmethod = function(Self, method)
+		return pcg.methods[method] or static_methods[method]
+	end
 
-local S = {PseudoRandomizer = PseudoRandomizer,
-		   RandomDistributer = RandomDistributer,
-		   Default = LibC,
-		   PCG = PCG,
-		   MinimalPCG = MinimalPCG,
-		   KISS = KISS,
-		   TinyMT = TinyMT}
+	return pcg
+end)
 
-return S
+return {
+	PseudoRandomizer = PseudoRandomizer,
+	RandomDistributer = RandomDistributer,
+	Default = LibC,
+	PCG = PCG,
+	MinimalPCG = MinimalPCG,
+	KISS = KISS,
+	TinyMT = TinyMT,
+}
