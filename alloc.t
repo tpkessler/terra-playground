@@ -2,11 +2,11 @@ local C = terralib.includecstring[[
 	#include <stdio.h>
 	#include <stdlib.h>
 ]]
-local Interface, AbstractSelf = unpack(require("interface"))
+local interface = require("interface")
 
-local Allocater = Interface{
-	alloc = {&AbstractSelf, uint64} -> {&opaque},
-	free = {&AbstractSelf, &opaque} -> {}
+local Allocater = interface.Interface:new{
+	alloc = uint64 -> {&opaque},
+	free = &opaque -> {}
 }
 
 local struct stdlib{
@@ -34,4 +34,7 @@ end
 Allocater:isimplemented(stdlib)
 
 
-return {Default = stdlib, Allocater = Allocater}
+return {
+		Default = stdlib,
+		Allocater = Allocater,
+	   }

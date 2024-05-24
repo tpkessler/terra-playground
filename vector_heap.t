@@ -4,8 +4,8 @@ local complex = require("complex")
 local blas = require("blas")
 local base = require("vector_base")
 
-local complexFloat = complex(float)[1]
-local complexDouble = complex(double)[1]
+local complexFloat = complex.complex(float)
+local complexDouble = complex.complex(double)
 
 local function is_blas_type(T)
     local blas_type = {float, double, complexFloat, complexDouble}
@@ -214,15 +214,23 @@ local VectorHeap = function(T, A)
         return y
     end
 
-    return {type = vector,
-            new = new,
-            from = from,
-            from_buffer = from_buffer,
-            like = like,
-            zeros_like = zeros_like
-            }
+    local static_methods = {
+        new = new,
+        from = from,
+        frombuffer = from_buffer,
+        like = like,
+        zeroslike = zeros_like
+    }
+
+    vector.metamethods.__getmethod = function(Self, method)
+        return vector.methods[method] or static_methods[method]
+    end
+
+    return vector
 end
 
 VectorHeap = terralib.memoize(VectorHeap)
 
-return VectorHeap
+return {
+    VectorHeap = VectorHeap
+}

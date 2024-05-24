@@ -1,30 +1,24 @@
-local Interface, AbstractSelf = unpack(require("interface"))
+local interface = require("interface")
+local stack = require("stack")
 local err = require("assert")
 
-local function Stacker(T, I)
+local function Vectorizer(S, T, I)
     I = I or int64
-    return Interface{
-            size = &AbstractSelf -> I,
-            set = {&AbstractSelf, I, T} -> {},
-            get = {&AbstractSelf, I} -> T
-        }
-end
-
-local function Vectorizer(T, I)
-    I = I or int64
-    return Interface{
-        fill = {&AbstractSelf, T} -> {},
-        clear = &AbstractSelf -> {},
-        copy = {&AbstractSelf, &AbstractSelf} -> {},
-        swap = {&AbstractSelf, &AbstractSelf} -> {},
-        scal = {&AbstractSelf, T} -> {},
-        axpy = {&AbstractSelf, T, &AbstractSelf} -> {},
-        dot = {&AbstractSelf, &AbstractSelf} -> T
+    local Stacker = stack.Stacker(T, I)
+    Stacker:isimplemented(S)
+    return interface.Interface:new{
+        fill = T -> {},
+        clear = {} -> {},
+        copy = &S -> {},
+        swap = &S -> {},
+        scal = T -> {},
+        axpy = {T, &S} -> {},
+        dot = &S -> T
     }
 end
 
 local function VectorBase(V, T, I)
-    local Stacker = Stacker(T, I)
+    local Stacker = stack.Stacker(T, I)
     Stacker:isimplemented(V)
 
     terra V:fill(a: T)
@@ -100,14 +94,13 @@ local function VectorBase(V, T, I)
         return res
     end
 
-    local Vectorizer = Vectorizer(T, I)
+    local Vectorizer = Vectorizer(V, T, I)
     Vectorizer:isimplemented(V)
 
     return V
 end
 
 return {
-    Stacker = Stacker,
     Vectorizer = Vectorizer,
     VectorBase = VectorBase
 }

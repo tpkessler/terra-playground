@@ -50,7 +50,7 @@ local VectorStatic = function(T, N)
     end
 
     terra vector:asheap()
-        return VectorHeap.from_buffer(self:size(), self:data(), 1)
+        return VectorHeap.frombuffer(self:size(), self:data(), 1)
     end
 
     local from = macro(function(...)
@@ -70,13 +70,20 @@ local VectorStatic = function(T, N)
                end
     end)
 
-    return {
-        type = vector,
+    local static_methods = {
         new = new,
         from = from
     }
+
+    vector.metamethods.__getmethod = function(Self, method)
+        return vector.methods[method] or static_methods[method]
+    end
+
+    return vector
 end
 
 VectorStatic = terralib.memoize(VectorStatic)
 
-return VectorStatic
+return {
+    VectorStatic = VectorStatic
+}

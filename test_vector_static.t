@@ -1,8 +1,8 @@
 local vector = require("vector_static")
 local io = terralib.includec("stdio.h")
 
-local vectorDouble4 = vector(double, 4)
-local vectorInt3 = vector(int64, 3)
+local vectorDouble4 = vector.VectorStatic(double, 4)
+local vectorInt3 = vector.VectorStatic(int64, 3)
 
 terra main()
     var x = vectorDouble4.from(-1, 2, -3, 4) 

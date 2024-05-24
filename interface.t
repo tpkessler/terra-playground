@@ -23,7 +23,7 @@ local Interface = {}
 		is an abstract interface for a stack with given size on which we can
 		define setter an getter methods for element access.
 --]]
-function Interface:new(methods)
+Interface.new = terralib.memoize(function(self, methods)
 	methods = methods or {}
 	local interface = {methods = terralib.newlist(), cached = terralib.newlist()}
 	setmetatable(interface, {__index = self})
@@ -106,7 +106,7 @@ function Interface:new(methods)
 
 	interface.type = wrapper
 	return interface
-end
+end)
 
 -- Check if the interface is implemented on a given type
 function Interface:isimplemented(T)

@@ -1,7 +1,7 @@
 local vector = require("vector_heap")
 local io = terralib.includec("stdio.h")
 
-local VectorDouble = vector(double)
+local VectorDouble = vector.VectorHeap(double)
 
 terra main()
     var x = VectorDouble.from(1, 2, 3)
@@ -45,7 +45,7 @@ terra main()
         io.printf("%g\n", xx)
     end
 
-    var a = VectorDouble.zeros_like(x)
+    var a = VectorDouble.zeroslike(x)
     var b = VectorDouble.like(a)
     b:fill(1)
 
