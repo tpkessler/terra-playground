@@ -1,32 +1,20 @@
+local serde = require("serde")
+
 local Interface = {}
---[[
-	Construct an interface with given methods.
 
-	Given a list of methods, that is a table of function pointers,
-	construct a wrapper struct to dynamically (at compile time) call the
-	implementation on the concrete type. The self object as first object
-	must not be specified in the function pointer but is added automatically.
+local construct_wrapper = terralib.memoize(function(methods_str)
+	--[=[
+		Helper function to cache terra interface types.
 
-	Args:
-		methods: Table of function pointers that define the interface
-
-	Returns:
-		Interface to be used as an abstract type in terra function signatures.
-
-	Example:
-		Interface:new{
-				size = {} -> int64,
-				get = {int64} -> double,
-				set = {int64, double} -> {}
-		}
-
-		is an abstract interface for a stack with given size on which we can
-		define setter an getter methods for element access.
---]]
-Interface.new = terralib.memoize(function(self, methods)
-	methods = methods or {}
-	local interface = {methods = terralib.newlist(), cached = terralib.newlist()}
-	setmetatable(interface, {__index = self})
+		Terra types are lua tables and can thus not be memoized by terralib.
+		We hence convert the interface into a unique string representation
+		from which we can recover its terra representation that is then used
+		in the construction of the terra types.
+	--]=]
+	local ok, obj = serde.deserialize_table(methods_str)
+	assert(ok)
+	local methods_str = terralib.newlist(obj)
+	local methods = methods_str:map(function(f) serde.deserialize_pointertofunction(f) end)
 	-- A vtable contains function pointers to the implementation of methods
 	-- defined on a concrete type that implements the given interface.
 	-- With terra we can dynamically build the struct at compile time.
@@ -50,13 +38,12 @@ Interface.new = terralib.memoize(function(self, methods)
 				 string.format("%s for key %s", tostring(method), name))
 		-- Add entries of the struct to a separate table so we can initialize
 		-- the struct from a list with the same ordering, see __cast.
-		interface.methods:insert({name = name, type = method.type})
 		vtable.entries:insert({field = name, type = &opaque})
 	end
 	-- vtable type is now complete
 
 	-- Second iteration for method wrappers
-	for _, method in pairs(interface.methods) do
+	for _, method in pairs(methods) do
 		-- Write a dynamic wrapper around the method call.
 		-- A method call on the wrapper struct mirrors the method call on the
 		-- concrete type.
@@ -83,6 +70,44 @@ Interface.new = terralib.memoize(function(self, methods)
 		wrapper.methods[method.name] = impl
 	end
 
+	return wrapper
+end)
+
+Interface.new = function(self, methods)
+	--[[
+		Construct an interface with given methods.
+
+		Given a list of methods, that is a table of function pointers,
+		construct a wrapper struct to dynamically (at compile time) call the
+		implementation on the concrete type. The self object as first object
+		must not be specified in the function pointer but is added automatically.
+
+		Args:
+			methods: Table of function pointers that define the interface
+
+		Returns:
+			Interface to be used as an abstract type in terra function signatures.
+
+		Example:
+			Interface:new{
+					size = {} -> int64,
+					get = {int64} -> double,
+					set = {int64, double} -> {}
+			}
+
+			is an abstract interface for a stack with given size on which we can
+			define setter an getter methods for element access.
+	--]]
+	methods = methods or {}
+	local interface = {methods = terralib.newlist(), cached = terralib.newlist()}
+	setmetatable(interface, {__index = self})
+	local method_str = {} 
+	for name, method in pairs(methods) do
+		method_str[name] = serde.serialize_pointertofunction(method)
+		interface.methods:insert({name = name, type = method.type})
+	end
+	local wrapper = construct_wrapper(serde.serialize_table(method_str))
+
 	-- Cast from an abstract interface to a concrete type
 	function wrapper.metamethods.__cast(from, to, exp)
 		if to:isstruct() and from:ispointertostruct() then
@@ -106,7 +131,7 @@ Interface.new = terralib.memoize(function(self, methods)
 
 	interface.type = wrapper
 	return interface
-end)
+end
 
 -- Check if the interface is implemented on a given type
 function Interface:isimplemented(T)

@@ -7,6 +7,17 @@ A = interface.Interface:new{
 	inc = int -> double,
 }
 
+B = interface.Interface:new{
+	inc = int -> double,
+	add_one = {} -> {}
+}
+
+testenv "Caching" do
+	local ok, ret = pcall(function() return A.type == B.type end)
+	test ok == true
+	test ret == true
+end
+
 testenv "Working interface" do
 	local struct Full {
 	}
