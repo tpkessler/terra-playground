@@ -4,7 +4,7 @@ local VectorHeap = require("vector_heap")
 
 local VectorStatic = function(T, N)
     local SIMD = vector(T, N)
-    local VectorHeap = VectorHeap(T)
+    local VectorHeap = VectorHeap.VectorHeap(T)
 
     local struct vector{
         union{

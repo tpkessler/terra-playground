@@ -2,18 +2,17 @@ local interface = require("interface")
 local stack = require("stack")
 local err = require("assert")
 
-local function Vectorizer(S, T, I)
+local function Vectorizer(T, I)
     I = I or int64
-    local Stacker = stack.Stacker(T, I)
-    Stacker:isimplemented(S)
+    local S = stack.Stacker(T, I)
     return interface.Interface:new{
         fill = T -> {},
         clear = {} -> {},
-        copy = &S -> {},
-        swap = &S -> {},
+        copy = S.type -> {},
+        swap = S.type -> {},
         scal = T -> {},
-        axpy = {T, &S} -> {},
-        dot = &S -> T
+        axpy = {T, S.type} -> {},
+        dot = S.type -> T
     }
 end
 
@@ -94,7 +93,7 @@ local function VectorBase(V, T, I)
         return res
     end
 
-    local Vectorizer = Vectorizer(V, T, I)
+    local Vectorizer = Vectorizer(T, I)
     Vectorizer:isimplemented(V)
 
     return V
