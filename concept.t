@@ -1,4 +1,3 @@
-local concepts = {}
 --[[
 A 'concept' defines an equivalence class, that is, a set with an equivalence relation by which objects in the set may be compared. Each concept is a table that behaves like a lua function object: a boolean predicate. A function call yields a boolean value that signals that the input belongs to the equivalence class or not.
 ```docexample
@@ -47,13 +46,13 @@ A 'concept' defines an equivalence class, that is, a set with an equivalence rel
     assert(is_convertible_to(double, float)==false)
 ``` 
 --]]
-local function concept(arg)
+local concept = terralib.memoize(function(arg)
     local name
     local default
     if terralib.types.istype(arg) then
-        name = arg.name
+        name = tostring(arg)
         default = function(T) return T.name==name end
-    elseif type(arg)=="string" then
+    elseif type(arg) == "string" then
         name = arg
         default = function(T) return false end
     else
@@ -82,13 +81,17 @@ local function concept(arg)
         local signature = {}
         --extract type-property of each input
         for i,arg in ipairs(args) do
-            signature[i] = arg.name
+            signature[i] = tostring(arg)
         end
         --concatenate type-properties
         local s = table.concat(signature, "_")
         --call the correct method
         return (self.definitions[s] or self.default)(...)
     end
+
+	-- function self.metamethods.__tostring()
+	-- 	return name
+	-- end
 
     --custom method for adding method definitions
     function self:adddefinition(key, method)
@@ -109,8 +112,14 @@ local function concept(arg)
 
     --return table
     return self
+end)
+
+local function isconcept(C)
+	assert(terralib.types.istype(C))
+	return C:isstruct() and C.type == "concept"
 end
 
-concepts.concept = concept
-
-return concepts
+return {
+	concept = concept,
+	isconcept = isconcept
+}

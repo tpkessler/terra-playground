@@ -1,18 +1,30 @@
 local alloc = require("alloc")
 local err = require("assert")
 local interface = require("interface")
+local concept = require("concept")
 
 
-local function Stacker(T, I)
+local Stacker = terralib.memoize(function(T, I)
     I = I or int64
     return interface.Interface:new{
             size = {} -> I,
             set = {I, T} -> {},
             get = I -> T
         }
-end
+end)
 
-local function DynamicStack(T, I, A)
+local Stack = terralib.memoize(function(T, I)
+	local Si = Stacker(T, I)
+	local Sc = concept.concept("Stack")
+	Sc.default = function(U) 
+		local ok, ret = pcall(function(Uprime) Si:isimplemented(Uprime) end, U)
+		return ok
+	end
+
+	return Sc
+end)
+
+local DynamicStack = terralib.memoize(function(T, I, A)
     A = A or alloc.Default
     alloc.Allocater:isimplemented(A)
 
@@ -24,7 +36,7 @@ local function DynamicStack(T, I, A)
         mem: A
     }
 
-    local DEFAULT_BUF_SIZE = 16
+    local DEFAULT_BUF_SIZE = 1024 / sizeof(T)
 
     local terra new(size: int64)
         var mem: A
@@ -98,13 +110,13 @@ local function DynamicStack(T, I, A)
         return stack {new_data, new_is_owner, new_size, new_buf, new_mem}
     end
 
-    local terra from_buffer(size: int64, data: &T)
+    local terra frombuffer(size: int64, data: &T)
         return stack {data, false, size, 0, @[&A](nil)}
     end
 
     local static_methods = {
         new = new,
-        frombuffer = from_buffer,
+        frombuffer = frombuffer,
     }
 
     stack.metamethods.__getmethod = function(Self, method)
@@ -112,10 +124,11 @@ local function DynamicStack(T, I, A)
     end
 
     return stack
-end
+end)
 
 return {
     Stacker = Stacker,
+	Stack = Stack,
     DynamicStack = DynamicStack
 }
 

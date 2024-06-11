@@ -1,4 +1,4 @@
-local concepts = require("concepts")
+local concepts = require("concept")
 
 --lua function to create a concept. A concept defines a compile-time 
 --predicate that defines an equivalence relation on a set.
@@ -6,7 +6,7 @@ local concept = concepts.concept
 
 --booleans
 local Boolean = concept("Boolean")
-Boolean.default = function(T) return T==true or T==false end
+Boolean.default = function(T) return T == bool end
 
 --primitive number concepts
 local Float32 = concept(float)
@@ -18,16 +18,15 @@ local Int64   = concept(int64)
 
 -- abstract floating point numbers
 local Float = concept("Float")
-Float:adddefinition("float", function(T) return T.name=="float" end)
-Float:adddefinition("double", function(T) return T.name=="double" end)
+for _, T in pairs({float, double}) do
+	Float:adddefinition(tostring(T), function(Tprime) return Tprime == T end)
+end
 
 --abstract integers
 local Integer = concept("Integer")
-Integer:adddefinition("int", function(T) return T.name=="int" end)
-Integer:adddefinition("int8", function(T) return T.name=="int8" end)
-Integer:adddefinition("int16", function(T) return T.name=="int16" end)
-Integer:adddefinition("int32", function(T) return T.name=="int32" end)
-Integer:adddefinition("int64", function(T) return T.name=="int64" end)
+for _, T in pairs({int8, int16, int32, int64}) do
+	Integer:adddefinition(tostring(T), function(Tprime) return Tprime == T end)
+end
 
 local Real = concept("Real")
 Real.default = function(T) return Integer(T) or Float(T) end
@@ -51,7 +50,7 @@ testenv "concepts" do
         test [Float(Float)]
         test [Float(int32)==false]
         test [Float(double, double)==false]
-        test [Float("string")==false]
+        test [Float(rawstring)==false]
     end
 
     testset "Integers" do
@@ -67,7 +66,7 @@ testenv "concepts" do
         test [Integer(int64)]
         test [Integer(float)==false]
         test [Integer(int, int)==false]
-        test [Integer("string")==false]
+        test [Integer(rawstring)==false]
     end
 
     testset "Real numbers" do
@@ -81,7 +80,7 @@ testenv "concepts" do
         test [Number(Real)]
         test [Number(int32)]
         test [Number(float)]
-        test [Number("string")==false]      
+        test [Number(rawstring)==false]      
     end
 
     testset "Function declarations" do
