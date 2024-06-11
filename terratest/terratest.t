@@ -34,7 +34,7 @@ local function collectTerraStmts(env, terrastmts)
             [q]                 
             [terrastmts[i]]
         end                     
-    end                         
+    end                   
     q = quote                   
         [q]                     
         return Stats {[env.passed], [env.failed]}
@@ -62,7 +62,7 @@ local function printTestStats(name, stats)
     local ntotal = stats.passed + stats.failed  
     print(name)
     if stats.passed>0 then    
-	print("  "..format.bold..format.green..stats.passed.."/"..ntotal.." tests passed"..format.normal)
+		print("  "..format.bold..format.green..stats.passed.."/"..ntotal.." tests passed"..format.normal)
     end
     if stats.failed>0 then                 
         print("  "..format.bold..format.red..stats.failed.."/"..ntotal.." tests failed\n"..format.normal)
@@ -71,15 +71,14 @@ end
 
 local function printFailedTests(tests)
     for i,test in pairs(tests) do
-	if not test.passed then
-	    printTestFailed(test.filename, test.linenumber)
-	end
+		if not test.passed then
+			printTestFailed(test.filename, test.linenumber)
+		end
     end
 end
 
 local function ProcessTestenv(self, lex)
     lex:expect("testenv") --open the testenv environment
-
     -- treat case of parameterized testenv                       
     local isparametric = false                                   
     local params = terralib.newlist()                            
@@ -92,65 +91,62 @@ local function ProcessTestenv(self, lex)
         until not lex:nextif(",")                                
         lex:expect(")")                                          
         isparametric = true                                      
-    end             
-                    
+    end                             
     --generate testset name and parse code  
     local testenvname = lex:expect(lex.string).value
     lex:expect("do")
     local luaexprs = lex:luastats() -- give control back to lua
-    
     --exit
     local lasttoken = lex:expect("end")
     --exit with nothing if this is not the topfile
     local runtests = runalltests and lasttoken.filename==topfile
-
+	--return function
     return function(envfun)
-        if not runtests then
- 	    return
-	end
+		if not runtests then
+			return
+		end
+		--reinitialize global variables
+		self.env = {scope1 = terralib.newlist(), scope2 = terralib.newlist()}
+		self.terrastmts = {notests = terralib.newlist(), scope1 = terralib.newlist(), scope2 = terralib.newlist()}
+		self.env["scope1"].counter = symbol(int)                  
+		self.env["scope1"].passed = symbol(int)                   
+		self.env["scope1"].failed = symbol(int)
+		self.tests = terralib.newlist()
 
-	--reinitialize global variables
-	self.env = {scope1 = terralib.newlist(), scope2 = terralib.newlist()}
-	self.terrastmts = {notests = terralib.newlist(), scope1 = terralib.newlist(), scope2 = terralib.newlist()}
- 	self.env["scope1"].counter = symbol(int)                  
-    	self.env["scope1"].passed = symbol(int)                   
-    	self.env["scope1"].failed = symbol(int)
-	self.tests = terralib.newlist()
+		-- enter scope
+		self.scopelevel = 1  -- enter testenv, scopelevel 1
+		local env = envfun()
+		addtoenv(env, self.env["scope1"]) --everything from scope level 1 should be accessible
+		
+		-- print parametric name
+		local parametricname = testenvname   
+		if isparametric then                 
+			parametricname = testenvname.."("..params[1].."="..tostring(env[params[1]])
+			for i=2,#params do               
+				parametricname = parametricname..","..params[i].."="..tostring(env[params[i]])
+			end                              
+			parametricname = parametricname..")"
+		end
+		print("\n"..format.bold.."Test Environment: "..format.normal, parametricname)
 
-	-- enter scope
-	self.scopelevel = 1  -- enter testenv, scopelevel 1
-        local env = envfun()
-        addtoenv(env, self.env["scope1"]) --everything from scope level 1 should be accessible
-	
-	-- print parametric name
-	local parametricname = testenvname   
-        if isparametric then                 
-            parametricname = testenvname.."("..params[1].."="..tostring(env[params[1]])
-            for i=2,#params do               
-                parametricname = parametricname..","..params[i].."="..tostring(env[params[i]])
-            end                              
-            parametricname = parametricname..")"
-        end
-	print("\n"..format.bold.."Test Environment: "..format.normal, parametricname)
+		local f = function()
+			luaexprs(env)
+		end
+		f() -- evaluate all expressions in a new scope
+		
+		-- generate and run terra function                        
+		local terrastmts = collectTerraStmts(env, self.terrastmts["scope1"])
+		local g = terra()                                         
+			[terrastmts]                                           
+		end                                                       
+		local stats = g() --extract test statistics
 
-	local f = function()
-	    luaexprs(env)
-	end
-	f() -- evaluate all expressions in a new scope
-	
-	-- generate and run terra function                        
-        local terrastmts = collectTerraStmts(env, self.terrastmts["scope1"])
-	local g = terra()                                         
-           [terrastmts]                                           
-        end                                                       
-        local stats = g() --extract test statistics
-
-        -- process test statistics
-        printTestStats("\n  "..format.bold.."inline tests"..format.normal, stats)
-	printFailedTests(self.tests)
-	
-	-- exit scope
-	self.scopelevel = 0  -- exit testenv, back to scopelevel 0
+		-- process test statistics
+		printTestStats("\n  "..format.bold.."inline tests"..format.normal, stats)
+		printFailedTests(self.tests)
+		
+		-- exit scope
+		self.scopelevel = 0  -- exit testenv, back to scopelevel 0
         self.tests = terralib.newlist()
     end
 end
@@ -178,44 +174,44 @@ local function ProcessTestset(self, lex)
     local luaexprs = lex:luastats() --give control back to lua
     lex:expect("end")
     return function(envfun)
-	-- enter new scope
-	self.scopelevel = 2  -- enter testset, scopelevel 2
+		-- enter new scope
+		self.scopelevel = 2  -- enter testset, scopelevel 2
 	
-	--add terra environment variables as symbols
+		--add terra environment variables as symbols
     	self.env["scope2"].counter = symbol(int)
     	self.env["scope2"].passed = symbol(int)
     	self.env["scope2"].failed = symbol(int)    
     	local env = envfun()
-	addtoenv(env, self.env["scope1"]) --everything from scope level 1 should be accessible 
-	addtoenv(env, self.env["scope2"]) --everything from scope level 2 should be accessible
-	
-	-- evaluate all expressions in a new scope
-	local f = function()
-	    --initialize scope 2 with everything but tests from scope 1
-	    self.terrastmts["scope2"] = addtoenv(terralib.newlist(), self.terrastmts["notests"])
-	    luaexprs(env)
-	end
-	f()
+		addtoenv(env, self.env["scope1"]) --everything from scope level 1 should be accessible 
+		addtoenv(env, self.env["scope2"]) --everything from scope level 2 should be accessible
+		
+		-- evaluate all expressions in a new scope
+		local f = function()
+			--initialize scope 2 with everything but tests from scope 1
+			self.terrastmts["scope2"] = addtoenv(terralib.newlist(), self.terrastmts["notests"])
+			luaexprs(env)
+		end
+		f()
 
-	-- generate and run terra function
-	local terrastmts = collectTerraStmts(env, self.terrastmts["scope2"])
-	local g = terra()
-	   [terrastmts]
-	end
-	local stats = g() --extract test statistics
+		-- generate and run terra function
+		local terrastmts = collectTerraStmts(env, self.terrastmts["scope2"])
+		local g = terra()
+			[terrastmts]
+		end
+		local stats = g() --extract test statistics
 
-	-- process test statistics
-	local parametricname = testsetname
-	if isparametric then
-	    parametricname = testsetname.."("..params[1].."="..tostring(env[params[1]])
-	    for i=2,#params do
-		parametricname = parametricname..","..params[i].."="..tostring(env[params[i]])
-	    end
-	    parametricname = parametricname..")"
-	end
-	printTestStats("\n  "..format.bold.."testset:\t\t"..format.normal..parametricname, stats)
+		-- process test statistics
+		local parametricname = testsetname
+		if isparametric then
+			parametricname = testsetname.."("..params[1].."="..tostring(env[params[1]])
+			for i=2,#params do
+			parametricname = parametricname..","..params[i].."="..tostring(env[params[i]])
+			end
+			parametricname = parametricname..")"
+		end
+		printTestStats("\n  "..format.bold.."testset:\t\t"..format.normal..parametricname, stats)
 
-	-- exit current scope
+		-- exit current scope
     	self.scopelevel = 1  --exit testset, back to scopelevel 1
     end                       
 end
@@ -227,14 +223,14 @@ local function ProcessTerrastats(self, lex)
     return function(envfun)
     	local env = envfun()
       	local stmts = terrastmts(env)
-	if self.scopelevel==1 then
-	    setenv(self.env["scope1"], stmts)
-	    self.terrastmts["scope1"]:insert(stmts)
-	    self.terrastmts["notests"]:insert(stmts) 
-	elseif self.scopelevel==2 then
-	    setenv(self.env["scope2"], stmts)
-	    self.terrastmts["scope2"]:insert(stmts) 
-	end
+		if self.scopelevel==1 then
+			setenv(self.env["scope1"], stmts)
+			self.terrastmts["scope1"]:insert(stmts)
+			self.terrastmts["notests"]:insert(stmts) 
+		elseif self.scopelevel==2 then
+			setenv(self.env["scope2"], stmts)
+			self.terrastmts["scope2"]:insert(stmts) 
+		end
     end 
 end
 
@@ -298,50 +294,50 @@ local testlang = {
     env = {scope0 = terralib.newlist(), scope1 = terralib.newlist(), scope2 = terralib.newlist()};
     terrastmts = {notests = terralib.newlist(), scope0 = terralib.newlist(), scope1 = terralib.newlist(), scope2 = terralib.newlist()};
     expression = function(self,lex)
-	if lex:matches("testenv") then
-	    return ProcessTestenv(self, lex)
-	end
-	if lex:matches("testset") then
-	    return ProcessTestset(self, lex)
-        end
-	if lex:matches("terracode") then
-	    return ProcessTerrastats(self, lex)
-	end
-	if lex:matches("test") then
-	    return ProcessTest(self, lex)
-	end
+		if lex:matches("testenv") then
+			return ProcessTestenv(self, lex)
+		end
+		if lex:matches("testset") then
+			return ProcessTestset(self, lex)
+			end
+		if lex:matches("terracode") then
+			return ProcessTerrastats(self, lex)
+		end
+		if lex:matches("test") then
+			return ProcessTest(self, lex)
+		end
     end;
 }
 
 function printtable(table)
     for i,s in pairs(table) do
-	print(i)
-	print("\n")
-	print(s)
-	print("\n")
+		print(i)
+		print("\n")
+		print(s)
+		print("\n")
     end
 end
 
 function setenv(env, stmts)
     for i,s in pairs(stmts.tree.statements) do
-	--variables that are directly initialized
-	if s.lhs~=nil then
-            local name = s.lhs[1].name
-            local sym = s.lhs[1].symbol
-            env[name] = sym 
-	end
-	--variables that are allocated
-	if s.name~=nil and s.symbol~=nil then
-	    local name = s.name
-	    local sym = s.symbol
-	    env[name] = sym
-	end
+		--variables that are directly initialized
+		if s.lhs~=nil then
+				local name = s.lhs[1].name
+				local sym = s.lhs[1].symbol
+				env[name] = sym 
+		end
+		--variables that are allocated
+		if s.name~=nil and s.symbol~=nil then
+			local name = s.name
+			local sym = s.symbol
+			env[name] = sym
+		end
     end 
 end
 
 function addtoenv(dest, source)
     for i,v in pairs(source) do
-	dest[i] = v
+		dest[i] = v
     end
     return dest
 end

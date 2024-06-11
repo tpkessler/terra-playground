@@ -47,56 +47,53 @@ A 'concept' defines an equivalence class, that is, a set with an equivalence rel
     assert(is_convertible_to(double, float)==false)
 ``` 
 --]]
-local function concept(args)
+local function concept(arg)
     local name
-    if type(args)=="table" then
-        name = args.name
-    elseif type(args)=="string" then
-        name = args
+    local default
+    if terralib.types.istype(arg) then
+        name = arg.name
+        default = function(T) return T.name==name end
+    elseif type(arg)=="string" then
+        name = arg
+        default = function(T) return false end
     else
         error("Specify name as a table entry or as an input string.", 2)
     end
     
-    --from each input in mt:__call( ... )
-    local fns = {}  --table with methods
-
     --construct main type representing a convept
-    local self = {}
-    self.default = function (T) 
-        return T.name==name
-    end
-    self.name = name
-    self.type = "concept"
+    local self = terralib.types.newstruct(name)
+    rawset(self, "default", default)
+    rawset(self, "name", name)
+    rawset(self, "type", "concept")
+    self.definitions = {}
 
     --metatable for self
-    local mt = {}
+    local mt = getmetatable(self)
 
     --overload the call operator to make the table act
     --as a functor
     function mt:__call(...)
+        local args = {...}
+        if #args==1 and args[1]==self then
+            --if input is the same as concept, then return true
+            --directly
+            return true
+        end
         local signature = {}
         --extract type-property of each input
-        for i,arg in ipairs {...} do
+        for i,arg in ipairs(args) do
             signature[i] = arg.name
         end
         --concatenate type-properties
         local s = table.concat(signature, "_")
         --call the correct method
-        return (fns[s] or self.default)(...)
-    end
-    --prohibit table access
-    function mt:__index(key)
-        print(key)
-        print("No table access allowed?.", 2)
-    end
-    --custom set method for adding methods
-    function mt:__newindex(key, value)
-        fns[key] = value
+        return (self.definitions[s] or self.default)(...)
     end
 
-    --overloading the == operator
-    function mt:__eq(other)
-        return other(self) and self(other)
+    --custom method for adding method definitions
+    function self:adddefinition(key, method)
+        assert(type(method)=="function")
+        self.definitions[key] = method
     end
     -- Overloading the < and > operators does not currently work in terra, because 
     -- terra is based on LuaJIT 2.1, for which extensions with __lt and __le are 
@@ -109,8 +106,9 @@ local function concept(args)
     function self:supertypeof(other)
         return self(other) and not other(self)
     end
+
     --return table
-    return setmetatable(self, mt)
+    return self
 end
 
 concepts.concept = concept
