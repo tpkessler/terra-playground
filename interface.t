@@ -73,7 +73,7 @@ local construct_wrapper = terralib.memoize(function(methods_str)
 	return wrapper
 end)
 
-Interface.new = function(self, methods)
+function Interface:new(methods)
 	--[[
 		Construct an interface with given methods.
 
@@ -99,62 +99,69 @@ Interface.new = function(self, methods)
 			define setter an getter methods for element access.
 	--]]
 	methods = methods or {}
-	local interface = {methods = terralib.newlist(), cached = terralib.newlist()}
-	setmetatable(interface, {__index = self})
 	local method_str = {} 
 	for name, method in pairs(methods) do
 		method_str[name] = serde.serialize_pointertofunction(method)
-		interface.methods:insert({name = name, type = method.type})
 	end
 	local wrapper = construct_wrapper(serde.serialize_table(method_str))
+	rawset(wrapper, "type", "interface")
+	rawset(wrapper, "ref_methods", terralib.newlist())
+	rawset(wrapper, "cached", terralib.newlist())
+	for name, method in pairs(methods) do
+		wrapper.ref_methods:insert({name = name, type = method.type})
+	end
+
+	function wrapper:isimplemented(T)
+		assert(T:isstruct(), "Can't check interface implementation as " ..
+							 "type " .. tostring(T) .. " is not a struct")
+		for _, method in pairs(self.ref_methods) do
+			local T_method = T.methods[method.name]
+			assert(T_method and T_method.type:isfunction(),
+				   "Method " .. method.name .. " is not implemented for type " .. tostring(T))
+			local ref_param = terralib.newlist{&T}
+			for _, p in ipairs(method.type.parameters) do
+				ref_param:insert(p)
+			end
+			local ref_method = ref_param -> method.type.returntype
+			assert(T_method.type == ref_method.type,
+				   "Expected signature " .. tostring(ref_method.type) ..
+				   " but found " .. tostring(T_method.type) ..
+				   " for method " .. method.name)
+		end
+
+		return true
+	end
 
 	-- Cast from an abstract interface to a concrete type
 	function wrapper.metamethods.__cast(from, to, exp)
 		if to:isstruct() and from:ispointertostruct() then
-			assert(interface:isimplemented(from.type))
+			assert(wrapper:isimplemented(from.type))
 			assert(to == wrapper)
-			if not interface.cached[from.type] then
+			if not wrapper.cached[from.type] then
 				local impl = terralib.newlist()
 				-- interface.methods is ordered like vtable
-				for _, method in ipairs(interface.methods) do
+				for _, method in ipairs(wrapper.methods) do
 					impl:insert(from.type.methods[method.name])
 				end
 				-- The built-in function constant forces the expression to be
 				-- an lvalue, so we use its address in the construction
 				-- of the wrapper.
-				interface.cached[from.type] = constant(`vtable {[impl]})
+				wrapper.cached[from.type] = constant(`vtable {[impl]})
 			end
 			local tab = interface.cached[from.type]
 			return `wrapper {[&opaque](exp), &tab}
 		end
 	end
 
-	interface.type = wrapper
-	return interface
+	return wrapper
+end
+
+local function isinterface(I)
+	return I.type == "interface"
 end
 
 -- Check if the interface is implemented on a given type
-function Interface:isimplemented(T)
-	assert(T:isstruct(), "Can't check interface implementation as " ..
-						 "type " .. tostring(T) .. " is not a struct")
-	for _, method in pairs(self.methods) do
-		local T_method = T.methods[method.name]
-		assert(T_method and T_method.type:isfunction(),
-			   "Method " .. method.name .. " is not implemented for type " .. tostring(T))
-		local ref_param = terralib.newlist{&T}
-		for _, p in ipairs(method.type.parameters) do
-			ref_param:insert(p)
-		end
-		local ref_method = ref_param -> method.type.returntype
-		assert(T_method.type == ref_method.type,
-			   "Expected signature " .. tostring(ref_method.type) ..
-			   " but found " .. tostring(T_method.type) ..
-			   " for method" .. method.name)
-	end
-
-	return true
-end
-
 return {
-	Interface = Interface
+	Interface = Interface,
+	isinterface = isinterface
 }

@@ -18,6 +18,11 @@ testenv "Caching" do
 	test ret == true
 end
 
+testenv "isInterface" do
+	test [interface.isinterface(A)]
+	test [interface.isinterface(B)]
+end
+
 testenv "Working interface" do
 	local struct Full {
 	}

@@ -14,14 +14,8 @@ local Stacker = terralib.memoize(function(T, I)
 end)
 
 local Stack = terralib.memoize(function(T, I)
-	local Si = Stacker(T, I)
-	local Sc = concept.concept("Stack")
-	Sc.default = function(U) 
-		local ok, ret = pcall(function(Uprime) Si:isimplemented(Uprime) end, U)
-		return ok
-	end
-
-	return Sc
+	local S = Stacker(T, I)
+	return concept.Concept:from_interface("Stack", S)
 end)
 
 local DynamicStack = terralib.memoize(function(T, I, A)
