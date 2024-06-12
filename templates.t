@@ -1,182 +1,141 @@
-local concepts = require "concepts"
+local concept = require("concept")
+local fun = require("fun")
 
-local concept = concepts.concept
+local Template = {}
 
-local function template()
-    local mt = {}
-    local fn = {}
-    local any = concept("Any")
-    any.default = function (...) return true end
-
-    --returning an error if a valid implementation is missing
-    local function error_implementation_missing(...)
-        error("Implementation missing.", 2)
-    end
-    --returning an error if a method call is ambiguous
-    local function error_ambiguous_call(...)
-        error("Method call is ambiguous.", 2)
-    end
-    --check if method signature satisfies method concepts
-    --this is used to rule out methods, such that only admissable
-    --methods remain
-    local function concepts_check(concepts, args)
-        --at least the minimal number of arguments must match
-        if not (#concepts==#args) then
-            return false
-        end
-        --check of concept is satisfied for each corresponding
-        --argument
-        for i,concept in ipairs(concepts) do
-            --if one of the concepts is not satisfied then return false
-            if not concept(args[i]) then
-                return false
-            end
-        end
-        --if all concepts are satisfied return true
-        return true
-    end
-    --return a table of admissable methods.
-    --this method is only called if the number of arguments is more than one.
-    local function get_methods(...)
-        local args = {...} --tabulate input arguments
-        local methods = {} --table for storing admissable methods
-        for concepts, _ in pairs(fn) do
-            --expecting a table of concepts, not a single one
-            if concepts.type~="concept" and type(concepts)=="table" then
-                --if the arguments satisfy the concepts then
-                --add method to methods table
-                if concepts_check(concepts, args) then
-                    table.insert(methods, concepts)
-                end
-            end
-        end
-        return methods
-    end
-    --compare two method signatures based on their concepts and check which
-    --one is more specialized
-    local function compare_two_methods(c_1, c_2)
-        local n, n_2 = #c_1, #c_2
-        assert(n==n_2, "Expected arrays to have the same length.")
-        --compare each equivalence class, and keep score
-        local s_1, s_2 = 0, 0
-        for i=1,n do
-            if c_1[i]:subtypeof(c_2[i]) then
-                s_1 = s_1 + 1
-            elseif c_1[i]:supertypeof(c_2[i]) then
-                s_2 = s_2 + 1
-            end
-        end
-        --comparison of equivalence classes
-        if s_1==s_2 then
-            --return 0 if signatures are ambiguous
-            return 0
-        else
-            --return -1 if c_2 is more specialized
-            if s_1 < s_2 then
-                return -1
-            --return +1 if c_1 is more specialized
-            else
-                return 1
-            end
-        end
-    end
-    --select a method in case of a single input argument
-    local function select_method_single_argument(T)
-        local saved = any
-        --get minimal element
-        for concept,_ in pairs(fn) do
-            if concept.type=="concept" and concept(T) then
-                if concept:subtypeof(saved) then saved = concept end
-            end
-        end
-        --ToDo: check for an ambiguous call? Can that happen
-        --in case of a single argument call?
-        return fn[saved]
-    end
-    --return table of admissable methods. It contains only one
-    --element if the cass is not ambiguous
-    local function select_method_multiple_arguments(...)
-        --get admissable methods
-        local t = {...}
-        local admissable = get_methods(...)
-        --find a minimal element
-        local saved = {}
-        for i=1,#t do
-            table.insert(saved,any)
-        end
-        for _,concepts in ipairs(admissable) do
-            local s = compare_two_methods(concepts, saved)
-            if s==1 then
-                saved = concepts
-            end
-        end
-        --check if there are other minimal elements, that is,
-        --is the call ambiguous?
-        local methods = {}
-        for _,concepts in ipairs(admissable) do
-            local s = compare_two_methods(concepts, saved)
-            if s==0 then
-                table.insert(methods, concepts)
-            end
-        end
-        return methods
-    end
-    --overloading the call operator
-    function mt:__call(...)
-        local args = {...}
-        if #args==1 then
-            local f = select_method_single_argument(args[1])
-            return (f or self.default)(args[1])
-        else
-            local methods = select_method_multiple_arguments(...)
-            if #methods>1 then
-                print("Warning: The following method calls are ambiguous: ")
-                for i,m in ipairs(methods) do
-                    local f = fn[m] 
-                    print(tostring(f))
-                end
-                --throw error that call is ambiguous
-                return error_ambiguous_call(...)
-            end
-            return (fn[methods[1]] or self.default)(...)
-        end
-    end
-    --custom set method for adding methods
-    function mt:__newindex(key, value)
-        fn[key] = value
-    end
-
-    return setmetatable({default = error_implementation_missing}, mt)
+local function sgn(x)
+	return x > 0 and 1 or x < 0 and -1 or 0
 end
 
---lua function to create a concept. A concept defines a concept
---defines a compile-time predicate that defines an equivalence 
---relation on a set.
-local concept = concepts.concept
+function Template:new()
+	local template = {
+		-- Stores implementations for different concepts
+		methods = {},
+		-- Default behavior for arbitrary arguments
+		default = function(...) return error("Implementation missing", 2) end,
+	}
+
+    -- Check if method signature satisfies method concepts.
+    -- This is used to rule out methods, such that only admissable methods remain.
+    local function concepts_check(concepts, args)
+		if #concepts ~= #args then
+			return false
+		end
+		return fun.all(function(C, T) return C(T) end, fun.zip(concepts, args))
+	end
+
+	-- Given two lists of concepts this function returns
+	-- -1 if the second argument is more specialized,
+	-- +1 if the first  argument is more specialized,
+	--  0 if the signatures are ambiguous.
+	local function compare_two_methods(clist_1, clist_2)
+		assert(#clist_1 == #clist_2,
+			   "Can only compare function signatures of equal size")
+		local function compare(s, c_1, c_2)
+			if c_1:subtypeof(c_2) then
+				s[1] = s[1] + 1
+			elseif c_1:supertypeof(c_2) then
+				s[2] = s[2] + 1
+			end
+			return s
+		end
+		local res = fun.foldl(compare, {0, 0}, fun.zip(clist_1, clist_2))
+		return sgn(res[1] - res[2])
+	end
+
+    -- Return a table of admissable methods.
+	function template:get_methods(...)
+		local args = {...}
+		return fun.filter(function(Carg, func) return concepts_check(Carg, args) end,
+						  self.methods
+						 ):tomap()
+	end
+
+	function template:select_method(...)
+		local args = {...}
+		local admissible = self:get_methods(...)
+	
+		-- Matches every concept
+		local Any = concept.Any
+		local saved = terralib.newlist()
+		for i = 1, #args do
+			saved:insert(Any)
+		end
+		local function minimal(acc, sig, func)
+			local s = compare_two_methods(sig, acc)
+			if s > 0 then -- sig is more specialized
+				return sig
+			else
+				return acc
+			end
+		end
+		-- Find minimal, most specialized implementation
+		saved = fun.foldl(minimal, saved, admissible)
+
+		local function ambiguous(sig, func)
+			local s = compare_two_methods(sig, saved)
+			if s == 0 then
+				return true
+			else
+				return false
+			end
+		end
+		local methods = fun.filter(ambiguous, admissible):tomap()
+
+		return methods
+	end
+
+	local mt = {}
+	function mt:__newindex(key, value)
+		if terralib.types.istype(key) then
+			self.methods[{key}] = value
+		else
+			self.methods[key] = value
+		end
+	end
+
+	function mt:__call(...)
+		local methods = self:select_method(...) 
+		local len = fun.length(methods)
+		if len > 1 then
+			io.stderr:write("Warning: The following method calls are ambiguous", "\n")
+			-- terralist has a nice tostring method
+			local arg = terralib.newlist({...})
+			io.stderr:write("For signature ", tostring(arg), " there's", "\n")
+			for sig, func in pairs(methods) do
+				io.stderr:write(tostring(terralib.newlist(sig)), "\n")
+			end
+        	return error("Method call is ambiguous.", 2)
+		else
+			local sig, func = next(methods)
+			return (func or self.default)(...)
+		end
+	end
+
+	return setmetatable(template, mt)
+end
+
+-- lua function to create a concept.
+-- A concept defines defines a compile-time predicate that defines an equivalence
+-- relation on a set.
+local Concept = concept.Concept
 
 --primitive number concepts
-local Float32 = concept(float)
-local Float64 = concept(double)
-local Int8    = concept(int8)
-local Int16   = concept(int16)
-local Int32   = concept(int32)
-local Int64   = concept(int64)
+local Float32 = concept.Float32
+local Float64 = concept.Float64
+local Int8    = concept.Int8
+local Int16   = concept.Int16
+local Int32   = concept.Int32
+local Int64   = concept.Int64
 
 -- abstract floating point numbers
-local Float = concept("Float")
-Float:adddefinition("float", function(T) return T.name=="float" end)
-Float:adddefinition("double", function(T) return T.name=="double" end)
+local Float = concept.Float
 
 --abstract integers
-local Integer = concept("Integer")
-Integer:adddefinition("int", function(T) return T.name=="int" end)
-Integer:adddefinition("int8", function(T) return T.name=="int8" end)
-Integer:adddefinition("int16", function(T) return T.name=="int16" end)
-Integer:adddefinition("int32", function(T) return T.name=="int32" end)
-Integer:adddefinition("int64", function(T) return T.name=="int64" end)
+local Integer = concept.Integer
 
 --test foo template implementation
-local foo = template()
+local foo = Template:new()
 
 foo[Integer] = function(T)
     print("Method for {Integer}")
@@ -211,19 +170,20 @@ foo[{Int32,Int32,Float64}] = function(T1, T2, T3)
 end
 
 foo(double)
+foo(float)
 foo(int32)
 foo(int64, int64)
 foo(int32, int32, double)
 
 
---uncomment to see the following fail due to the presence of
---two ambiguous methods
+-- Uncomment to see the following fail due to the presence of
+-- two ambiguous methods
 --foo(int32, int32)
 
 --removing the ambiguity by defining the specialization
-foo[{Int32,Int32}] = function(T1, T2)
-    print("Method for {Int32,Int32}")
-end
+-- foo[{Int32,Int32}] = function(T1, T2)
+-- 	print("Method for {Int32,Int32}")
+-- end
 
---try again
-foo(int32, int32)
+-- Try again
+-- foo(int32, int32)

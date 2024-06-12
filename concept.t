@@ -118,11 +118,41 @@ function Concept:from_interface(name, I)
 end
 
 local function isconcept(C)
-	assert(terralib.types.istype(C))
-	return C.type == "concept"
+	return terralib.types.istype(C) and C.type == "concept"
 end
 
-return {
+local M = {
 	Concept = Concept,
 	isconcept = isconcept
 }
+
+M.Any = Concept:new("Any", function(...) return true end)
+M.Bool = Concept:new("Bool", function(T) return T.name == "bool" end)
+
+M.Float = Concept:new("Float") 
+for suffix, T in pairs({["32"] = float, ["64"] = double}) do
+	local name = "Float" .. suffix
+	M[name] = Concept:new(T)
+	M.Float:adddefinition(T.name,
+						  function(Tprime) return Tprime.name == T.name end
+						 )
+end
+
+for _, prefix in pairs({"", "u"}) do
+	local cname = prefix:upper() .. "Integer"
+	M[cname] = Concept:new(cname)
+	for _, suffix in pairs({8, 16, 32, 64}) do
+		local name = prefix:upper() .. "Int" .. tostring(suffix)
+		local terra_name = prefix .. "int" .. tostring(suffix)
+		-- Terra primitive types are global lua variables
+		local T = _G[terra_name] 
+		M[name] = Concept:new(T)
+		M[cname]:adddefinition(T.name,
+							   function(Tprime) return Tprime.name == T.name end
+							  )
+	end
+end
+
+M.Real = Concept:new("Real", function(T) return M.Integer(T) or M.Float(T) end)
+
+return M
