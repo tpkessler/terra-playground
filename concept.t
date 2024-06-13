@@ -111,7 +111,11 @@ end
 function Concept:from_interface(name, I)
 	assert(interface.isinterface(I))
 	local check_interface = function(T)
-		local ok, ret = pcall(function(Tprime) I:isimplemented(Tprime) end, T)
+		local ok, ret = pcall(
+			function(Tprime)
+				local U = Tprime:ispointer() and Tprime.type or Tprime
+				return I:isimplemented(U)
+			end, T)
 		return ok
 	end
 	return Concept:new(name, check_interface)
