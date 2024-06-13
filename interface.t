@@ -1,4 +1,5 @@
 local serde = require("serde")
+local fun = require("fun")
 
 local Interface = {}
 
@@ -13,8 +14,11 @@ local construct_wrapper = terralib.memoize(function(methods_str)
 	--]=]
 	local ok, obj = serde.deserialize_table(methods_str)
 	assert(ok)
-	local methods_str = terralib.newlist(obj)
-	local methods = methods_str:map(function(f) serde.deserialize_pointertofunction(f) end)
+	local methods = fun.map(function(name, str)
+								return name, serde.deserialize_pointertofunction(str)
+							end,
+							obj
+						   ):tomap()
 	-- A vtable contains function pointers to the implementation of methods
 	-- defined on a concrete type that implements the given interface.
 	-- With terra we can dynamically build the struct at compile time.
@@ -40,10 +44,10 @@ local construct_wrapper = terralib.memoize(function(methods_str)
 		-- the struct from a list with the same ordering, see __cast.
 		vtable.entries:insert({field = name, type = &opaque})
 	end
-	-- vtable type is now complete
+	vtable:complete()
 
 	-- Second iteration for method wrappers
-	for _, method in pairs(methods) do
+	for name, func in pairs(methods) do
 		-- Write a dynamic wrapper around the method call.
 		-- A method call on the wrapper struct mirrors the method call on the
 		-- concrete type.
@@ -51,7 +55,7 @@ local construct_wrapper = terralib.memoize(function(methods_str)
 		local sym = terralib.newlist()
 		-- Loop over arguments of the interface interface and prepare lists
 		-- for the meta programmed method call.
-		for _, typ in ipairs(method.type.parameters) do
+		for _, typ in ipairs(func.type.parameters) do
 			param:insert(typ)
 			sym:insert(symbol(typ))
 		end
@@ -61,14 +65,16 @@ local construct_wrapper = terralib.memoize(function(methods_str)
 		-- with the function pointers to the concrete implementation
 		-- and the concrete underlying data representation of the type.
 		-- Both are passed as opaque pointers and need to be cast first.
-		local signature = param -> method.type.returntype
+		local signature = param -> func.type.returntype
 		local terra impl(self: &wrapper, [sym])
-			var func = [signature](self.tab.[method.name])
+			var func = [signature](self.tab.[name])
 			return func(self.data, [sym])
 		end
 
-		wrapper.methods[method.name] = impl
+		wrapper.methods[name] = impl
 	end
+
+	rawset(wrapper, "vtable", vtable)
 
 	return wrapper
 end)
@@ -146,9 +152,10 @@ function Interface:new(methods)
 				-- The built-in function constant forces the expression to be
 				-- an lvalue, so we use its address in the construction
 				-- of the wrapper.
+				local vtable = wrapper.vtable
 				wrapper.cached[from.type] = constant(`vtable {[impl]})
 			end
-			local tab = interface.cached[from.type]
+			local tab = wrapper.cached[from.type]
 			return `wrapper {[&opaque](exp), &tab}
 		end
 	end

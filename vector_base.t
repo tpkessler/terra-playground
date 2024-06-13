@@ -2,23 +2,26 @@ local interface = require("interface")
 local stack = require("stack")
 local err = require("assert")
 
-local function Vectorizer(T, I)
+local Vectorizer = terralib.memoize(function(T, I)
     I = I or int64
     local S = stack.Stacker(T, I)
     return interface.Interface:new{
+		size = {} -> I,
+		set = {I, T} -> {},
+		get = I -> T,
         fill = T -> {},
         clear = {} -> {},
-        copy = S.type -> {},
-        swap = S.type -> {},
+        copy = S -> {},
+        swap = S -> {},
         scal = T -> {},
-        axpy = {T, S.type} -> {},
-        dot = S.type -> T
+        axpy = {T, S} -> {},
+        dot = S -> T
     }
-end
+end)
 
-local function VectorBase(V, T, I)
-    local Stacker = stack.Stacker(T, I)
-    Stacker:isimplemented(V)
+local VectorBase = terralib.memoize(function(V, T, I)
+    local S = stack.Stacker(T, I)
+	S:isimplemented(V)
 
     terra V:fill(a: T)
         var size = self:size()
@@ -31,28 +34,18 @@ local function VectorBase(V, T, I)
         self:fill(0)
     end
 
-    local assert_size = macro(function(x, y)
-        return quote
-                var x_size = [x]:size()
-                var y_size = [y]:size()
-
-            in
-                err.assert(x_size == y_size)
-        end
-    end)
-
-    terra V:copy(x: &V)
+    terra V:copy(x: S)
+		err.assert(self:size() == x:size())
         var size = self:size()
-        assert_size(self, x)
 
         for i = 0, size do
             self:set(i, x:get(i))
         end
     end
 
-    terra V:swap(x: &V)
+    terra V:swap(x: S)
+		err.assert(self:size() == x:size())
         var size = self:size()
-        assert_size(self, x)
 
         for i = 0, size do
             var tmp = x:get(i)
@@ -69,9 +62,9 @@ local function VectorBase(V, T, I)
         end
     end
 
-    terra V:axpy(a: T, x: &V)
+    terra V:axpy(a: T, x: S)
+		err.assert(self:size() == x:size())
         var size = self:size()
-        assert_size(self, x)
 
         for i = 0, size do
             var yi = self:get(i)
@@ -81,9 +74,9 @@ local function VectorBase(V, T, I)
         
     end
 
-    terra V:dot(x: &V)
+    terra V:dot(x: S)
+		err.assert(self:size() == x:size())
         var size = self:size()
-        assert_size(self, x)
 
         var res: T = 0
         for i = 0, size do
@@ -97,7 +90,7 @@ local function VectorBase(V, T, I)
     Vectorizer:isimplemented(V)
 
     return V
-end
+end)
 
 return {
     Vectorizer = Vectorizer,

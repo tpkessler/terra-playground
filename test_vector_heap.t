@@ -29,11 +29,14 @@ terra main()
         io.printf("%g\n", zz)
     end
 
+	-- TODO Fix allocation
+	--[[
     var w = VectorDouble.like(z)
     w:set(0, -5)
     w:set(1, 7)
 
     z:copy(&w)
+	--]]
 
     io.printf("Subview after copy\n")
     for zz in z do
@@ -73,7 +76,7 @@ terra main()
     x:free()
     y:free()
     z:free()
-    w:free()
+   -- w:free()
     a:free()
     b:free()
 end

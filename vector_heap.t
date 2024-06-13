@@ -18,7 +18,7 @@ local function is_blas_type(T)
     return false
 end
 
-local VectorHeap = function(T, A)
+local VectorHeap = terralib.memoize(function(T, A)
     A = A or alloc.Default
     alloc.Allocater:isimplemented(A)
 
@@ -227,9 +227,7 @@ local VectorHeap = function(T, A)
     end
 
     return vector
-end
-
-VectorHeap = terralib.memoize(VectorHeap)
+end)
 
 return {
     VectorHeap = VectorHeap
