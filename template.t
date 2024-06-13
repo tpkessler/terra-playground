@@ -13,6 +13,7 @@ function Template:new()
 		methods = {},
 		-- Default behavior for arbitrary arguments
 		default = function(...) return error("Implementation missing", 2) end,
+		type = "template",
 	}
 
     -- Check if method signature satisfies method concepts.
@@ -115,75 +116,12 @@ function Template:new()
 	return setmetatable(template, mt)
 end
 
--- lua function to create a concept.
--- A concept defines defines a compile-time predicate that defines an equivalence
--- relation on a set.
-local Concept = concept.Concept
-
---primitive number concepts
-local Float32 = concept.Float32
-local Float64 = concept.Float64
-local Int8    = concept.Int8
-local Int16   = concept.Int16
-local Int32   = concept.Int32
-local Int64   = concept.Int64
-
--- abstract floating point numbers
-local Float = concept.Float
-
---abstract integers
-local Integer = concept.Integer
-
---test foo template implementation
-local foo = Template:new()
-
-foo[Integer] = function(T)
-    print("Method for {Integer}")
+local function istemplate(T)
+	return T.type == "template"
 end
 
-foo[Float] = function(T)
-    print("Method for {Float}")
-end
+return {
+	Template = Template,
+	istemplate = istemplate,
+}
 
-foo[{Integer,Integer}] = function(T1, T2)
-    print("Method for {Integer,Integer}")
-end
-
-foo[{Integer,Int32}] = function(T1, T2)
-    print("Method for {Integer,Int32}")
-end
-
-foo[{Int32,Integer}] = function(T1, T2)
-    print("Method for {Int32,Integer}")
-end
-
-foo[{Int32,Integer,Float}] = function(T1, T2, T3)
-    print("Method for {Int32,Integer,Float}")
-end
-
-foo[{Int32,Int32,Float}] = function(T1, T2, T3)
-    print("Method for {Int32,Int32,Float}")
-end
-
-foo[{Int32,Int32,Float64}] = function(T1, T2, T3)
-    print("Method for {Int32,Int32,Float64}")
-end
-
-foo(double)
-foo(float)
-foo(int32)
-foo(int64, int64)
-foo(int32, int32, double)
-
-
--- Uncomment to see the following fail due to the presence of
--- two ambiguous methods
---foo(int32, int32)
-
---removing the ambiguity by defining the specialization
--- foo[{Int32,Int32}] = function(T1, T2)
--- 	print("Method for {Int32,Int32}")
--- end
-
--- Try again
--- foo(int32, int32)
