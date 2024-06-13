@@ -65,6 +65,10 @@ local DynamicStack = terralib.memoize(function(T, I, A)
     local Stacker = Stacker(T, I)
     Stacker:isimplemented(stack)
 
+	terra stack:data()
+		return self.data
+	end
+
     terra stack:push(a: T): {}
         err.assert(self.is_owner)
         
