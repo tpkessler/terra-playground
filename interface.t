@@ -111,8 +111,9 @@ function Interface:new(methods)
 	end
 	local wrapper = construct_wrapper(serde.serialize_table(method_str))
 	rawset(wrapper, "type", "interface")
+	-- Store reference methods without the &self parameter in the beginning
+	-- for easier checks if a given struct implements the interface.
 	rawset(wrapper, "ref_methods", terralib.newlist())
-	rawset(wrapper, "cached", terralib.newlist())
 	for name, method in pairs(methods) do
 		wrapper.ref_methods:insert({name = name, type = method.type})
 	end
@@ -143,19 +144,22 @@ function Interface:new(methods)
 		if to:isstruct() and from:ispointertostruct() then
 			assert(wrapper:isimplemented(from.type))
 			assert(to == wrapper)
-			if not wrapper.cached[from.type] then
-				local impl = terralib.newlist()
-				-- interface.methods is ordered like vtable
-				for _, method in ipairs(wrapper.methods) do
-					impl:insert(from.type.methods[method.name])
-				end
-				-- The built-in function constant forces the expression to be
-				-- an lvalue, so we use its address in the construction
-				-- of the wrapper.
-				local vtable = wrapper.vtable
-				wrapper.cached[from.type] = constant(`vtable {[impl]})
+			local vtable = wrapper.vtable
+			-- Now we initialize the vtable with pointers to
+			-- the actual methods for type from.
+			-- IMPORTANT: When setting up vtable struct we fixed
+			-- a particular ordering of the methods.
+			-- We need to iterate in the exact same ordering,
+			-- otherwise the function pointers in impl will
+			-- point to the wrong functions.
+			local impl = terralib.newlist()
+			for _, entry in ipairs(vtable:getentries()) do
+				impl:insert(from.type.methods[entry.field])
 			end
-			local tab = wrapper.cached[from.type]
+			-- The built-in function constant forces the expression to be
+			-- an lvalue, so we use its address in the construction
+			-- of the wrapper.
+			local tab = constant(`vtable {[impl]})
 			return `wrapper {[&opaque](exp), &tab}
 		end
 	end
