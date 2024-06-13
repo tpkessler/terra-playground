@@ -12,10 +12,26 @@ terra main()
         io.printf("%g\n", xx)
     end
 
+	io.printf("Perfom pop() operation on vector\n")
     x:pop()
+	for xx in x do
+		io.printf("%g\n", xx)
+	end
+	io.printf("Fill vector with constant values\n")
     x:fill(11)
+	for xx in x do
+		io.printf("%g\n", xx)
+	end
+	io.printf("Initialize vector from list\n")
     var y = VectorDouble.from(1, 2, 3)
+	for yy in y do
+		io.printf("%g\n", yy)
+	end
+	io.printf("Perform generic axpy\n")
     x:axpy(-2, &y)
+	for xx in x do
+		io.printf("%g\n", xx)
+	end
 
     io.printf("After push and pop and axpy\n")
     for xx in x do
@@ -29,14 +45,11 @@ terra main()
         io.printf("%g\n", zz)
     end
 
-	-- TODO Fix allocation
-	--[[
     var w = VectorDouble.like(z)
     w:set(0, -5)
     w:set(1, 7)
 
     z:copy(&w)
-	--]]
 
     io.printf("Subview after copy\n")
     for zz in z do
@@ -76,7 +89,7 @@ terra main()
     x:free()
     y:free()
     z:free()
-   -- w:free()
+    w:free()
     a:free()
     b:free()
 end

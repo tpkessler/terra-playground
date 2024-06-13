@@ -1,6 +1,8 @@
 local interface = require("interface")
 local stack = require("stack")
 local err = require("assert")
+local template = require("template")
+local concept = require("concept")
 
 local Vectorizer = terralib.memoize(function(T, I)
     I = I or int64
@@ -34,14 +36,22 @@ local VectorBase = terralib.memoize(function(V, T, I)
         self:fill(0)
     end
 
-    terra V:copy(x: S)
-		err.assert(self:size() == x:size())
-        var size = self:size()
+	local impl = {}
 
-        for i = 0, size do
-            self:set(i, x:get(i))
-        end
-    end
+	-- TODO Make this proper templates
+	impl.copy = template.Template:new()
+	local Stack = stack.Stack(T, I)
+	impl.copy[{Stack, Stack}] = function(T1, T2)
+		return terra(self: T1, x: T2)
+			err.assert(self:size() == x:size())
+	        var size = self:size()
+			for i = 0, size do
+				self:set(i, x:get(i))
+			end
+		end
+	end
+
+	rawset(V, "template", impl)
 
     terra V:swap(x: S)
 		err.assert(self:size() == x:size())
@@ -87,7 +97,8 @@ local VectorBase = terralib.memoize(function(V, T, I)
     end
 
     local Vectorizer = Vectorizer(T, I)
-    Vectorizer:isimplemented(V)
+	-- TODO Let interface implementation also check for templated methods
+    -- Vectorizer:isimplemented(V)
 
     return V
 end)

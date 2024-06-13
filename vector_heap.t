@@ -3,6 +3,7 @@ local err = require("assert")
 local complex = require("complex")
 local blas = require("blas")
 local base = require("vector_base")
+local stack = require("stack")
 
 local complexFloat = complex.complex(float)
 local complexDouble = complex.complex(double)
@@ -21,87 +22,49 @@ end
 local VectorHeap = terralib.memoize(function(T, A)
     A = A or alloc.Default
     alloc.Allocater:isimplemented(A)
+	local S = stack.DynamicStack(T, int64, A)
 
     local struct vector{
-        data: &T
-        is_owner: bool
-        size: int64
+		data: S
         inc: int64
-        buf: int64
-        mem: A
     }
 
-    local DEFAULT_BUF_SIZE = 128
-
     local terra new(size: int64)
-        var mem: A
-        var buf = size + DEFAULT_BUF_SIZE
-        var data = [&T](mem:alloc(sizeof(T) * buf))
-        var is_owner = true
-        return vector {data, is_owner, size, 1, buf, mem}
+		return vector {S.new(size), 1}
     end
 
     terra vector:free()
-        if self.is_owner then
-            self.mem:free(self.data)
-        end
+		self.data:free()
     end
 
     terra vector:size()
-        return self.size
+        return self.data:size()
     end
 
     terra vector:get(i: int64)
         err.assert(i >= 0)
         err.assert(i < self:size())
-        return self.data[self.inc * i]
+		return self.data:get(self.inc * i)
     end
 
     terra vector:set(i: int64, a: T)
         err.assert(i >= 0)
         err.assert(i < self:size())
-        self.data[self.inc * i] = a
+		self.data:set(self.inc * i, a)
     end
 
     vector = base.VectorBase(vector, T, int64)
 
-    terra vector:push(a: T): {}
-        err.assert(self.is_owner)
-        
-        var idx = self.inc * self.size
-        if self.buf > idx then
-            self.data[idx] = a
-            self.size = self.size + 1
-        else
-            var new_buf = 2 * self.buf + 1
-            var new_data = [&T](self.mem:alloc(sizeof(T) * new_buf))
-            for i = 0, self.buf do
-                new_data[i] = self.data[i]
-            end
-            self.mem:free(self.data)
-            self.buf = new_buf
-            self.data = new_data
-            self:push(a)
-        end
-    end
+	terra vector:push(a: T)
+		self.data:push(a)
+	end
 
-    terra vector:pop()
-        err.assert(self.is_owner)
-        err.assert(self:size() > 0)
-        var x = self:get(self:size() - 1)
-        self.size = self.size - 1
-        return x
-    end
+	terra vector:pop()
+		return self.data:pop()
+	end
 
     terra vector:subview(size: int64, offset: int64, inc: int64)
-        -- TODO Check size and offset
-        var new_data = self.data + offset * self.inc
-        var new_is_owner = false
-        var new_size = size
-        var new_inc = inc * self.inc
-        var new_buf = self.buf
-        var new_mem = self.mem
-        return vector {new_data, new_is_owner, new_size, new_inc, new_buf, new_mem}
+		return vector {self.data:slice(size, offset * self.inc), inc * self.inc}
     end
 
     terra vector:inc()
@@ -109,13 +72,14 @@ local VectorHeap = terralib.memoize(function(T, A)
     end
 
     terra vector:data()
-        return self.data
+        return self.data:data()
     end
 
     terra vector:getblasinfo()
         return self:size(), self:data(), self:inc()
     end
 
+	--[[
     if is_blas_type(T) then
         terra vector:swap(x: &vector)
             var x_size, x_data, x_inc = x:getblasinfo()
@@ -168,6 +132,7 @@ local VectorHeap = terralib.memoize(function(T, A)
             return blas.iamax(x_size, x_data, x_inc)
         end
     end
+	--]]
 
     vector.metamethods.__for = function(iter, body)
         return quote
@@ -197,7 +162,7 @@ local VectorHeap = terralib.memoize(function(T, A)
         end)
 
     local terra from_buffer(size: int64, data: &T, inc: int64)
-        return vector {data, false, size, inc, size, @[&A](nil)}
+		return vector {S.frombuffer(size * inc, data), inc}
     end
 
     local terra like(x: vector)
@@ -220,11 +185,27 @@ local VectorHeap = terralib.memoize(function(T, A)
         frombuffer = from_buffer,
         like = like,
         zeroslike = zeros_like
-    }
+	}
 
-    vector.metamethods.__getmethod = function(Self, method)
-        return vector.methods[method] or static_methods[method]
-    end
+	-- TODO is this the right place? Or should this be in a meta type?
+	vector.metamethods.__methodmissing = macro(function(name, obj, ...)
+		local is_static = (static_methods[name] ~= nil)
+		local args = terralib.newlist({...})
+		if is_static then
+			args:insert(1, obj)
+		end
+		local types = args:map(function(t) return t.tree.type end)
+		if is_static then
+			local method = static_methods[name]
+			return `method([args])
+		else
+			types:insert(1, &vector)
+			local method = vector.template[name]
+			print("Types are", types)
+			local func = method(unpack(types))
+			return quote var self = obj in [func](&self, [args]) end
+		end
+	end)
 
     return vector
 end)
