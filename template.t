@@ -117,7 +117,7 @@ function Template:new()
 end
 
 local function istemplate(T)
-	return T.type == "template"
+	return type(T) == "table" and T.type == "template"
 end
 
 return {
