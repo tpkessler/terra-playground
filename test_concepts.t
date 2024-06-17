@@ -5,7 +5,7 @@ local interface = require("interface")
 --predicate that defines an equivalence relation on a set.
 
 --booleans
-local Boolean = concept.Concept:new("Boolean", function(T) return T == bool end)
+local Boolean = concept.Concept:new("Boolean", function(T) return T.name == "bool" end)
 
 --primitive number concepts
 local Float32 = concept.Concept:new(float)
@@ -18,13 +18,13 @@ local Int64   = concept.Concept:new(int64)
 -- abstract floating point numbers
 local Float = concept.Concept:new("Float")
 for _, T in pairs({float, double}) do
-	Float:adddefinition(tostring(T), function(Tprime) return Tprime == T end)
+	Float:adddefinition(tostring(T), function(Tprime) return Tprime.name == T.name end)
 end
 
 --abstract integers
 local Integer = concept.Concept:new("Integer")
 for _, T in pairs({int8, int16, int32, int64}) do
-	Integer:adddefinition(tostring(T), function(Tprime) return Tprime == T end)
+	Integer:adddefinition(tostring(T), function(Tprime) return Tprime.name == T.name end)
 end
 
 local Real = concept.Concept:new("Real", function(T) return Integer(T) or Float(T) end)
