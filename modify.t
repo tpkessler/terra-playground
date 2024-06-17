@@ -9,7 +9,7 @@ local function pimp_my_struct(S)
     -- Template magic
     rawset(S, "templates", {})
     -- Concept
-    local Self = concept.Concept:new("Self", function(T) return T.type.name == S.name end)
+    local Self = concept.Concept:new(tostring(S), function(T) return T.type.name == S.name end)
     rawset(S, "Self", Self)
 
     S.metamethods.__methodmissing = macro(function(name, obj, ...)
@@ -48,6 +48,11 @@ S.templates.copy = template.Template:new()
 S.templates.copy[{S.Self, concept.Real}] = function(T1, T2)
     return terra(self: T1, a: T2)
         self.a = a
+    end
+end
+S.templates.copy[{S.Self, concept.Int32}] = function(T1, T2)
+    return terra(self: T1, a: T2)
+        self.a = a + 1
     end
 end
 
