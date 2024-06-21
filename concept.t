@@ -88,6 +88,24 @@ function Concept:new(arg, default)
         return (self.definitions[s] or self.default)(...)
     end
 
+	function mt.__add(C1, C2)
+		local C = Concept:new(C1.name .. "Or" .. C2.name,
+							  function(...) return C1(...) or C2(...) end)
+		return C
+	end
+
+	function mt.__mul(C1, C2)
+		local C = Concept:new(C1.name .. "And" .. C2.name,
+							  function(...) return C1(...) and C2(...) end)
+		return C
+	end
+
+	function mt.__div(C1, C2)
+		local C = Concept:new(C1.name .. "Div" .. C2.name,
+							  function(...) return C1(...) and not C2(...) end)
+		return C
+	end
+
     --custom method for adding method definitions
     function concept:adddefinition(key, method)
         assert(type(method) == "function")

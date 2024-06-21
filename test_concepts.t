@@ -60,6 +60,29 @@ testenv "concepts" do
         test [concept.Number(rawstring) == false]      
     end
 
+	testset "Concept OR" do
+		local C = concept.Int32 + concept.Float32
+		test [C(int32)]
+		test [C(float)]
+		test [C(uint) == false]
+		test [C(double) == false]
+	end
+
+	testset "Concept AND" do
+		local C = concept.Float * concept.Float64
+		test [C(double)]
+		test [C(float) == false]
+	end
+
+	testset "Concept DIV" do
+		local C = concept.Number / concept.Integer
+		test [C(double)]
+		test [C(float)]
+		test [C(int32) == false]
+		test [C(int64) == false]
+
+	end
+
     testset "Function declarations" do
         local terra sum1 :: {concept.Real, concept.Real} -> concept.Real
         local terra sum2 :: {float, concept.Integer} -> concept.Float
