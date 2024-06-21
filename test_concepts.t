@@ -1,43 +1,13 @@
 local concept = require("concept")
 local interface = require("interface")
 
---lua function to create a concept. A concept defines a compile-time 
---predicate that defines an equivalence relation on a set.
-
---booleans
-local Boolean = concept.Concept:new("Boolean", function(T) return T.name == "bool" end)
-
---primitive number concepts
-local Float32 = concept.Concept:new(float)
-local Float64 = concept.Concept:new(double)
-local Int8    = concept.Concept:new(int8)
-local Int16   = concept.Concept:new(int16)
-local Int32   = concept.Concept:new(int32)
-local Int64   = concept.Concept:new(int64)
-
--- abstract floating point numbers
-local Float = concept.Concept:new("Float")
-for _, T in pairs({float, double}) do
-	Float:adddefinition(tostring(T), function(Tprime) return Tprime.name == T.name end)
-end
-
---abstract integers
-local Integer = concept.Concept:new("Integer")
-for _, T in pairs({int8, int16, int32, int64}) do
-	Integer:adddefinition(tostring(T), function(Tprime) return Tprime.name == T.name end)
-end
-
-local Real = concept.Concept:new("Real", function(T) return Integer(T) or Float(T) end)
-
-local Number = concept.Concept:new("Number", function(T) return Real(T) end)
-
 local Simple = interface.Interface:new{
-	foo = Real -> Number
+	foo = concept.Real -> concept.Number
 }
 local SimpleC = concept.Concept:from_interface("Simple", Simple)
 
 local struct implSimple {}
-implSimple.methods.foo = terra(self: &implSimple, x: Real): Number end
+implSimple.methods.foo = terra(self: &implSimple, x: concept.Real): concept.Number end
 
 --using test library
 import "terratest/terratest"
@@ -46,51 +16,53 @@ testenv "concepts" do
 
     testset "Floats" do
         --concrete float
-        test [Float64(double)]
-        test [Float64(float) == false]
-        test [Float64(Float64)]
+        test [concept.Float64(double)]
+        test [concept.Float64(float) == false]
+        test [concept.Float64(concept.Float64)]
         --abstract floats
-        test [Float(double)]
-        test [Float(float)]
-        test [Float(Float)]
-        test [Float(int32) == false]
-        test [Float(double, double) == false]
-        test [Float(rawstring) == false]
+        test [concept.Float(double)]
+        test [concept.Float(float)]
+        test [concept.Float(concept.Float)]
+        test [concept.Float(int32) == false]
+        test [concept.Float(double, double) == false]
+        test [concept.Float(rawstring) == false]
     end
 
     testset "Integers" do
         --concrete integers
-        test [Int32(int32)]
-        test [Int32(int)]
-        test [Int32(int16) == false]
-        test [Int32(Int32)]
+        test [concept.Int32(int32)]
+        test [concept.Int32(int)]
+        test [concept.Int32(int16) == false]
+        test [concept.Int32(concept.Int32)]
         --abstract floats
-        test [Integer(Integer)]
-        test [Integer(int)]
-        test [Integer(int32)]
-        test [Integer(int64)]
-        test [Integer(float) == false]
-        test [Integer(int, int) == false]
-        test [Integer(rawstring) == false]
+        test [concept.Integer(concept.Integer)]
+        test [concept.Integer(int)]
+        test [concept.Integer(int32)]
+        test [concept.Integer(int64)]
+        test [concept.Integer(float) == false]
+        test [concept.Integer(int, int) == false]
+        test [concept.Integer(rawstring) == false]
     end
 
     testset "Real numbers" do
-        test [Real(Integer)]
-        test [Real(int32)]
-        test [Real(Float)]
-        test [Real(float)]
+        test [concept.Real(concept.Integer)]
+        test [concept.Real(int32)]
+        test [concept.Real(int64)]
+        test [concept.Real(concept.Float)]
+        test [concept.Real(float)]
+        test [concept.Real(double)]
     end
 
     testset "Numbers" do
-        test [Number(Real)]
-        test [Number(int32)]
-        test [Number(float)]
-        test [Number(rawstring) == false]      
+        test [concept.Number(concept.Real)]
+        test [concept.Number(int32)]
+        test [concept.Number(float)]
+        test [concept.Number(rawstring) == false]      
     end
 
     testset "Function declarations" do
-        local terra sum1 :: {Real, Real} -> Real
-        local terra sum2 :: {float, Integer} -> Float
+        local terra sum1 :: {concept.Real, concept.Real} -> concept.Real
+        local terra sum2 :: {float, concept.Integer} -> concept.Float
     end
 
 	testset "Concept from interface" do

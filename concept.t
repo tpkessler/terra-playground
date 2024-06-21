@@ -157,6 +157,11 @@ for _, prefix in pairs({"", "u"}) do
 	end
 end
 
+M.Real = Concept:new("Real", function(T) return false end)
+M.Real:adddefinition(M.Integer.name, function(T) return M.Integer(T) end)
+M.Real:adddefinition(M.Float.name, function(T) return M.Float(T) end)
 M.Real = Concept:new("Real", function(T) return M.Integer(T) or M.Float(T) end)
+
+M.Number = Concept:new("Number", function(T) return M.Real(T) end)
 
 return M
