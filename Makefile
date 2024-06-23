@@ -10,7 +10,14 @@ endif
 
 CFLAGS=-O2 -march=native -fPIC
 
-all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn)
+all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn)
+
+
+libhash.$(dyn): hashmap.o
+	$(CC) -fPIC -shared $^ -o $@
+
+hashmap.o: hashmap.c hashmap.h
+	$(CC) $(CFLAGS) $< -c -o $@
 
 libexport.$(dyn): export.o
 	$(CC) -fPIC -shared $^ -o $@
