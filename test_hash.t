@@ -1,16 +1,7 @@
 local hash = require("hash")
 local string = terralib.includec("string.h")
 
-local terra length_str(a: &rawstring)
-	var size: int64 = string.strlen(@a)
-	return size
-end
-
-local terra compare_str(a: &rawstring, b: &rawstring)
-	return string.strcmp(@a, @b)
-end
-
-local HashMap = hash.HashMap(rawstring, int32, length_str, compare_str)
+local HashMap = hash.HashMap(rawstring, int32)
 
 import "terratest/terratest"
 
@@ -33,24 +24,7 @@ testenv "HashMap with strings" do
 	end
 end
 
-local terra length_ptr(a: &&opaque)
-	return 8l
-end
-
-local terra compare_ptr(a: &&opaque, b: &&opaque)
-	var addr_a = [int64](@a)
-	var addr_b = [int64](@b)
-
-	if addr_a > addr_b then
-		return 1
-	elseif addr_a < addr_b then
-		return -1
-	else
-		return 0
-	end
-end
-
-local HashPtr = hash.HashMap(&opaque, int64, length_ptr, compare_ptr)
+local HashPtr = hash.HashMap(&opaque, int64)
 
 testenv "HashMap with pointers" do
 	terracode
@@ -76,3 +50,30 @@ testenv "HashMap with pointers" do
 		test bytes_int == 31 * 4
 	end
 end
+
+local HashInt = hash.HashMap(int64, double)
+
+testenv "HashMap with integer indices" do
+	terracode
+		var map = HashInt.new()
+		map:set(10, -123.0)
+		map:set(-2, 3.14)
+		map:set(0, 2.71)
+		var len = map:size()
+	end
+
+	testset "Size" do
+		test len == 3
+	end
+
+	testset "Getters" do
+		terracode
+			var x = arrayof(double, map:get(0), map:get(10), map:get(-2))
+			var xref = arrayof(double, 2.71, -123.0, 3.14)
+		end
+		for i = 1, 3 do
+			test x[i - 1] == xref[i - 1]
+		end
+	end
+end
+

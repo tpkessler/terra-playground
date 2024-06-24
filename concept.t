@@ -150,6 +150,14 @@ local M = {
 
 M.Any = Concept:new("Any", function(...) return true end)
 M.Bool = Concept:new("Bool", function(T) return T.name == "bool" end)
+M.RawString = Concept:new(tostring(rawstring), function(T) return T.name == rawstring.name end)
+M.Pointer = Concept:new("&Pointer", function(T) local name = T.name or tostring(T)
+												if name ~= nil then
+													return name:find("^&") ~= nil
+												else
+													return false
+												end
+											end)
 
 M.Float = Concept:new("Float") 
 for suffix, T in pairs({["32"] = float, ["64"] = double}) do
@@ -181,5 +189,6 @@ M.Real:adddefinition(M.Float.name, function(T) return M.Float(T) end)
 M.Real = Concept:new("Real", function(T) return M.Integer(T) or M.Float(T) end)
 
 M.Number = Concept:new("Number", function(T) return M.Real(T) end)
+M.Primitive = M.Integer + M.UInteger + M.Bool + M.Float
 
 return M

@@ -83,6 +83,21 @@ testenv "concepts" do
 
 	end
 
+	testset "Raw strings" do
+		test [concept.RawString(rawstring)]
+		test [concept.RawString(&uint) == false]
+		test [concept.RawString(concept.Primitive) == false]
+	end
+
+	testset "Pointers" do
+		test [concept.Pointer(concept.Pointer)]
+		test [concept.Pointer(concept.RawString)]
+		test [concept.RawString(concept.Pointer) == false]
+		test [concept.Pointer(&opaque)]
+		test [concept.Pointer(concept.Float) == false]
+		test [concept.Pointer(&&int)]
+	end
+
     testset "Function declarations" do
         local terra sum1 :: {concept.Real, concept.Real} -> concept.Real
         local terra sum2 :: {float, concept.Integer} -> concept.Float
