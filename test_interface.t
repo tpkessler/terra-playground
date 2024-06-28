@@ -13,7 +13,7 @@ B = interface.Interface:new{
 }
 
 testenv "Caching" do
-	local ok, ret = pcall(function() return A.type == B.type end)
+	local ok, ret = pcall(function() return A == B end)
 	test ok == true
 	test ret == true
 end
@@ -67,4 +67,26 @@ testenv "Too many parameters" do
     local i, j = string.find(ret, "Expected signature")
     test i > 1
 	test j > 1
+end
+
+testenv "Cast" do
+	local struct S {
+		x: double
+		y: int
+	}
+	terra S:add_one() self.x = self.x + 1.0 end
+	terra S:inc(y: int) self.y = self.y + y; return 1.0 end
+	local ok, ret = pcall(function(T) A:isimplemented(T) end, S)
+	test ok == true
+
+	terracode
+		var s = S {2.0, 3}
+		var a: A = &s
+		a:add_one()
+		a:inc(2)
+		var xs = s.x
+		var ys = s.y
+	end
+	test xs == 3.0
+	test ys == 5
 end

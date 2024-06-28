@@ -53,7 +53,7 @@ local construct_wrapper = terralib.memoize(function(methods_str)
 		-- concrete type.
 		local param = terralib.newlist{&opaque} -- First argument is always self
 		local sym = terralib.newlist()
-		-- Loop over arguments of the interface interface and prepare lists
+		-- Loop over arguments of the interface and prepare lists
 		-- for the meta programmed method call.
 		for _, typ in ipairs(func.type.parameters) do
 			param:insert(typ)
@@ -74,9 +74,7 @@ local construct_wrapper = terralib.memoize(function(methods_str)
 		wrapper.methods[name] = impl
 	end
 
-	rawset(wrapper, "vtable", vtable)
-
-	return wrapper
+	return {wrapper, vtable}
 end)
 
 function Interface:new(methods)
@@ -109,7 +107,7 @@ function Interface:new(methods)
 	for name, method in pairs(methods) do
 		method_str[name] = serde.serialize_pointertofunction(method)
 	end
-	local wrapper = construct_wrapper(serde.serialize_table(method_str))
+	local wrapper, vtable = unpack(construct_wrapper(serde.serialize_table(method_str)))
 	rawset(wrapper, "type", "interface")
 	-- Store reference methods without the &self parameter in the beginning
 	-- for easier checks if a given struct implements the interface.
@@ -144,7 +142,6 @@ function Interface:new(methods)
 		if to:isstruct() and from:ispointertostruct() then
 			assert(wrapper:isimplemented(from.type))
 			assert(to == wrapper)
-			local vtable = wrapper.vtable
 			-- Now we initialize the vtable with pointers to
 			-- the actual methods for type from.
 			-- IMPORTANT: When setting up vtable struct we fixed
