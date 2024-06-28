@@ -83,10 +83,11 @@ testenv "Cast" do
 		var s = S {2.0, 3}
 		var a: A = &s
 		a:add_one()
-		a:inc(2)
+		var rs = a:inc(2)
 		var xs = s.x
 		var ys = s.y
 	end
+	test rs == 1.0
 	test xs == 3.0
 	test ys == 5
 end
