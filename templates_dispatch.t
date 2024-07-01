@@ -7,9 +7,7 @@ local io = terralib.includec("stdio.h")
 --abstract integers
 local Integer = concept.Integer
 
-local function AbstractStack(S)
-
-    local T = double
+local function AbstractStack(S, T)
 
     S.methods.__init = terra(self : &S)
         var x : T = 2.0
@@ -40,7 +38,7 @@ end
 
 function Stack(T)
 
-    local Base = AbstractStack
+    local Base = function(S) AbstractStack(S, T) end
 
     local struct stack(Base){
         data : &T
