@@ -1,5 +1,6 @@
 --load 'terralibext' to enable raii
 require "terralibext"
+local base = require("base")
 local template = require("template")
 local concept = require("concept")
 local io = terralib.includec("stdio.h")
@@ -71,6 +72,44 @@ function Stack(T)
     return stack
 end
 
+local struct X{}
+
+X.metamethods.__methodmissing = macro(function(method,...)
+    local f = rawget(X, method)
+    if f then
+        local args = terralib.newlist{...}
+        return `f(args)        --call generated terra function on concrete type
+    end
+    local gen = X.generate[method]
+    if gen then
+        local args = terralib.newlist{...}
+        local types = args:map(function(v) return v.tree.type end)
+        local f = gen(unpack(types))     --get generated terra function  
+        return `f(args)        --call generated terra function on concrete type
+    end
+end)
+
+terra X.myterrafun(a : int, b : int)
+    return a * b
+end
+
+local Integer = concept.Integer
+
+X.generate = {}
+X.generate.foo = template.Template:new()
+X.generate.foo[Integer] = function(S)
+    return terra (x : S)
+        return x * x
+    end
+end
+X.generate.foo[{Integer,Integer}] = function(S1,S2)
+    return terra (x : S1, y : S2)
+        return x * y
+    end
+end
+
+
+
 local mystack = Stack(double)
 
 terra main()
@@ -82,6 +121,8 @@ terra main()
     io.printf("my size: %d\n", x:size())
     io.printf("my foo: %f\n", x:foo())
     io.printf("my other foo: %f\n", x:foo(y))
+    io.printf("my free function eval: %d\n", X.myterrafun(1,2))
+    io.printf("my generated static function foo: %d\n", X.foo(2, 3))
 end
 
 main()
