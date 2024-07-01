@@ -4,8 +4,6 @@ local template = require("template")
 local concept = require("concept")
 local io = terralib.includec("stdio.h")
 
---abstract integers
-local Integer = concept.Integer
 
 local function AbstractStack(S, T)
 
@@ -54,6 +52,11 @@ function Stack(T)
             return @x.data * @x.data
         end
     end
+    stack.generate.foo[{Stack,Stack}] = function(S1,S2)
+        return terra (x : S1, y : S2) : T
+            return @x.data * @y.data
+        end
+    end
 
     stack.metamethods.__methodmissing = macro(function(method,...)
         local f = stack.generate[method]
@@ -72,9 +75,13 @@ local mystack = Stack(double)
 
 terra main()
     var x : mystack
+    var y : mystack
+    x:set(3)
+    y:set(4)
     io.printf("my data: %f\n", x:get())
     io.printf("my size: %d\n", x:size())
     io.printf("my foo: %f\n", x:foo())
+    io.printf("my other foo: %f\n", x:foo(y))
 end
 
 main()
