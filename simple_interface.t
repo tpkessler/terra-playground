@@ -17,7 +17,7 @@ terra B:size(): int64 return 2 end
 terra B:get(i: int64) return -0.33 end
 terra B:set(i: int64, a: double) end
 
-terra foo(a: I.type)
+terra foo(a: I)
 	return 2 * a:get(0)
 end
 
