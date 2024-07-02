@@ -4,7 +4,7 @@ local C = terralib.includecstring[[
 ]]
 local interface = require("interface")
 
-local Allocater = interface.Interface:new{
+local Allocator = interface.Interface:new{
 	alloc = uint64 -> {&opaque},
 	free = &opaque -> {}
 }
@@ -19,7 +19,7 @@ terra stdlib:alloc(size: uint64): &opaque
 
 	if res ~= 0 then
 		var size_gib = 1.0 * size / (1024 * 1024 * 1024)
-		C.fprintf(C.stderr, "Cannot allocate memory for buffer of size %g GiB\n",
+		C.printf("Cannot allocate memory for buffer of size %g GiB\n",
 							size_gib)
 		C.abort()
 	end
@@ -31,10 +31,10 @@ terra stdlib:free(ptr: &opaque)
 	C.free(ptr)
 end
 
-Allocater:isimplemented(stdlib)
+Allocator:isimplemented(stdlib)
 
 
 return {
 		Default = stdlib,
-		Allocater = Allocater,
+		Allocator = Allocator,
 	   }
