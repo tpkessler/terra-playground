@@ -73,23 +73,35 @@ function Stack(T)
 end
 
 local struct X{}
+X.staticmethods = {}
 
-X.metamethods.__methodmissing = macro(function(method,...)
-    local f = rawget(X, method)
-    if f then
-        local args = terralib.newlist{...}
-        return `f(args)        --call generated terra function on concrete type
+X.metamethods.__getmethod = function(self,methodname)
+    print("called __getmethod for ".. tostring(methodname))
+    local fnlike = self.methods[methodname] or self.staticmethods[methodname]
+    if not fnlike and terralib.ismacro(self.metamethods.__methodmissing) then
+        fnlike = terralib.internalmacro(function(ctx,tree,...)
+            return self.metamethods.__methodmissing:run(ctx,tree,methodname,...)
+        end)
     end
-    local gen = X.generate[method]
+    return fnlike
+end
+
+X.metamethods.__methodmissing = macro(function(methodname,...)
+    print("called __methodmissing for ".. tostring(methodname))
+    local gen = X.generate[methodname]
     if gen then
         local args = terralib.newlist{...}
         local types = args:map(function(v) return v.tree.type end)
         local f = gen(unpack(types))     --get generated terra function  
+--        if not X.staticmethods[methodname] then
+--            X.staticmethods[methodname] = terralib.overloadedfunction(methodname)
+--        end
+--        X.staticmethods[methodname]:adddefinition(f)
         return `f(args)        --call generated terra function on concrete type
     end
 end)
 
-terra X.myterrafun(a : int, b : int)
+terra X.staticmethods.myterrafun(a : int, b : int)
     return a * b
 end
 
@@ -123,6 +135,7 @@ terra main()
     io.printf("my other foo: %f\n", x:foo(y))
     io.printf("my free function eval: %d\n", X.myterrafun(1,2))
     io.printf("my generated static function foo: %d\n", X.foo(2, 3))
+    io.printf("my generated static function foo: %d\n", X.foo(2))
 end
 
 main()
