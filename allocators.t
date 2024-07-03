@@ -15,25 +15,24 @@ local size_t = uint64
 
 local function Allocators(T)
 
+    --opaque allocator object with only the 'deallocate' 
+    --method available
+    local struct deallocator{
+        handle : &opaque        --handle to the allocator instance
+        deallocate : {&opaque, block} -> {}    --pointer to its 'deallocate' method
+    }
+
     local struct block{
         ptr : &T
         size : size_t
-        allocator : &opaque
-        deallocator : &opaque
+        dealloc : deallocator
     }
-
-    terra block:deallocate()
-        C.printf("Calling block.methods.deallocate. \n")
-        var f = [{&opaque, block} -> {}](self.deallocator)
-        f(self.allocator, @self)
-	end
 
     block.staticmethods = {}
 
     block.methods.__init = terra(self : &block)
         self.ptr = nil
         self.size = 0
-        self.allocator = nil
     end
 
     block.methods.get = terra(self : &block, i : size_t)
@@ -52,6 +51,12 @@ local function Allocators(T)
     block.methods.set:setinlined(true)
     block.methods.size:setinlined(true)
 
+    block.methods.__dtor = terra(self : &block)
+        C.printf("Calling block.methods.deallocate. \n")
+        self.dealloc.deallocate(self.dealloc.handle, @self)
+    end
+
+
     local struct default{
     }
 
@@ -60,13 +65,15 @@ local function Allocators(T)
         C.free(mem.ptr)
     end
 
+    --function pointer to the 'deallocate' method of the 'default' allocator
     local fptr = constant(default.methods.deallocate:getpointer())
 
     terra default:allocate(size : size_t)
         var alignment = 64 -- Memory alignment for AVX512    
         var ptr : &opaque = nil 
         var res = C.posix_memalign(&ptr, alignment, size * sizeof(T))
-        return block{[&T](ptr), size, [&opaque](self), [&opaque](fptr)}
+        var deallocator = deallocator{[&opaque](self), [{&opaque, block} -> {}](fptr)}
+        return block{[&T](ptr), size, deallocator}
     end
 
     --Allocator:isimplemented(default)
@@ -83,11 +90,8 @@ local Alloc = Allocators(double)
 terra main()
     var x : Alloc.Default
     var blk = x:allocate(10)
-    var a = @[&Alloc.Default](blk.allocator)
     C.printf("address x : %p\n", &x)
-    C.printf("address a : %p\n", &a)
     C.printf("size of allocation: %d\n", blk:size())
-    blk:deallocate()
 end
 
 main()
