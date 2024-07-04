@@ -25,6 +25,19 @@ local function SmartBlock(T)
     	dealloc : deallocator
 	}
 
+	block.isblock = function(self)
+		return true
+	end
+
+	block.type = function(self)
+		return block
+	end
+
+
+	block.eltype = function(self)
+		return T
+	end
+
 	block.staticmethods = {}
 
 	block.methods.__init = terra(self : &block)
@@ -66,6 +79,23 @@ local function SmartBlock(T)
 		block.methods.set:setinlined(true)
 	end
 
+	-- Cast block of one type to another
+	function block.metamethods.__cast(from, to, exp)
+		if to.isblock() and from.isblock() then
+			local B = to.type()
+			local T2 = to.eltype()
+			local T1 = from.eltype()
+			local Size1 = T1==opaque and 1 or sizeof(T1)
+			local Size2 = T2==opaque and 1 or sizeof(T2)
+			return quote
+				var blk = exp
+				var newsize = blk.size * Size1 / Size2
+			in
+				B {[&T2](blk.ptr), newsize, blk.dealloc}
+			end
+		end
+	end
+
 	return block
 end
 
@@ -73,6 +103,8 @@ end
 --Allocators use. These 'typeless' blocks can be cast to 
 --corresponding 'typed' blocks of the correct size.
 local block = SmartBlock(opaque)
+
+print(block.isblock)
 
 local Allocator = interface.Interface:new{
 	allocate = {size_t, size_t} -> {block},
@@ -124,9 +156,9 @@ end
 
 Allocator:isimplemented(default)
 
-
 return {
 	Allocator = Allocator,
-	default = default,
-    block = block
+	SmartBlock = SmartBlock,
+	block = block,
+	default = default
 }

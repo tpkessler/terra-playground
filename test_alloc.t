@@ -17,6 +17,18 @@ end
 
 main()
 
+local doubles = Alloc.SmartBlock(double)
+
+terra mytest()
+	var A : Alloc.default
+    var y : doubles = A:allocate(8, 3)
+	@y.ptr = 3.0
+	io.printf("value of y.ptr: %f\n", @y.ptr)
+	io.printf("value of y.size: %d\n", y.size)
+end
+
+mytest()
+
 
 testenv "Default allocator" do
 	terracode
@@ -60,5 +72,16 @@ testenv "Default allocator" do
 		test x.dealloc.deallocate == nil
 	end
 
-end
+	local doubles = Alloc.SmartBlock(double)
 
+	testset "Cast opaque block to typed block" do
+		terracode
+			var y : doubles = A:allocate(8, 3)
+		end
+		test y.ptr ~= nil
+		test y:size() == 3
+		test y.dealloc.handle ~= nil
+		test y.dealloc.deallocate ~= nil
+	end
+
+end
