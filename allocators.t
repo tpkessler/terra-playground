@@ -1,8 +1,5 @@
 --load 'terralibext' to enable raii
 require "terralibext"
-local base = require("base")
-local template = require("template")
-local concept = require("concept")
 local interface = require("interface")
 
 local C = terralib.includecstring[[
@@ -42,6 +39,10 @@ block.methods.__dtor = terra(self : &block)
     self.dealloc.deallocate(self.dealloc.handle, @self)
 end
 
+local Allocator = interface.Interface:new{
+	allocate = {size_t, size_t} -> {block},
+	deallocate = {block} -> {}
+}
 
 local struct default{
 }
@@ -61,6 +62,15 @@ terra default:allocate(size : size_t, count : size_t)
     var deallocator = deallocator{[&opaque](self), [{&opaque, block} -> {}](fptr)}
     return block{ptr, size * count, deallocator}
 end
+
+Allocator:isimplemented(default)
+
+
+return {
+	Allocator = Allocator,
+	default = default,
+    block = block
+}
 
 
 terra main()
