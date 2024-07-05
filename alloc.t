@@ -35,7 +35,6 @@ local SmartBlock = terralib.memoize(function(T)
 	--memory is always hot.
 	local struct block{
     	ptr : &T
-    	size : size_t
     	alloc : &allochandle
 	}
 
@@ -43,19 +42,23 @@ local SmartBlock = terralib.memoize(function(T)
 	block.isblock = true
 	block.type = block
 	block.eltype = T
+    
+    local elsize = T==opaque and 1 or sizeof(T)
 
-	block.methods.size = terra(self : &block)
-		return self.size
+    block.methods.isempty = terra(self : &block)
+		return self.ptr==nil and self.alloc == nil
+	end
+
+	block.methods.size = terra(self : &block) : size_t
+        if not self:isempty() then
+            return ([&u8](self.alloc) - [&u8](self.ptr)) / elsize
+        end
+        return 0
 	end
 	block.methods.size:setinlined(true)
 
-	block.methods.isempty = terra(self : &block)
-		return self:size()==0 and self.ptr==nil and self.alloc == nil
-	end
-
 	block.methods.__init = terra(self : &block)
 		self.ptr = nil
-		self.size = 0
 		self.alloc = nil
 	end
 
@@ -99,7 +102,7 @@ local SmartBlock = terralib.memoize(function(T)
 				--remainder zero after integer division
 				err.assert(newsize * Size2 == blk:size() * Size1)
 			in
-				B {[&T2](blk.ptr), newsize, blk.alloc}
+				B {[&T2](blk.ptr), blk.alloc}
 			end
 		end
 	end
@@ -136,14 +139,10 @@ end
 
 terra default:deallocate(mem : &block)
 	C.printf("Calling deallocate default:deallocate\n")
-    if self:owns(mem) then 
-        mem.alloc.handle = nil
-        mem.alloc.fhandle = nil
+    if self:owns(mem) then
 		C.printf("Freeing memory\n")
 		C.free(mem.ptr)
-		mem.ptr = nil
-		mem.size = 0
-		mem.alloc = nil
+		mem:__init()
 	end
 end
 
@@ -176,11 +175,11 @@ terra default:allocate(size : size_t, count : size_t)
     var res = C.posix_memalign(&ptr, alignment, size * count + 16)
     --create handle to allocater 'self' and its allocation function pointer
     --these form a sentinal to the memory data, which means they are placed
-    --right after the 'size * count' bytes of data
+    --right after the 'size * count' bytes of data, to define memory block 'size'
     var sentinal = [&allochandle]([&byte](ptr) + size * count)
     sentinal.handle = [&opaque](self)
     sentinal.fhandle = [&opaque](allocators_best_friend)
-    return block{ptr, size * count, sentinal}
+    return block{ptr, sentinal}
 end
 
 --sanity check - is the allocator interface implemented
