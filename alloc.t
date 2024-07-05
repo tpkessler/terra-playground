@@ -22,7 +22,7 @@ local struct __allocator{
 --'metamethods.__cast' casts 'SmartBlock(opaque)' automatically to 'SmartBlock(T)'.
 --'SmartBlock(T)' for a concrete type 'T' can be used as a smart pointer in containers.
 --'methods.__init' and 'methods.__dtor' enable RAII
-local function SmartBlock(T)
+local SmartBlock = terralib.memoize(function(T)
 
 	--ToDo: remove 'size', place 'alloc' in the heap allocation
 	--and use 'alloc.handle' as a sentinal to determine the size
@@ -101,7 +101,7 @@ local function SmartBlock(T)
 	end
 
 	return block
-end
+end)
 
 --just a block of memory, no type information. This is what
 --Allocators use. These 'typeless' blocks can be cast to 
@@ -128,7 +128,9 @@ terra default:owns(mem : &block) : bool
 end
 
 terra default:deallocate(mem : &block)
+	C.printf("Calling deallocate default:deallocate\n")
     if self:owns(mem) then 
+		C.printf("Freeing memory\n")
 		C.free(mem.ptr)
 		mem.ptr = nil
 		mem.size = 0
