@@ -29,6 +29,12 @@ end
 
 mytest()
 
+terra remainder(a : int, b : int) : int
+    return a % b
+end
+
+test remainder(9,3) == 0
+
 testenv "Default allocator" do
 	terracode
 		var A : Alloc.default

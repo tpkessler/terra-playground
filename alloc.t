@@ -43,11 +43,12 @@ local SmartBlock = terralib.memoize(function(T)
 	block.type = block
 	block.eltype = T
     
-    local elsize = T==opaque and 1 or sizeof(T)
-
     block.methods.isempty = terra(self : &block)
 		return self.ptr==nil and self.alloc == nil
 	end
+
+    -- sizeof(T) if T is a concrete type
+    local elsize = T==opaque and 1 or sizeof(T)
 
 	block.methods.size = terra(self : &block) : size_t
         if not self:isempty() then
@@ -97,10 +98,9 @@ local SmartBlock = terralib.memoize(function(T)
 			local Size2 = T2==opaque and 1 or sizeof(T2)
 			return quote
 				var blk = exp
-				var newsize = blk:size() * Size1 / Size2
 				--debug check if sizes are compatible, that is, is the
 				--remainder zero after integer division
-				err.assert(newsize * Size2 == blk:size() * Size1)
+				err.assert((blk:size() * Size1) % Size2  == 0)
 			in
 				B {[&T2](blk.ptr), blk.alloc}
 			end
