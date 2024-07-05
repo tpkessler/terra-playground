@@ -57,8 +57,8 @@ testenv "Default allocator" do
 		end
 		test x.ptr == nil
 		test x.size == 0
-		test x.dealloc.handle == nil
-		test x.dealloc.deallocate == nil
+		test x.alloc.handle == nil
+		test x.alloc.fhandle == nil
 	end
 
 	testset "Free - using __dtor" do
@@ -68,20 +68,24 @@ testenv "Default allocator" do
 		end
 		test x.ptr == nil
 		test x.size == 0
-		test x.dealloc.handle == nil
-		test x.dealloc.deallocate == nil
+		test x.alloc.handle == nil
+		test x.alloc.fhandle == nil
 	end
 
 	local doubles = Alloc.SmartBlock(double)
 
 	testset "Cast opaque block to typed block" do
 		terracode
-			var y : doubles = A:allocate(8, 3)
+			var y : doubles = A:allocate(sizeof(double), 2)
+			y:set(0, 1.0)
+			y:set(1, 2.0)
 		end
-		test y.ptr ~= nil
-		test y:size() == 3
-		test y.dealloc.handle ~= nil
-		test y.dealloc.deallocate ~= nil
+		test @y.ptr == 1.0
+		test y:get(0) == 1.0
+		test y:get(1) == 2.0
+		test y:size() == 2
+		test y.alloc.handle ~= nil
+		test y.alloc.fhandle ~= nil
 	end
 
 end
