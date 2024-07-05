@@ -17,7 +17,7 @@ local u64 = uint64
 
 --opaque allocator object with a handle to the concrete 
 --allocator instance. 
-local struct __allocator{
+local struct allochandle{
     handle : &opaque        --handle to the allocator instance
 	fhandle : &opaque    	--pointer to its '__allocators_best_friend' method
 }
@@ -36,7 +36,7 @@ local SmartBlock = terralib.memoize(function(T)
 	local struct block{
     	ptr : &T
     	size : size_t
-    	alloc : __allocator
+    	alloc : &allochandle
 	}
 
 	--type traits
@@ -50,20 +50,19 @@ local SmartBlock = terralib.memoize(function(T)
 	block.methods.size:setinlined(true)
 
 	block.methods.isempty = terra(self : &block)
-		return self:size()==0 and self.ptr==nil
+		return self:size()==0 and self.ptr==nil and self.alloc == nil
 	end
 
 	block.methods.__init = terra(self : &block)
 		self.ptr = nil
 		self.size = 0
-		self.alloc.handle = nil
-		self.alloc.fhandle = nil
+		self.alloc = nil
 	end
 
 	block.methods.__dtor = terra(self : &block)
 		--using 'self.alloc.fhandle' function pointer to 
 		--deallocate 'self'
-		if self.alloc.handle ~= nil then
+		if not self:isempty() then
 			var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
 			free(self.alloc.handle, self, 0)
 		end
@@ -129,18 +128,22 @@ local struct default{
 }
 
 terra default:owns(mem : &block) : bool
-    return self == [&default](mem.alloc.handle)
+    if not mem:isempty() then
+        return self == [&default](mem.alloc.handle)
+    end
+    return false
 end
 
 terra default:deallocate(mem : &block)
 	C.printf("Calling deallocate default:deallocate\n")
     if self:owns(mem) then 
+        mem.alloc.handle = nil
+        mem.alloc.fhandle = nil
 		C.printf("Freeing memory\n")
 		C.free(mem.ptr)
 		mem.ptr = nil
 		mem.size = 0
-		mem.alloc.handle = nil
-		mem.alloc.fhandle = nil
+		mem.alloc = nil
 	end
 end
 
@@ -154,6 +157,7 @@ terra default:__allocators_best_friend(mem : &block, newsize : size_t)
 	else
 		if newsize == 0 then
 			--free memory
+            C.printf("Calling allocators best friend\n")
 			self:deallocate(mem)
 		elseif newsize > mem:size() then
 			--reallocate memory
@@ -173,10 +177,10 @@ terra default:allocate(size : size_t, count : size_t)
     --create handle to allocater 'self' and its allocation function pointer
     --these form a sentinal to the memory data, which means they are placed
     --right after the 'size * count' bytes of data
-    var sentinal = [&&opaque]([&byte](ptr) + size * count)
-    sentinal[0] = [&opaque](self)
-    sentinal[1] = [&opaque](allocators_best_friend)
-    return block{ptr, size * count, __allocator{sentinal[0], sentinal[1]}}
+    var sentinal = [&allochandle]([&byte](ptr) + size * count)
+    sentinal.handle = [&opaque](self)
+    sentinal.fhandle = [&opaque](allocators_best_friend)
+    return block{ptr, size * count, sentinal}
 end
 
 --sanity check - is the allocator interface implemented

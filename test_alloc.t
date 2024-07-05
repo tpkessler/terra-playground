@@ -22,13 +22,12 @@ local doubles = Alloc.SmartBlock(double)
 terra mytest()
 	var A : Alloc.default
     var y : doubles = A:allocate(8, 3)
-	@y.ptr = 3.0
+	y:set(0, 3.0)
 	io.printf("value of y.ptr: %f\n", @y.ptr)
-	io.printf("value of y.size: %d\n", y.size)
+	io.printf("value of y.size: %d\n", y:size())
 end
 
 mytest()
-
 
 testenv "Default allocator" do
 	terracode
@@ -39,26 +38,23 @@ testenv "Default allocator" do
 	testset "Init" do
 		test x.ptr == nil
 		test x:size() == 0
+        test x.alloc == nil
 	end
 
 	testset "Alloc" do
 		terracode
 			x = A:allocate(sizeof(double), 2)
 		end
-		test x.ptr ~= nil
+		test x:isempty() == false
 		test A:owns(&x)
 	end
-
 
 	testset "Free - using allocator" do
 		terracode
 			x = A:allocate(sizeof(double), 2)
 			A:deallocate(&x)
 		end
-		test x.ptr == nil
-		test x.size == 0
-		test x.alloc.handle == nil
-		test x.alloc.fhandle == nil
+		test x:isempty()
 	end
 
 	testset "Free - using __dtor" do
@@ -66,10 +62,7 @@ testenv "Default allocator" do
 			x = A:allocate(sizeof(double), 2)
 			x:__dtor()
 		end
-		test x.ptr == nil
-		test x.size == 0
-		test x.alloc.handle == nil
-		test x.alloc.fhandle == nil
+		test x:isempty()
 	end
 
 	local doubles = Alloc.SmartBlock(double)
@@ -80,12 +73,10 @@ testenv "Default allocator" do
 			y:set(0, 1.0)
 			y:set(1, 2.0)
 		end
-		test @y.ptr == 1.0
+        test y:isempty() == false
 		test y:get(0) == 1.0
 		test y:get(1) == 2.0
 		test y:size() == 2
-		test y.alloc.handle ~= nil
-		test y.alloc.fhandle ~= nil
 	end
 
 end
