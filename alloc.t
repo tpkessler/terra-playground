@@ -9,6 +9,11 @@ local C = terralib.includecstring[[
 ]]
 
 local size_t = uint64
+local byte = uint8
+local u8 = uint8
+local u16 = uint16
+local u32 = uint32
+local u64 = uint64
 
 --opaque allocator object with a handle to the concrete 
 --allocator instance. 
@@ -157,14 +162,21 @@ terra default:__allocators_best_friend(mem : &block, newsize : size_t)
 end
 
 --get a function pointer to 'default:__allocators_best_friend'
-local __allocators_best_friend = constant(default.methods.__allocators_best_friend:getpointer())
+local allocators_best_friend = constant(default.methods.__allocators_best_friend:getpointer())
 
 terra default:allocate(size : size_t, count : size_t)
     var alignment = 64 -- Memory alignment for AVX512    
-    var ptr : &opaque = nil 
-    var res = C.posix_memalign(&ptr, alignment, size * count)
-    var __allocator = __allocator{[&opaque](self), [&opaque](__allocators_best_friend)}
-    return block{ptr, size * count, __allocator}
+    var ptr : &opaque = nil
+    --allocate memory for the data ('size * count' bytes) and storage
+    --of two pointers (2*8 bytes), the allocator handle and its function pointer
+    var res = C.posix_memalign(&ptr, alignment, size * count + 16)
+    --create handle to allocater 'self' and its allocation function pointer
+    --these form a sentinal to the memory data, which means they are placed
+    --right after the 'size * count' bytes of data
+    var sentinal = [&&opaque]([&byte](ptr) + size * count)
+    sentinal[0] = [&opaque](self)
+    sentinal[1] = [&opaque](allocators_best_friend)
+    return block{ptr, size * count, __allocator{sentinal[0], sentinal[1]}}
 end
 
 --sanity check - is the allocator interface implemented
