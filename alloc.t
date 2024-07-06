@@ -6,6 +6,7 @@ local err = require("assert")
 local C = terralib.includecstring[[
 	#include <stdio.h>
 	#include <stdlib.h>
+    #include <string.h>
 ]]
 
 local size_t = uint64
@@ -29,13 +30,13 @@ local struct allochandle{
 --'methods.__init' and 'methods.__dtor' enable RAII
 local SmartBlock = terralib.memoize(function(T)
 
-	--ToDo: remove 'size', place 'alloc' in the heap allocation
-	--and use 'alloc.handle' as a sentinal to determine the size
-	--of the allocation. Then 'sizeof(block) == 16' bytes and the
-	--memory is always hot.
+    --abstraction of memory block
+    --if T is a primitive type or a terra vector then we may use alignfac to
+    --control the alignment of the memory block using 'alignment = sizeof(T) * alignfac' 
 	local struct block{
-    	ptr : &T
-    	alloc : &allochandle
+    	ptr : &T                --Pointer to the actual data
+    	alloc : &allochandle    --Handle to opaque allocator object
+        alignfac : uint8        --factor that can be used to control alignment
 	}
 
 	--type traits
@@ -61,6 +62,7 @@ local SmartBlock = terralib.memoize(function(T)
 	block.methods.__init = terra(self : &block)
 		self.ptr = nil
 		self.alloc = nil
+        self.alignfac = 0
 	end
 
 	block.methods.__dtor = terra(self : &block)
@@ -102,7 +104,7 @@ local SmartBlock = terralib.memoize(function(T)
 				--remainder zero after integer division
 				err.assert((blk:size() * Size1) % Size2  == 0)
 			in
-				B {[&T2](blk.ptr), blk.alloc}
+				B {[&T2](blk.ptr), blk.alloc, blk.alignfac}
 			end
 		end
 	end
@@ -126,68 +128,117 @@ local Allocator = interface.Interface:new{
 	owns = {&block} -> {bool}
 }
 
---the default allocator
-local struct default{
-}
+local DefaultAllocator = function(options)
+  
+    --get input options
+    local options = options or {}
+    local Alignment = options.alignment or 64 --Memory alignment for AVX512 == 64
+    local Initialize = options.initialize or false
+    
+    --check input options
+    assert(Alignment >= 0 and Alignment % 8 == 0)   --alignment is a multiple of 8 bytes
+    assert(type(Initialize) == "boolean")   --initialize memory or not
 
-terra default:owns(mem : &block) : bool
-    if not mem:isempty() then
-        return self == [&default](mem.alloc.handle)
+    local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
+        return  ((size + alignment - 1) / alignment) * alignment
     end
-    return false
+
+    --allocate lambda, used to get a uniform api
+    local terra __allocate :: {size_t, size_t} -> {&opaque}
+
+    if Alignment == 0 then --use natural alignment
+        if not Initialize then
+            terra __allocate(size : size_t, counter : size_t)
+                return C.malloc(size * counter)
+            end
+        else --initialize to zero using 'calloc'
+            terra __allocate(size : size_t, counter : size_t)
+                return C.calloc(counter, size)
+            end
+        end
+    else --use user defined alignment (multiple of 8 bytes)
+        if not Initialize then
+            terra __allocate(size : size_t, counter : size_t)
+                return C.aligned_alloc(Alignment, round_to_aligned(size * counter, Alignment))
+            end
+        else --initialize to zero using 'memset'
+            terra __allocate(size : size_t, counter : size_t)
+                var len = round_to_aligned(size * counter, Alignment)
+                var ptr = C.aligned_alloc(Alignment, len)
+                C.memset(ptr, 0, len)
+                return ptr
+            end
+        end
+    end
+
+    --the default allocator
+    local struct default{
+    }
+
+    terra default:owns(mem : &block) : bool
+        if not mem:isempty() then
+            return self == [&default](mem.alloc.handle)
+        end
+        return false
+    end
+
+    --single method that can allocate, free and reallocate memory
+    --this method mirrors the 'lua_Alloc' function, 
+    --see also 'https://nullprogram.com/blog/2023/12/17/'
+    --a pointer to this method is set to block.alloc.fhandle
+    terra default:__allocators_best_friend(mem : &block, newsize : size_t)
+        if mem:isempty() and newsize > 0 then
+            --allocate new memory
+            --self:__allocate(mem, newsize)
+        else
+            if newsize == 0 then
+                --free memory
+                C.printf("Calling allocators best friend\n")
+                self:deallocate(mem)
+            elseif newsize > mem:size() then
+                --reallocate memory
+            end
+        end
+    end
+
+    terra default:deallocate(mem : &block)
+        C.printf("Calling deallocate default:deallocate\n")
+        if self:owns(mem) then
+            C.printf("Freeing memory\n")
+            C.free(mem.ptr)
+            mem:__init()
+        end
+    end
+
+    --get a function pointer to 'default:__allocators_best_friend'
+    local allocators_best_friend = constant(default.methods.__allocators_best_friend:getpointer())
+
+    terra default:allocate(size : size_t, count : size_t)    
+        --var ptr : &opaque = nil
+        --allocate memory for the data ('size * count' bytes) and storage
+        --of two pointers (2*8 bytes), the allocator handle and its function pointer
+        var ptr = C.aligned_alloc(Alignment, round_to_aligned(size * count + 16, Alignment))
+        --create handle to allocater 'self' and its allocation function pointer
+        --these form a sentinal to the memory data, which means they are placed
+        --right after the 'size * count' bytes of data, to define memory block 'size'
+        var sentinal : &allochandle = nil
+        if ptr~=nil then
+            sentinal = [&allochandle]([&byte](ptr) + size * count)
+            sentinal.handle = [&opaque](self)
+            sentinal.fhandle = [&opaque](allocators_best_friend)
+        end
+        return block{ptr, sentinal}
+    end
+
+    --sanity check - is the allocator interface implemented
+    Allocator:isimplemented(default)
+
+    return default
 end
-
-terra default:deallocate(mem : &block)
-	C.printf("Calling deallocate default:deallocate\n")
-    if self:owns(mem) then
-		C.printf("Freeing memory\n")
-		C.free(mem.ptr)
-		mem:__init()
-	end
-end
-
---single method that can allocate, free and reallocate memory
---this method mirrors the 'lua_Alloc' function, 
---see also 'https://nullprogram.com/blog/2023/12/17/'
---a pointer to this method is set to block.alloc.fhandle
-terra default:__allocators_best_friend(mem : &block, newsize : size_t)
-	if mem:isempty() then
-		--allocate new memory
-	else
-		if newsize == 0 then
-			--free memory
-            C.printf("Calling allocators best friend\n")
-			self:deallocate(mem)
-		elseif newsize > mem:size() then
-			--reallocate memory
-		end
-	end
-end
-
---get a function pointer to 'default:__allocators_best_friend'
-local allocators_best_friend = constant(default.methods.__allocators_best_friend:getpointer())
-
-terra default:allocate(size : size_t, count : size_t)
-    var alignment = 64 -- Memory alignment for AVX512    
-    var ptr : &opaque = nil
-    --allocate memory for the data ('size * count' bytes) and storage
-    --of two pointers (2*8 bytes), the allocator handle and its function pointer
-    var res = C.posix_memalign(&ptr, alignment, size * count + 16)
-    --create handle to allocater 'self' and its allocation function pointer
-    --these form a sentinal to the memory data, which means they are placed
-    --right after the 'size * count' bytes of data, to define memory block 'size'
-    var sentinal = [&allochandle]([&byte](ptr) + size * count)
-    sentinal.handle = [&opaque](self)
-    sentinal.fhandle = [&opaque](allocators_best_friend)
-    return block{ptr, sentinal}
-end
-
---sanity check - is the allocator interface implemented
-Allocator:isimplemented(default)
 
 return {
-	Allocator = Allocator,
-	SmartBlock = SmartBlock,
 	block = block,
-	default = default
+    SmartBlock = SmartBlock,
+    Allocator = Allocator,
+    DefaultAllocator = DefaultAllocator
 }

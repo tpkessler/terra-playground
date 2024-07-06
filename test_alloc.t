@@ -1,11 +1,12 @@
 import "terratest/terratest"
 
 local io = terralib.includec("stdio.h")
-
 local Alloc = require("alloc")
 
+local DefaultAllocator = Alloc.DefaultAllocator()
+
 terra main()
-    var x : Alloc.default
+    var x : DefaultAllocator
 	var empty_block : Alloc.block
 	io.printf("address of heap: %p\n", empty_block.ptr)
 	var blk = x:allocate(8, 10)
@@ -20,7 +21,7 @@ main()
 local doubles = Alloc.SmartBlock(double)
 
 terra mytest()
-	var A : Alloc.default
+	var A : DefaultAllocator
     var y : doubles = A:allocate(8, 3)
 	y:set(0, 3.0)
 	io.printf("value of y.ptr: %f\n", @y.ptr)
@@ -29,15 +30,11 @@ end
 
 mytest()
 
-terra remainder(a : int, b : int) : int
-    return a % b
-end
-
-test remainder(9,3) == 0
+local DefaultAllocator = Alloc.DefaultAllocator()
 
 testenv "Default allocator" do
 	terracode
-		var A : Alloc.default
+		var A : DefaultAllocator
 		var x : Alloc.block
 	end
 
