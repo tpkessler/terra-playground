@@ -36,8 +36,7 @@ local SmartBlock = terralib.memoize(function(T)
 	local struct block{
     	ptr : &T                --Pointer to the actual data
     	alloc : &allochandle    --Handle to opaque allocator object
-        alignfac : uint8        --factor that can be used to control alignment
-	}
+    }
 
 	--type traits
 	block.isblock = true
@@ -62,7 +61,6 @@ local SmartBlock = terralib.memoize(function(T)
 	block.methods.__init = terra(self : &block)
 		self.ptr = nil
 		self.alloc = nil
-        self.alignfac = 0
 	end
 
 	block.methods.__dtor = terra(self : &block)
@@ -104,7 +102,7 @@ local SmartBlock = terralib.memoize(function(T)
 				--remainder zero after integer division
 				err.assert((blk:size() * Size1) % Size2  == 0)
 			in
-				B {[&T2](blk.ptr), blk.alloc, blk.alignfac}
+				B {[&T2](blk.ptr), blk.alloc}
 			end
 		end
 	end
@@ -132,8 +130,8 @@ local DefaultAllocator = function(options)
   
     --get input options
     local options = options or {}
-    local Alignment = options.alignment or 64 --Memory alignment for AVX512 == 64
-    local Initialize = options.initialize or false
+    local Alignment = options.Alignment or 0 --Memory alignment for AVX512 == 64
+    local Initialize = options.Initialize or false
     
     --check input options
     assert(Alignment >= 0 and Alignment % 8 == 0)   --alignment is a multiple of 8 bytes
@@ -144,29 +142,49 @@ local DefaultAllocator = function(options)
     end
 
     --allocate lambda, used to get a uniform api
-    local terra __allocate :: {size_t, size_t} -> {&opaque}
+    local terra __allocate :: {size_t, size_t} -> {block}
+
+    local terra __sentinal(ptr : &opaque, size : size_t) : &allochandle
+        var sentinal : &allochandle = nil
+        if ptr~=nil then
+            sentinal = [&allochandle]([&byte](ptr) + size)
+        end
+        return sentinal
+    end
 
     if Alignment == 0 then --use natural alignment
         if not Initialize then
             terra __allocate(size : size_t, counter : size_t)
-                return C.malloc(size * counter)
+                C.printf("Using 'malloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
+                var ptr = C.malloc(size * counter + 16)
+                var sen = __sentinal(ptr, size * counter)
+                return block{ptr, sen}
             end
         else --initialize to zero using 'calloc'
             terra __allocate(size : size_t, counter : size_t)
-                return C.calloc(counter, size)
+                C.printf("Using 'calloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
+                var newcounter = round_to_aligned(size * counter + 16, size) / size
+                var ptr = C.calloc(newcounter, size)
+                var sen = __sentinal(ptr, size * counter)
+                return block{ptr, sen}
             end
         end
     else --use user defined alignment (multiple of 8 bytes)
         if not Initialize then
             terra __allocate(size : size_t, counter : size_t)
-                return C.aligned_alloc(Alignment, round_to_aligned(size * counter, Alignment))
+                C.printf("Using 'aligned_alloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
+                var ptr = C.aligned_alloc(Alignment, round_to_aligned(size * counter + 16, Alignment))
+                var sen = __sentinal(ptr, size * counter)
+                return block{ptr, sen}
             end
         else --initialize to zero using 'memset'
             terra __allocate(size : size_t, counter : size_t)
-                var len = round_to_aligned(size * counter, Alignment)
+                C.printf("Using 'aligned_alloc and memset' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
+                var len = round_to_aligned(size * counter + 16, Alignment)
                 var ptr = C.aligned_alloc(Alignment, len)
                 C.memset(ptr, 0, len)
-                return ptr
+                var sen = __sentinal(ptr, size * counter)
+                return block{ptr, sen}
             end
         end
     end
@@ -187,6 +205,7 @@ local DefaultAllocator = function(options)
     --see also 'https://nullprogram.com/blog/2023/12/17/'
     --a pointer to this method is set to block.alloc.fhandle
     terra default:__allocators_best_friend(mem : &block, newsize : size_t)
+        --access of Alignement
         if mem:isempty() and newsize > 0 then
             --allocate new memory
             --self:__allocate(mem, newsize)
@@ -217,17 +236,16 @@ local DefaultAllocator = function(options)
         --var ptr : &opaque = nil
         --allocate memory for the data ('size * count' bytes) and storage
         --of two pointers (2*8 bytes), the allocator handle and its function pointer
-        var ptr = C.aligned_alloc(Alignment, round_to_aligned(size * count + 16, Alignment))
+        var blk = __allocate(size, count)
+        --var ptr = C.aligned_alloc(Alignment, round_to_aligned(size * count + 16, Alignment))
         --create handle to allocater 'self' and its allocation function pointer
         --these form a sentinal to the memory data, which means they are placed
         --right after the 'size * count' bytes of data, to define memory block 'size'
-        var sentinal : &allochandle = nil
-        if ptr~=nil then
-            sentinal = [&allochandle]([&byte](ptr) + size * count)
-            sentinal.handle = [&opaque](self)
-            sentinal.fhandle = [&opaque](allocators_best_friend)
+        if blk.alloc~=nil then
+            blk.alloc.handle = [&opaque](self)
+            blk.alloc.fhandle = [&opaque](allocators_best_friend)
         end
-        return block{ptr, sentinal}
+        return blk
     end
 
     --sanity check - is the allocator interface implemented
