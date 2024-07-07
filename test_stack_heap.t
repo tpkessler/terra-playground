@@ -3,10 +3,11 @@ local Alloc = require("alloc")
 local io = terralib.includec("stdio.h")
 
 local stack = Stack.DynamicStack(double)
+local DefaultAllocator =  Alloc.DefaultAllocator()
 
 
 terra main()
-    var alloc : Alloc.default
+    var alloc : DefaultAllocator
     var x = stack.new(&alloc, 2)
     x:set(0, 1.0)
     x:set(1, 2.0)

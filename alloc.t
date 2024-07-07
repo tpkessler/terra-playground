@@ -9,6 +9,19 @@ local C = terralib.includecstring[[
     #include <string.h>
 ]]
 
+-- terra does not import macros other than those that set a constant number
+-- this causes an issue on macos, where 'stderr', etc are defined by referencing
+-- to another implementation in a file. So we set them here manually. 
+if rawget(C, "stderr") == nil and rawget(C, "__stderrp") ~= nil then
+    rawset(C, "stderr", C.__stderrp)
+end
+if rawget(C, "stdin") == nil and rawget(C, "__stdinp") ~= nil then
+    rawset(C, "stdin", C.__stdinp)
+end 
+if rawget(C, "stdout") == nil and rawget(C, "__stdoutp") ~= nil then
+    rawset(C, "stdout", C.__stdoutp)
+end 
+
 local size_t = uint64
 local byte = uint8
 local u8 = uint8
@@ -130,19 +143,29 @@ local DefaultAllocator = function(options)
   
     --get input options
     local options = options or {}
-    local Alignment = options.Alignment or 0 --Memory alignment for AVX512 == 64
-    local Initialize = options.Initialize or false
-    
+    local Alignment = options["Alignment"] or 0 --Memory alignment for AVX512 == 64
+    local Initialize = options["Initialize"] or false -- initialize memory to zero
+    local AbortOnError = options["Abort on error"] or true -- abort behavior
+
     --check input options
     assert(Alignment >= 0 and Alignment % 8 == 0)   --alignment is a multiple of 8 bytes
-    assert(type(Initialize) == "boolean")   --initialize memory or not
+    assert(type(Initialize) == "boolean")
+    assert(type(AbortOnError) == "boolean")
 
     local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
         return  ((size + alignment - 1) / alignment) * alignment
     end
 
-    --allocate lambda, used to get a uniform api
-    local terra __allocate :: {size_t, size_t} -> {block}
+    local __abortonerror = macro(function(success, size)
+        if AbortOnError then
+            return quote
+                if not success then
+                    C.fprintf(C.stderr, "Cannot allocate memory for buffer of size %g GiB\n", 1.0 * size / 1024 / 1024 / 1024)
+                    C.abort()
+                end
+            end
+        end
+    end)
 
     local terra __sentinal(ptr : &opaque, size : size_t) : &allochandle
         var sentinal : &allochandle = nil
@@ -152,11 +175,15 @@ local DefaultAllocator = function(options)
         return sentinal
     end
 
+    --allocate lambdas, used to get a uniform api
+    local terra __allocate :: {size_t, size_t} -> {block}
+
     if Alignment == 0 then --use natural alignment
         if not Initialize then
             terra __allocate(size : size_t, counter : size_t)
                 C.printf("Using 'malloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
                 var ptr = C.malloc(size * counter + 16)
+                __abortonerror(ptr~=nil, size * counter)
                 var sen = __sentinal(ptr, size * counter)
                 return block{ptr, sen}
             end
@@ -165,6 +192,7 @@ local DefaultAllocator = function(options)
                 C.printf("Using 'calloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
                 var newcounter = round_to_aligned(size * counter + 16, size) / size
                 var ptr = C.calloc(newcounter, size)
+                __abortonerror(ptr~=nil, size * counter)
                 var sen = __sentinal(ptr, size * counter)
                 return block{ptr, sen}
             end
@@ -174,6 +202,7 @@ local DefaultAllocator = function(options)
             terra __allocate(size : size_t, counter : size_t)
                 C.printf("Using 'aligned_alloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
                 var ptr = C.aligned_alloc(Alignment, round_to_aligned(size * counter + 16, Alignment))
+                __abortonerror(ptr~=nil, size * counter)
                 var sen = __sentinal(ptr, size * counter)
                 return block{ptr, sen}
             end
@@ -182,6 +211,7 @@ local DefaultAllocator = function(options)
                 C.printf("Using 'aligned_alloc and memset' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
                 var len = round_to_aligned(size * counter + 16, Alignment)
                 var ptr = C.aligned_alloc(Alignment, len)
+                __abortonerror(ptr~=nil, size * counter)
                 C.memset(ptr, 0, len)
                 var sen = __sentinal(ptr, size * counter)
                 return block{ptr, sen}
@@ -233,15 +263,14 @@ local DefaultAllocator = function(options)
     local allocators_best_friend = constant(default.methods.__allocators_best_friend:getpointer())
 
     terra default:allocate(size : size_t, count : size_t)    
-        --var ptr : &opaque = nil
         --allocate memory for the data ('size * count' bytes) and storage
         --of two pointers (2*8 bytes), the allocator handle and its function pointer
         var blk = __allocate(size, count)
-        --var ptr = C.aligned_alloc(Alignment, round_to_aligned(size * count + 16, Alignment))
+
         --create handle to allocater 'self' and its allocation function pointer
         --these form a sentinal to the memory data, which means they are placed
         --right after the 'size * count' bytes of data, to define memory block 'size'
-        if blk.alloc~=nil then
+        if not blk:isempty() then
             blk.alloc.handle = [&opaque](self)
             blk.alloc.fhandle = [&opaque](allocators_best_friend)
         end

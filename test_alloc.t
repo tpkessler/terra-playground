@@ -3,7 +3,7 @@ import "terratest/terratest"
 local io = terralib.includec("stdio.h")
 local Alloc = require("alloc")
 
-local DefaultAllocator = Alloc.DefaultAllocator{Initialize = true}
+local DefaultAllocator = Alloc.DefaultAllocator{Alignment = 64, Initialize = true}
 
 terra main()
     var x : DefaultAllocator
