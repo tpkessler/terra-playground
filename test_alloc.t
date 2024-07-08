@@ -8,27 +8,27 @@ local doubles = Alloc.SmartBlock(double)
 
 
 terra main()
-    var allocator : DefaultAllocator
-	var blk : doubles = allocator:allocate(sizeof(double), 10)
+    var A : DefaultAllocator
+	var blk : doubles = A:allocate(sizeof(double), 10)
     io.printf("block size: %d\n", blk:bytes())
-    allocator:reallocate(&blk, sizeof(double), 120)
+    A:reallocate(&blk, sizeof(double), 120)
     io.printf("block size: %d\n", blk:bytes())
 end
 
 main()
 
 terra main2()
-    var x : DefaultAllocator
+    var A : DefaultAllocator
 	var empty_block : Alloc.block
 	io.printf("address of heap: %p\n", empty_block.ptr)
-	var blk = x:allocate(8, 10)
+	var blk = A:allocate(8, 10)
     io.printf("size of allocation: %d\n", blk:size())
 	io.printf("address of heap: %p\n", blk.ptr)
 	blk:__dtor()
 	io.printf("checking block.ptr is nil: %p\n", blk.ptr)
 end
 
---main2()
+main2()
 
 local doubles = Alloc.SmartBlock(double)
 
@@ -40,7 +40,7 @@ terra mytest()
 	io.printf("value of y.size: %d\n", y:size())
 end
 
---mytest()
+mytest()
 
 local DefaultAllocator = Alloc.DefaultAllocator()
 
