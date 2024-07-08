@@ -3,9 +3,21 @@ import "terratest/terratest"
 local io = terralib.includec("stdio.h")
 local Alloc = require("alloc")
 
-local DefaultAllocator = Alloc.DefaultAllocator{Alignment = 64, Initialize = true}
+local DefaultAllocator = Alloc.DefaultAllocator()
+local doubles = Alloc.SmartBlock(double)
+
 
 terra main()
+    var allocator : DefaultAllocator
+	var blk : doubles = allocator:allocate(sizeof(double), 10)
+    io.printf("block size: %d\n", blk:bytes())
+    allocator:reallocate(&blk, sizeof(double), 120)
+    io.printf("block size: %d\n", blk:bytes())
+end
+
+main()
+
+terra main2()
     var x : DefaultAllocator
 	var empty_block : Alloc.block
 	io.printf("address of heap: %p\n", empty_block.ptr)
@@ -16,7 +28,7 @@ terra main()
 	io.printf("checking block.ptr is nil: %p\n", blk.ptr)
 end
 
-main()
+--main2()
 
 local doubles = Alloc.SmartBlock(double)
 
@@ -28,7 +40,7 @@ terra mytest()
 	io.printf("value of y.size: %d\n", y:size())
 end
 
-mytest()
+--mytest()
 
 local DefaultAllocator = Alloc.DefaultAllocator()
 

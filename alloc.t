@@ -43,6 +43,8 @@ local struct allochandle{
 --'methods.__init' and 'methods.__dtor' enable RAII
 local SmartBlock = terralib.memoize(function(T)
 
+    local T = T or opaque
+
     --abstraction of memory block
     --if T is a primitive type or a terra vector then we may use alignfac to
     --control the alignment of the memory block using 'alignment = sizeof(T) * alignfac' 
@@ -61,13 +63,25 @@ local SmartBlock = terralib.memoize(function(T)
 	end
 
     -- sizeof(T) if T is a concrete type
-    local elsize = T==opaque and 1 or sizeof(T)
+    block.methods.elsize = macro(function()
+        if T==opaque then
+            return `1
+        else
+            return `sizeof(T)
+        end
+    end)
 
-	block.methods.size = terra(self : &block) : size_t
+    block.methods.bytes = terra(self : &block) : size_t
         if not self:isempty() then
-            return ([&u8](self.alloc) - [&u8](self.ptr)) / elsize
+            return ([&u8](self.alloc) - [&u8](self.ptr))
         end
         return 0
+	end
+    block.methods.bytes:setinlined(true)
+
+	block.methods.size = terra(self : &block) : size_t
+        err.assert(self:bytes() % self:elsize() == 0) 
+        return self:bytes() / self:elsize()
 	end
 	block.methods.size:setinlined(true)
 
@@ -76,14 +90,14 @@ local SmartBlock = terralib.memoize(function(T)
 		self.alloc = nil
 	end
 
-	block.methods.__dtor = terra(self : &block)
-		--using 'self.alloc.fhandle' function pointer to 
-		--deallocate 'self'
-		if not self:isempty() then
-			var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
-			free(self.alloc.handle, self, 0)
-		end
-	end
+    block.methods.__dtor = terra(self : &block)
+        --using 'self.alloc.fhandle' function pointer to 
+        --deallocate 'self'
+        if not self:isempty() then
+            var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
+            free(self.alloc.handle, self, 0)
+        end
+    end
 
 	--only add setters and getters to the memory if the type
 	--is known (so when its not an opaque type)
@@ -103,21 +117,35 @@ local SmartBlock = terralib.memoize(function(T)
 
 	-- Cast block of one type to another
 	function block.metamethods.__cast(from, to, exp)
+        local pass_by_value = true
+        if from:ispointertostruct() and to:ispointertostruct() then
+            to, from = to.type, from.type
+            pass_by_value = false
+        end 
 		if to.isblock and from.isblock then
-			local B = to.type
+            local B = to.type
 			local T2 = to.eltype
-			local T1 = from.eltype
-			local Size1 = T1==opaque and 1 or sizeof(T1)
 			local Size2 = T2==opaque and 1 or sizeof(T2)
-			return quote
-				var blk = exp
-				--debug check if sizes are compatible, that is, is the
-				--remainder zero after integer division
-				err.assert((blk:size() * Size1) % Size2  == 0)
-			in
-				B {[&T2](blk.ptr), blk.alloc}
-			end
-		end
+            if pass_by_value then
+                --passing by value
+                return quote
+                    var blk = exp
+                    --debug check if sizes are compatible, that is, is the
+                    --remainder zero after integer division
+                    err.assert(blk:bytes() % Size2  == 0)
+                in
+                    B {[&T2](blk.ptr), blk.alloc}
+                end
+            else
+                --passing by reference
+                return quote
+                    var blk = exp
+                    err.assert(blk:bytes() % Size2  == 0)
+                in
+                    [&B](blk)
+                end
+            end
+        end
 	end
 
 	return block
@@ -156,10 +184,10 @@ local DefaultAllocator = function(options)
         return  ((size + alignment - 1) / alignment) * alignment
     end
 
-    local __abortonerror = macro(function(success, size)
+    local __abortonerror = macro(function(ptr, size)
         if AbortOnError then
             return quote
-                if not success then
+                if ptr==nil then
                     C.fprintf(C.stderr, "Cannot allocate memory for buffer of size %g GiB\n", 1.0 * size / 1024 / 1024 / 1024)
                     C.abort()
                 end
@@ -167,54 +195,97 @@ local DefaultAllocator = function(options)
         end
     end)
 
-    local terra __sentinal(ptr : &opaque, size : size_t) : &allochandle
+    local terra __sentinal(ptr : &opaque, handle : &opaque, fhandle : &opaque, size : size_t) : &allochandle
         var sentinal : &allochandle = nil
         if ptr~=nil then
             sentinal = [&allochandle]([&byte](ptr) + size)
+            sentinal.handle = handle
+            sentinal.fhandle = fhandle
         end
         return sentinal
     end
 
-    --allocate lambdas, used to get a uniform api
     local terra __allocate :: {size_t, size_t} -> {block}
+    local terra __reallocate :: {&block, size_t, size_t} -> {}
 
     if Alignment == 0 then --use natural alignment
         if not Initialize then
             terra __allocate(size : size_t, counter : size_t)
-                C.printf("Using 'malloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
+                C.printf("__allocate - using 'malloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
                 var ptr = C.malloc(size * counter + 16)
-                __abortonerror(ptr~=nil, size * counter)
-                var sen = __sentinal(ptr, size * counter)
+                __abortonerror(ptr, size * counter)
+                var sen = __sentinal(ptr, nil, nil, size * counter)
                 return block{ptr, sen}
             end
         else --initialize to zero using 'calloc'
             terra __allocate(size : size_t, counter : size_t)
-                C.printf("Using 'calloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
+                C.printf("__allocate - using 'calloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
                 var newcounter = round_to_aligned(size * counter + 16, size) / size
                 var ptr = C.calloc(newcounter, size)
-                __abortonerror(ptr~=nil, size * counter)
-                var sen = __sentinal(ptr, size * counter)
+                __abortonerror(ptr, size * counter)
+                var sen = __sentinal(ptr, nil, nil, size * counter)
                 return block{ptr, sen}
             end
         end
     else --use user defined alignment (multiple of 8 bytes)
         if not Initialize then
             terra __allocate(size : size_t, counter : size_t)
-                C.printf("Using 'aligned_alloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
+                C.printf("__allocate - using 'aligned_alloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
                 var ptr = C.aligned_alloc(Alignment, round_to_aligned(size * counter + 16, Alignment))
-                __abortonerror(ptr~=nil, size * counter)
-                var sen = __sentinal(ptr, size * counter)
+                __abortonerror(ptr, size * counter)
+                var sen = __sentinal(ptr, nil, nil, size * counter)
                 return block{ptr, sen}
             end
         else --initialize to zero using 'memset'
             terra __allocate(size : size_t, counter : size_t)
-                C.printf("Using 'aligned_alloc and memset' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
+                C.printf("__allocate - using 'aligned_alloc and memset' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
                 var len = round_to_aligned(size * counter + 16, Alignment)
                 var ptr = C.aligned_alloc(Alignment, len)
-                __abortonerror(ptr~=nil, size * counter)
+                __abortonerror(ptr, size * counter)
                 C.memset(ptr, 0, len)
-                var sen = __sentinal(ptr, size * counter)
+                var sen = __sentinal(ptr, nil, nil, size * counter)
                 return block{ptr, sen}
+            end
+        end
+    end
+
+    if Alignment == 0 then 
+        --use natural alignment provided by malloc/calloc/realloc
+        --reallocation is done using realloc
+        terra __reallocate(blk : &block, size : size_t, newcounter : size_t)
+            err.assert(blk:bytes() % size == 0) --sanity check
+            var newsize = size * newcounter
+            if (not blk:isempty()) and (blk:bytes() < newsize)  then
+                var handle = blk.alloc.handle
+                var fhandle = blk.alloc.fhandle
+                blk.ptr = C.realloc(blk.ptr, newsize + 16)
+                __abortonerror(blk.ptr, newsize)
+                blk.alloc = __sentinal(blk.ptr, handle, fhandle, newsize)
+            end
+        end
+    else 
+        --use user defined alignment (multiple of 8 bytes)
+        --we just use __allocate to get correcly aligned memory
+        --and then memcpy
+        terra __reallocate(blk : &block, size : size_t, newcounter : size_t)
+            err.assert(blk:bytes() % size == 0) --sanity check
+            var newsize = size * newcounter
+            if (blk:isempty()==false) and (blk:bytes() < newsize)  then
+                C.printf("__reallocate - using 'realloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
+                --get new resource using '__allocate'
+                var tmpblk = __allocate(size, newcounter)
+                __abortonerror(tmpblk.ptr, newsize)
+                --copy bytes over
+                if not tmpblk:isempty() then
+                    C.memcpy(tmpblk.ptr, blk.ptr, blk:bytes())
+                end
+                --reset allocator handle and function handle
+                tmpblk.alloc = __sentinal(tmpblk.ptr, blk.alloc.handle, blk.alloc.fhandle, newsize)
+                --free old resources
+                blk:__dtor()
+                --reset blk.ptr and blk.alloc
+                blk.ptr = tmpblk.ptr; tmpblk.ptr = nil
+                blk.alloc = tmpblk.alloc; tmpblk.alloc = nil
             end
         end
     end
@@ -230,32 +301,34 @@ local DefaultAllocator = function(options)
         return false
     end
 
-    --single method that can allocate, free and reallocate memory
-    --this method mirrors the 'lua_Alloc' function, 
+    --single method that can free and reallocate memory
+    --this method is similar to the 'lua_Alloc' function,
+    --although we don't allow allocation here. 
     --see also 'https://nullprogram.com/blog/2023/12/17/'
     --a pointer to this method is set to block.alloc.fhandle
-    terra default:__allocators_best_friend(mem : &block, newsize : size_t)
-        --access of Alignement
-        if mem:isempty() and newsize > 0 then
-            --allocate new memory
-            --self:__allocate(mem, newsize)
-        else
-            if newsize == 0 then
+    terra default:__allocators_best_friend(blk : &block, size : size_t, counter : size_t)
+        var requested_bytes = size * counter
+        if not blk:isempty() then
+            if requested_bytes == 0 then
                 --free memory
-                C.printf("Calling allocators best friend\n")
-                self:deallocate(mem)
-            elseif newsize > mem:size() then
+                self:deallocate(blk)
+            elseif requested_bytes > blk:bytes() then
                 --reallocate memory
+                self:reallocate(blk, size, counter)
             end
         end
     end
 
-    terra default:deallocate(mem : &block)
-        C.printf("Calling deallocate default:deallocate\n")
-        if self:owns(mem) then
-            C.printf("Freeing memory\n")
-            C.free(mem.ptr)
-            mem:__init()
+    terra default:deallocate(blk : &block)
+        err.assert(self:objectwns(blk))
+        C.free(blk.ptr)
+        blk:__init()
+    end
+
+    terra default:reallocate(blk : &block, size : size_t, newcounter : size_t)
+        err.assert(self:owns(blk) and (blk:bytes() % size == 0))
+        if not blk:isempty() and (blk:bytes() < size * newcounter)  then
+            __reallocate(blk, size, newcounter)
         end
     end
 
@@ -266,7 +339,6 @@ local DefaultAllocator = function(options)
         --allocate memory for the data ('size * count' bytes) and storage
         --of two pointers (2*8 bytes), the allocator handle and its function pointer
         var blk = __allocate(size, count)
-
         --create handle to allocater 'self' and its allocation function pointer
         --these form a sentinal to the memory data, which means they are placed
         --right after the 'size * count' bytes of data, to define memory block 'size'
