@@ -1,4 +1,4 @@
-local Stack = require("stack_heap")
+local Stack = require("example_stack_heap")
 local Alloc = require("alloc")
 local io = terralib.includec("stdio.h")
 
