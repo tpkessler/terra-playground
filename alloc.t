@@ -166,6 +166,45 @@ local Allocator = interface.Interface:new{
 	deallocate = {&block} -> {},
 	owns = {&block} -> {bool}
 }
+--an allator may also use one or more of the following options:
+--Alignment (integer) -- use '0' for natural allignment and a multiple of '8' in case of custom alignment.
+--Initialize (boolean) -- initialize memory to zero
+--AbortOnError (boolean) -- abort behavior in case of unsuccessful allocation
+
+local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
+    return  ((size + alignment - 1) / alignment) * alignment
+end
+
+local terra set_allochandle(ptr : &opaque, handle : &opaque, fhandle : &opaque, size : size_t) : &allochandle
+    var sentinal : &allochandle = nil
+    if ptr~=nil then
+        sentinal = [&allochandle]([&byte](ptr) + size)
+        sentinal.handle = handle
+        sentinal.fhandle = fhandle
+    end
+    return sentinal
+end
+
+local terra abort_on_error(ptr : &opaque, size : size_t)
+    if ptr==nil then
+        C.fprintf(C.stderr, "Cannot allocate memory for buffer of size %g GiB\n", 1.0 * size / 1024 / 1024 / 1024)
+        C.abort()
+    end
+end
+
+
+local function AllocatorBase(A)
+
+    terra A:owns(blk : &block) : bool
+        if not blk:isempty() then
+            return self == [&A](blk.alloc.handle)
+        end
+        return false
+    end
+
+end
+
+
 
 local DefaultAllocator = function(options)
   
@@ -180,30 +219,12 @@ local DefaultAllocator = function(options)
     assert(type(Initialize) == "boolean")
     assert(type(AbortOnError) == "boolean")
 
-    local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
-        return  ((size + alignment - 1) / alignment) * alignment
-    end
-
+    --static abort behavior
     local __abortonerror = macro(function(ptr, size)
         if AbortOnError then
-            return quote
-                if ptr==nil then
-                    C.fprintf(C.stderr, "Cannot allocate memory for buffer of size %g GiB\n", 1.0 * size / 1024 / 1024 / 1024)
-                    C.abort()
-                end
-            end
+            return `abort_on_error(ptr, size)
         end
     end)
-
-    local terra __sentinal(ptr : &opaque, handle : &opaque, fhandle : &opaque, size : size_t) : &allochandle
-        var sentinal : &allochandle = nil
-        if ptr~=nil then
-            sentinal = [&allochandle]([&byte](ptr) + size)
-            sentinal.handle = handle
-            sentinal.fhandle = fhandle
-        end
-        return sentinal
-    end
 
     local terra __allocate :: {size_t, size_t} -> {block}
     local terra __reallocate :: {&block, size_t, size_t} -> {}
@@ -214,7 +235,7 @@ local DefaultAllocator = function(options)
                 C.printf("__allocate - using 'malloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
                 var ptr = C.malloc(size * counter + 16)
                 __abortonerror(ptr, size * counter)
-                var sen = __sentinal(ptr, nil, nil, size * counter)
+                var sen = set_allochandle(ptr, nil, nil, size * counter)
                 return block{ptr, sen}
             end
         else --initialize to zero using 'calloc'
@@ -223,7 +244,7 @@ local DefaultAllocator = function(options)
                 var newcounter = round_to_aligned(size * counter + 16, size) / size
                 var ptr = C.calloc(newcounter, size)
                 __abortonerror(ptr, size * counter)
-                var sen = __sentinal(ptr, nil, nil, size * counter)
+                var sen = set_allochandle(ptr, nil, nil, size * counter)
                 return block{ptr, sen}
             end
         end
@@ -233,7 +254,7 @@ local DefaultAllocator = function(options)
                 C.printf("__allocate - using 'aligned_alloc' - Alignment = %d, Initialize = %d\n", Alignment, Initialize)
                 var ptr = C.aligned_alloc(Alignment, round_to_aligned(size * counter + 16, Alignment))
                 __abortonerror(ptr, size * counter)
-                var sen = __sentinal(ptr, nil, nil, size * counter)
+                var sen = set_allochandle(ptr, nil, nil, size * counter)
                 return block{ptr, sen}
             end
         else --initialize to zero using 'memset'
@@ -243,7 +264,7 @@ local DefaultAllocator = function(options)
                 var ptr = C.aligned_alloc(Alignment, len)
                 __abortonerror(ptr, size * counter)
                 C.memset(ptr, 0, len)
-                var sen = __sentinal(ptr, nil, nil, size * counter)
+                var sen = set_allochandle(ptr, nil, nil, size * counter)
                 return block{ptr, sen}
             end
         end
@@ -260,7 +281,7 @@ local DefaultAllocator = function(options)
                 var fhandle = blk.alloc.fhandle
                 blk.ptr = C.realloc(blk.ptr, newsize + 16)
                 __abortonerror(blk.ptr, newsize)
-                blk.alloc = __sentinal(blk.ptr, handle, fhandle, newsize)
+                blk.alloc = set_allochandle(blk.ptr, handle, fhandle, newsize)
             end
         end
     else 
@@ -280,7 +301,7 @@ local DefaultAllocator = function(options)
                     C.memcpy(tmpblk.ptr, blk.ptr, blk:bytes())
                 end
                 --reset allocator handle and function handle
-                tmpblk.alloc = __sentinal(tmpblk.ptr, blk.alloc.handle, blk.alloc.fhandle, newsize)
+                tmpblk.alloc = set_allochandle(tmpblk.ptr, blk.alloc.handle, blk.alloc.fhandle, newsize)
                 --free old resources
                 blk:__dtor()
                 --reset blk.ptr and blk.alloc
@@ -291,15 +312,9 @@ local DefaultAllocator = function(options)
     end
 
     --the default allocator
-    local struct default{
+    local struct default(AllocatorBase){
     }
 
-    terra default:owns(mem : &block) : bool
-        if not mem:isempty() then
-            return self == [&default](mem.alloc.handle)
-        end
-        return false
-    end
 
     --single method that can free and reallocate memory
     --this method is similar to the 'lua_Alloc' function,
@@ -320,7 +335,7 @@ local DefaultAllocator = function(options)
     end
 
     terra default:deallocate(blk : &block)
-        err.assert(self:objectwns(blk))
+        err.assert(self:owns(blk))
         C.free(blk.ptr)
         blk:__init()
     end
