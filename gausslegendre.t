@@ -32,74 +32,37 @@ local legendre = terra(alloc : Allocator, n : size_t)
     end
 end
 
-
 local terra legpts_nodes(alloc : Allocator, n : size_t, a : vec)
-    --ASYMPTOTIC EXPANSION FOR THE GAUSS-LEGENDRE NODES.
+    --asymptotic expansion for the Gauss-Legendre nodes
     var vn = 1. / (n + 0.5)
     var m = a:size()
     var nodes = a:map(alloc, math.cot)
-    vn2 = vn * vn
-    vn4 = vn2 * vn2
-
-end 
-
---[[
-    @inbounds if n ≤ 255
-        vn⁶ = vn⁴ * vn²
-        for i in 1:m
-            u = nodes[i]
-            u² = u^2
-            ai = a[i]
-            ai² = ai * ai
-            ai³ = ai² * ai
-            ai⁵ = ai² * ai³
-            node = ai + (u - 1 / ai) / 8 * vn²
-            v1 = (6 * (1 + u²) / ai + 25 / ai³ - u * muladd(31, u², 33)) / 384
-            v2 = u * evalpoly(u², (2595 / 15360, 6350 / 15360, 3779 / 15360))
-            v3 = (1 + u²) * (-muladd(31 / 1024, u², 11 / 1024) / ai +
-                             u / 512 / ai² + -25 / 3072 / ai³)
-            v4 = (v2 - 1073 / 5120 / ai⁵ + v3)
-            node = muladd(v1, vn⁴, node)
-            node = muladd(v4, vn⁶, node)
-            nodes[i] = node
-        end
-    elseif n ≤ 3950
-        for i in 1:m
-            u = nodes[i]
-            u² = u^2
-            ai = a[i]
-            ai² = ai * ai
-            ai³ = ai² * ai
-            node = ai + (u - 1 / ai) / 8 * vn²
-            v1 = (6 * (1 + u²) / ai + 25 / ai³ - u * muladd(31, u², 33)) / 384
-            node = muladd(v1, vn⁴, node)
-            nodes[i] = node
-        end
-    else
-        for i in 1:m
-            u = nodes[i]
-            ai = a[i]
-            node = ai + (u - 1 / ai) / 8 * vn²
-            nodes[i] = node
+    var vn2 = vn * vn
+    var vn4 = vn2 * vn2
+    if n <= 255 then
+        var vn6 = vn4 * vn2
+        for i = 1, m do
+            var u = nodes(i)
+            var u2 = u * u
+            var ai = a:get(i)
+            var ai2 = ai * ai
+            var ai3 = ai2 * ai
+            var ai5 = ai2 * ai3
+            var node = ai + (u - 1. / ai) / 8. * vn2
+            var v1 = (6. * (1. + u2) / ai + 25. / ai3 - u * math.fusedmuladd(31., u2, 33.)) / 384.
+            var v2 = u * math.evalpoly(u2, 2595. / 15360., 6350. / 15360., 3779. / 15360.)
+            var v3 = (1. + u2) * (-math.fusedmuladd(31. / 1024., u2, 11. / 1024.) / ai + u / 512. / ai2 + -25. / 3072. / ai3)
+            var v4 = (v2 - 1073. / 5120. / ai5 + v3)
+            node = math.fusedmuladd(v1, vn4, node)
+            node = math.fusedmuladd(v4, vn6, node)
+            nodes(i) = node
         end
     end
-    @inbounds for jj = 1:m
-        nodes[jj] = cos(nodes[jj])
+    for jj=0,m do
+        nodes(jj) = math.cos(nodes(jj))
     end
-
     return nodes
 end
-
-
-
---]]
-
-
-
-
-
-
-
 
 return {
     legendre = legendre

@@ -28,6 +28,10 @@ local VectorBase = terralib.memoize(function(V, T)
         self.data:set(i, v)
     end
 
+    V.metamethods.__apply = macro(function(self, i)
+        return `self.data(i)
+    end)
+
     V.staticmethods.new = terra(alloc : Allocator, size : size_t)
         return V{alloc:allocate(sizeof(T), size)}
     end

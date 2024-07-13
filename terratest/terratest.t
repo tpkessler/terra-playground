@@ -136,7 +136,7 @@ local function ProcessTestenv(self, lex)
         f() -- evaluate all expressions in a new scope
         
         -- generate and run terra function                        
-            local terrastmts = collectTerraStmts(env, self.terrastmts["scope1"])
+        local terrastmts = collectTerraStmts(env, self.terrastmts["scope1"])
         local g = terra()                                         
             [terrastmts]                                           
         end                                                       
@@ -198,7 +198,6 @@ local function ProcessTestset(self, lex)
             [terrastmts]
         end
         local stats = g() --extract test statistics
-
         -- process test statistics
         local parametricname = testsetname
         if isparametric then
@@ -263,11 +262,11 @@ local function ProcessTest(self, lex)
                 quote
                     var passed = [ex]
                     if passed then                    
-                            env.passed = env.passed + 1
-                        else
-                            env.failed = env.failed + 1
-                        end
-                        env.counter = env.counter + 1
+                        env.passed = env.passed + 1
+                    else
+                        env.failed = env.failed + 1
+                    end
+                    env.counter = env.counter + 1
                     addToTestResults(passed)
                 end
             )
@@ -332,17 +331,13 @@ function setenv(env, stmts)
     for i,s in pairs(stmts.tree.statements) do
         --variables that are directly initialized
         if s.lhs~=nil then
-            for j, v in ipairs(s.lhs) do
-                local name = v.name
-                local sym = v.symbol
-                env[name] = sym
+            for _, v in ipairs(s.lhs) do
+                env[v.name] = v.symbol
             end
         end
         --variables that are allocated
         if s.name~=nil and s.symbol~=nil then
-            local name = s.name
-            local sym = s.symbol
-            env[name] = sym
+            env[s.name] = s.symbol
         end
     end 
 end
