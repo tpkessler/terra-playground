@@ -61,7 +61,6 @@ local VectorBase = terralib.memoize(function(V, T)
             for i, v in ipairs(args) do
                 set_values:insert(quote [vec]:set(i-1, v) end)
             end
-
             return quote
                 var [vec] = V.new(allocator, size)
                    [set_values]     
@@ -81,6 +80,12 @@ local VectorBase = terralib.memoize(function(V, T)
         return res
     end
 
+    terra V:scal(a : T)
+        for i = 0, self:size() do
+            self:set(i, self:get(i) * a)
+        end
+    end
+
     terra V:sum()
 		var res : T = 0
         for i = 0, self:size() do
@@ -89,14 +94,17 @@ local VectorBase = terralib.memoize(function(V, T)
         return res
     end
 
-    terra V:map(alloc : Allocator, f : {T} -> T)
-        var size = self:size()
-        var v = V.new(alloc, size)
-        for i = 0, size do
-            v:set(i, f(self:get(i)))
+    V.methods.map = macro(function(self, other, f)
+        return quote
+            var size = self:size()
+            err.assert(size <= other:size())
+            for i = 0, size do
+                other:set(i, f(self:get(i)))
+            end
+        in
+            other
         end
-        return v
-    end
+    end)
 
     return V
 end)

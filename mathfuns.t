@@ -34,8 +34,6 @@ local funs_two_var = {
     pow = "pow",
     atan2 = "atan2",
     hypot = "hypot",
-    max = "fmax",
-    min = "fmin",
     dist = "fdim"
 }
 
@@ -73,8 +71,16 @@ end
 
 --convenience functions
 local cotf = terra(x : float) return M.cos(x) / M.sin(x) end
-local cot  = terra(x : float) return M.cos(x) / M.sin(x) end
+local cot  = terra(x : double) return M.cos(x) / M.sin(x) end
 M.cot = terralib.overloadedfunction("cot", {cotf, cot})
+
+--min and max
+M.min = terralib.overloadedfunction("min")
+M.max = terralib.overloadedfunction("max")
+for _, T in ipairs{int32, int64, float, double} do
+    M.min:adddefinition(terra(x : T, y : T) return terralib.select(x < y, x, y) end)
+    M.max:adddefinition(terra(x : T, y : T) return terralib.select(x > y, x, y) end)
+end
 
 --comparing functions
 M.isapprox = terra(a : double, b : double, atol : double)
