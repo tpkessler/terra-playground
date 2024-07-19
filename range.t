@@ -63,6 +63,17 @@ local RangeBase = function(Range, T)
     end
 end
 
+--convenience macro that yields the next value that satisfies the predicate
+local __getnextvalue_that_satisfies_predicate = macro(function(self, state, value)
+    return quote
+        while self.predicate(value)==false do
+            if self.range:islast(state) then break end
+            value = self.range:getnext(state)
+        end
+    end
+end)
+
+
 local Linrange = function(T)
 
     local struct linrange{
@@ -113,17 +124,11 @@ local FilteredRange = function(Range, Function)
         range : Range
         predicate : Function
     }
-    --has behavior of a filter - this affects how 'getfirst', 'getnext', and
-    --'islast' are implemented
-    adapter.filterlike = true
 
     adapter.methods.getfirst = macro(function(self)
         return quote
             var state, value = self.range:getfirst()
-            while self.predicate(value)==false do
-                if self.range:islast(state) then break end
-                value = self.range:getnext(state)
-            end
+            __getnextvalue_that_satisfies_predicate(self, state, value)
         in
             state, value
         end
@@ -132,10 +137,7 @@ local FilteredRange = function(Range, Function)
     adapter.methods.getnext = macro(function(self, state)
         return quote
             var value = self.range:getnext(state)
-            while self.predicate(value)==false do
-                if self.range:islast(state) then break end
-                value = self.range:getnext(state)
-            end
+            __getnextvalue_that_satisfies_predicate(self, state, value)
         in
             value
         end
