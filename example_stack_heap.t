@@ -1,4 +1,5 @@
 local alloc = require("alloc")
+local range = require("range")
 
 local Allocator = alloc.Allocator
 
@@ -33,6 +34,32 @@ local DynamicStack = terralib.memoize(function(T)
     terra stack:set(i : size_t, v : T)
         self.data:set(i, v)
     end
+
+    stack.methods.getfirst = macro(function(self)
+        return quote
+        in
+            0, self:get(0)
+        end
+    end)
+
+    stack.methods.getnext = macro(function(self, state)
+        return quote 
+            state = state + 1
+            var value = self:get(state)
+        in
+            value
+        end
+    end)
+
+    stack.methods.islast = macro(function(self, state)
+        return quote 
+            var terminate = (state+1 == self:size())
+        in
+            terminate
+        end
+    end)
+    
+    range.Base(stack, T)
 
     return stack
 end)

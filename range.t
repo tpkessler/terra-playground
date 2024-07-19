@@ -1,15 +1,28 @@
-require("terralibext")
 local io = terralib.includec("stdio.h")
-local interface = require "interface"
-local alloc = require("alloc")
+local interface = require("interface")
 local err = require("assert")
 
-local RangeBase = function(Range)
+local size_t = uint64
+
+local Stacker = terralib.memoize(function(T, I)
+    I = I or uint64
+    return interface.Interface:new{
+            size = {} -> uint64,
+            set = {I, T} -> {},
+            get = {I} -> {T}
+        }
+end)
+
+local RangeBase = function(Range, T)
+
+    --set the element type of the range
+    Range.eltype = T
+
     --ranges support __for and __rshift
     --__for is a spcialization for each range
     --__rshift is a general implementation
-    Range.metamethods.__rshift = macro(function(range, adapter)
-        local self_type = range.tree.type
+    Range.metamethods.__rshift = macro(function(self, adapter)
+        local self_type = self.tree.type
         local adapter_type = adapter.tree.type
         if self_type:isstruct() and self_type.metamethods.__for 
             and adapter_type:isstruct() 
@@ -17,42 +30,428 @@ local RangeBase = function(Range)
             local Adapter = adapter_type.generator
             local A = Adapter(self_type, adapter_type)
             return quote
-                var a = A{range, adapter}
+                var newrange = A{self, adapter}
             in
-                a
+                newrange
             end
         end
     end)
 
-end
-
-local struct linrange(RangeBase){
-    a : int
-    b : int
-    current : int
-}
-
-terra linrange:__init()
-    self.current = 0
-end
-
-terra linrange:first()
-    return self.a
-end
-
-terra linrange:next()
-    self.current = self.current + 1
-end
-
-linrange.metamethods.__for = function(iter,body)
-    return quote
-        var it = iter
-        for i = it.a, it.b do
-            [body(i)]
+    Range.metamethods.__for = function(self,body)
+        return quote
+            var iter = self
+            var state, value = iter:getfirst()
+            while not iter:islast(state) do
+                [body(value)]
+                value = iter:getnext(state)
+            end
         end
+    end
+
+
+    --collect requires only the 'Stacker' interface
+    local S = Stacker(T)
+
+    terra Range:collect(container : S)
+        var count = 0
+        --for v in self do
+            --boundschecking is done in the set method (implemented 
+            --in block for dynamic datastructures)
+            --container:set(count, v)
+            --count = count + 1
+        --end
     end
 end
 
+local Linrange = function(T)
+
+    local struct linrange{
+        a : T
+        b : T
+    }
+
+    terra linrange:size()
+        return self.b - self.a
+    end
+
+    linrange.methods.getfirst = macro(function(self)
+        return quote 
+        in
+            0, self.a
+        end
+    end)
+
+    linrange.methods.getnext = macro(function(self, state)
+        return quote 
+            state = state + 1
+            var value = self.a + state
+        in
+            value
+        end
+    end)
+
+    linrange.methods.islast = macro(function(self, state)
+        return quote 
+            var terminate = (state == self:size())
+        in
+            terminate
+        end
+    end)
+
+    --add metamethods
+    RangeBase(linrange, T)
+
+    return linrange
+end
+
+local FilteredRange = function(Range, Function)
+
+    --check that function is a predicate
+    assert(Function.returntype == bool)
+
+    local struct adapter{
+        range : Range
+        predicate : Function
+    }
+    --has behavior of a filter - this affects how 'getfirst', 'getnext', and
+    --'islast' are implemented
+    adapter.filterlike = true
+
+    adapter.methods.getfirst = macro(function(self)
+        return quote
+            var state, value = self.range:getfirst()
+            while self.predicate(value)==false do
+                if self.range:islast(state) then break end
+                value = self.range:getnext(state)
+            end
+        in
+            state, value
+        end
+    end)
+
+    adapter.methods.getnext = macro(function(self, state)
+        return quote
+            var value = self.range:getnext(state)
+            while self.predicate(value)==false do
+                if self.range:islast(state) then break end
+                value = self.range:getnext(state)
+            end
+        in
+            value
+        end
+    end)
+
+    adapter.methods.islast = macro(function(self, state)
+        return quote 
+            var terminate = self.range:islast(state)
+        in
+            terminate
+        end
+    end)
+
+    --add metamethods
+    local T = Function.returntype
+    RangeBase(adapter, T)
+
+    return adapter
+end
+
+local TransformedRange = function(Range, Function)
+
+    local struct adapter{
+        range : Range
+        f : Function
+    }
+
+    adapter.methods.getfirst = macro(function(self)
+        return quote
+            var state, value = self.range:getfirst()
+            var newvalue = self.f(value)
+        in
+            state, newvalue
+        end
+    end)
+
+    adapter.methods.getnext = macro(function(self, state)
+        return quote
+            var value = self.range:getnext(state)
+            var newvalue = self.f(value)
+        in
+            newvalue
+        end
+    end)
+
+    adapter.methods.islast = macro(function(self, state)
+        return quote 
+            var terminate = self.range:islast(state)
+        in
+            terminate
+        end
+    end)
+
+    --add metamethods
+    local T = Function.returntype
+    RangeBase(adapter, T)
+
+    return adapter
+end
+
+local TakeRange = function(Range)
+
+    local struct adapter{
+        range : Range
+        take : int64
+    }
+
+    adapter.methods.getfirst = macro(function(self)
+        return `self.range:getfirst()
+    end)
+
+    adapter.methods.getnext = macro(function(self, state)
+        return quote
+            var value = self.range:getnext(state)
+            self.take = self.take - 1
+        in
+            value
+        end
+    end)
+
+    adapter.methods.islast = macro(function(self, state)
+        return quote 
+            var terminate = (self.take == 1)
+        in
+            terminate
+        end
+    end)
+
+    --add metamethods
+    local T = Range.eltype
+    RangeBase(adapter, T)
+
+    return adapter
+end
+
+local DropRange = function(Range)
+
+    local struct adapter{
+        range : Range
+        drop : int64
+    }
+
+    adapter.methods.getfirst = macro(function(self)
+        return quote
+            var state, value = self.range:getfirst()
+            var drop = self.drop
+            for k = 0, drop do
+                value = self.range:getnext(state)
+                self.drop = self.drop - 1
+            end
+        in
+            state, value
+        end
+    end)
+
+    adapter.methods.getnext = macro(function(self, state)
+        return quote 
+            var value = self.range:getnext(state)
+        in
+            value
+        end
+    end)
+
+    adapter.methods.islast = macro(function(self, state)
+        return quote 
+            var terminate = self.range:islast(state)
+        in
+            terminate
+        end
+    end)
+
+    --add metamethods
+    local T = Range.eltype
+    RangeBase(adapter, T)
+
+    return adapter
+end
+
+
+local TakeWhileRange = function(Range, Function)
+
+    --check that function is a predicate
+    assert(Function.returntype == bool)
+
+    local struct adapter(RangeBase){
+        range : Range
+        predicate : Function
+    }
+
+    adapter.methods.getfirst = macro(function(self)
+        return quote
+            var state, value = self.range:getfirst()
+            while not self.predicate(value) do
+                value = self.range:getnext(state)
+            end
+        in
+            state, value
+        end
+    end)
+
+    adapter.methods.getnext = macro(function(self, state)
+        return quote
+            var value = self.range:getnext(state)
+            self.take = self.take - 1
+        in
+            value
+        end
+    end)
+
+    adapter.methods.islast = macro(function(self, state)
+        return quote 
+            var terminate = (self.take == 1)
+        in
+            terminate
+        end
+    end)
+
+    --add metamethods
+    local T = Range.eltype
+    RangeBase(adapter, T)
+
+    adapter.metamethods.__for = function(iter,body)
+        return quote
+            for i in iter.range do
+                if not iter.predicate(i) then
+                    break
+                end
+                [body(i)]
+            end
+        end
+    end
+
+    return adapter
+end
+
+local DropWhileRange = function(Range, Function)
+
+    local struct adapter(RangeBase){
+        range : Range
+        pred : Function
+    }
+
+    adapter.metamethods.__for = function(iter,body)
+        return quote
+            var flag = true
+            for i in iter.range do
+                if flag and iter.pred(i)==false then
+                    flag = false
+                end
+                if not flag then
+                    [body(i)]
+                end
+            end
+        end
+    end
+
+    return adapter
+end
+
+local adapter_lambda_factory = function(Adapter)
+    local factory = macro(
+        function(fun, ...)
+            --get the captured variables
+            local captures = terralib.newlist{...}
+            --wrapper struct
+            local struct lambda{}
+            --overloading the call operator - making 'lambda' a function object
+            lambda.metamethods.__apply = macro(function(self, ...)
+                local args = terralib.newlist{...}
+                return `fun([args],[captures])
+            end)
+            lambda.generator = Adapter
+            lambda.returntype = fun.tree.type.type.returntype
+            --create and return lambda object by value
+            return quote
+                var f : lambda
+            in
+                f
+            end
+        end)
+    return factory
+end
+
+local adapter_view_factory = function(Adapter)
+    local factory = macro(
+        function(n)
+            --wrapper struct
+            local struct view{
+                size : int64
+            }
+            view.generator = Adapter
+            --enable casting to an integer from view
+            view.metamethods.__cast = function(from, to, exp)
+                if from:isstruct() and to:isintegral() then
+                    return quote
+                        var x = exp
+                    in
+                        [int64](x.size)
+                    end
+                end
+            end
+            --create and return wrapper object by value
+            return quote
+                var v = view{n}
+            in
+                v
+            end
+        end)
+    return factory
+end
+
+local adapter_simple_factory = function(Adapter)
+    local factory = macro(function()
+        --wrapper struct
+        local struct simple{
+        }
+        simple.generator = Adapter
+        --create and return simple object by value
+        return quote
+            var v = simple{}
+        in
+            v
+        end
+    end)
+    return factory
+end
+
+local combiner_factory = function(Combiner)
+    local combiner = macro(function(...)
+        local ranges = terralib.newlist{...}
+        local range_types = terralib.newlist{}
+        for i,rn in ipairs(ranges) do
+            range_types:insert(rn.tree.type)
+        end
+        local combirange = Combiner(range_types)
+        return quote
+            var range = combirange{[ranges]}
+        in
+            range
+        end
+    end)
+    return combiner
+end
+
+local newcombiner = function(Ranges, name)
+    --create struct
+    local combiner = terralib.types.newstruct(name)
+    --add entries
+    for i,Range in ipairs(Ranges) do
+		combiner.entries:insert({field = tostring("_"..tostring(i-1)), type = Range})
+	end
+    --complete struct type
+	combiner:complete()
+
+    return combiner
+end
 
 local EnumerateRange = function(Range, Adapter)
 
@@ -72,19 +471,6 @@ local EnumerateRange = function(Range, Adapter)
     end
 
     return adapter
-end
-
-local function newcombiner(Ranges, name)
-    --create struct
-    local combiner = terralib.types.newstruct(name)
-    --add entries
-    for i,Range in ipairs(Ranges) do
-		combiner.entries:insert({field = tostring("_"..tostring(i-1)), type = Range})
-	end
-    --complete struct type
-	combiner:complete()
-
-    return combiner
 end
 
 local JoinRange = function(Ranges)
@@ -190,221 +576,6 @@ local ZipRange = function(Ranges)
     return combirange
 end
 
-local FilteredRange = function(Range, Function)
-
-    local struct adapter(RangeBase){
-        range : Range
-        f : Function
-    }
-
-    adapter.metamethods.__for = function(iter,body)
-        return quote
-            for i in iter.range do
-                if iter.f(i) then
-                    [body(i)]
-                end
-            end
-        end
-    end
-
-    return adapter
-end
-
-local TransformedRange = function(Range, Function)
-
-    local struct adapter(RangeBase){
-        range : Range
-        f : Function
-    }
-
-    adapter.metamethods.__for = function(iter,body)
-        return quote
-            for i in iter.range do
-                var j = iter.f(i)
-                [body(j)]
-            end
-        end
-    end
-
-    return adapter
-end
-
-local TakeRange = function(Range)
-
-    local struct adapter(RangeBase){
-        range : Range
-        take : int64
-    }
-
-    adapter.metamethods.__for = function(iter,body)
-        return quote
-            var count = 0
-            for i in iter.range do
-                if count==iter.take then
-                    break
-                end
-                count = count + 1
-                [body(i)]
-            end
-        end
-    end
-
-    return adapter
-end
-
-local DropRange = function(Range)
-
-    local struct adapter(RangeBase){
-        range : Range
-        drop : int64
-    }
-
-    adapter.metamethods.__for = function(iter,body)
-        return quote
-            var count = 0
-            for i in iter.range do
-                count = count + 1
-                if count>iter.drop then
-                    [body(i)]
-                end
-            end
-        end
-    end
-
-    return adapter
-end
-
-
-local TakeWhileRange = function(Range, Function)
-
-    local struct adapter(RangeBase){
-        range : Range
-        pred : Function
-    }
-
-    adapter.metamethods.__for = function(iter,body)
-        return quote
-            for i in iter.range do
-                if not iter.pred(i) then
-                    break
-                end
-                [body(i)]
-            end
-        end
-    end
-
-    return adapter
-end
-
-local DropWhileRange = function(Range, Function)
-
-    local struct adapter(RangeBase){
-        range : Range
-        pred : Function
-    }
-
-    adapter.metamethods.__for = function(iter,body)
-        return quote
-            var flag = true
-            for i in iter.range do
-                if flag and iter.pred(i)==false then
-                    flag = false
-                end
-                if not flag then
-                    [body(i)]
-                end
-            end
-        end
-    end
-
-    return adapter
-end
-
-local adapter_lambda_factory = function(Adapter)
-    local factory = macro(
-        function(fun, ...)
-            --get the captured variables
-            local captures = terralib.newlist{...}
-            --wrapper struct
-            local struct wrapper{}
-            wrapper.generator = Adapter
-            --overloading the call operator - making 'wrapper' a function object
-            wrapper.metamethods.__apply = macro(function(self, ...)
-                local args = terralib.newlist{...}
-                return `fun([args],[captures])
-            end)
-            --create and return wrapper object by reference
-            return quote
-                var lambda : wrapper
-            in
-                lambda
-            end
-        end)
-    return factory
-end
-
-local adapter_view_factory = function(Adapter)
-    local factory = macro(
-        function(n)
-            --wrapper struct
-            local struct wrapper{
-                size : int64
-            }
-            wrapper.generator = Adapter
-            --enable casting to an integer from wrapper
-            wrapper.metamethods.__cast = function(from, to, exp)
-                if from:isstruct() and to:isintegral() then
-                    return quote
-                        var x = exp
-                    in
-                        [int64](x.size)
-                    end
-                end
-            end
-
-            --create and return wrapper object by reference
-            return quote
-                var v = wrapper{n}
-            in
-                v
-            end
-        end)
-    return factory
-end
-
-local adapter_simple_factory = function(Adapter)
-    local factory = macro(function()
-        --wrapper struct
-        local struct wrapper{
-        }
-        wrapper.generator = Adapter
-        --create and return wrapper object by reference
-        return quote
-            var v = wrapper{}
-        in
-            v
-        end
-    end)
-    return factory
-end
-
-local combiner_factory = function(Combiner)
-    local combiner = macro(function(...)
-        local ranges = terralib.newlist{...}
-        local range_types = terralib.newlist{}
-        for i,rn in ipairs(ranges) do
-            range_types:insert(rn.tree.type)
-        end
-        local combirange = Combiner(range_types)
-        return quote
-            var range = combirange{[ranges]}
-        in
-            range
-        end
-    end)
-    return combiner
-end
-
 --generate user api macro's for adapters
 local transform = adapter_lambda_factory(TransformedRange)
 local filter = adapter_lambda_factory(FilteredRange)
@@ -418,134 +589,38 @@ local join = combiner_factory(JoinRange)
 local product = combiner_factory(ProductRange)
 local zip = combiner_factory(ZipRange)
 
-terra test0()
-    var range = linrange{0, 5}
-    for i in range do
-        io.printf("%d\n", i)
-    end
-    io.printf("\n")
+--export functionality for developing new ranges
+local develop = {
+    RangeBase = RangeBase,
+    factory = { 
+        combiner = combiner_factory,
+        simple_adapter = adapter_simple_factory,
+        view_adapter = adapter_view_factory,
+        lambda_adapter = adapter_view_factory
+    },
+    newcombinerstruct = newcombiner,
+}
+
+
+local Ranger = function(T) 
+return interface.Interface:new{
+    first = {} -> {T},
+	next = {T} -> {T}
+}
 end
---test0()
 
-terra test1()
-    var range = linrange{0, 5}
-    var x = 2
-    for i in range >> transform([terra(i : int, x : int) return x * i end], x) do
-        io.printf("%d\n", i)
-    end
-    io.printf("\n")
-end
---test1()
-
-terra test2()
-    var range = linrange{0, 5}
-    var x = 0
-    for i in range >> filter([terra(i : int, x : int) return i % 2 == x end], x) do
-        io.printf("%d\n", i)
-    end
-    io.printf("\n")
-end
---test2()
-
-
-terra test3()
-    var range = linrange{0, 5}
-    var x = 0
-    var y = 3
-    var g = filter([terra(i : int, x : int) return i % 2 == x end], x)
-    var h = transform([terra(i : int, y : int) return y * i end], y)
-    for i in range >> g >> h do
-        io.printf("%d\n", i)
-    end
-    io.printf("\n")
-end
---test3()
-
-terra test4()
-    var x = 0
-    var y = 3
-    for i in linrange{0, 5} >> 
-                filter([terra(i : int, x : int) return i % 2 == x end], x) >> 
-                        transform([terra(i : int, y : int) return y * i end], y) 
-    do
-        io.printf("%d\n", i)
-    end
-    io.printf("\n")
-end
---test4()
-
-terra test5()
-    for i in linrange{0, 10} >> take(4) do
-        io.printf("%d\n", i)
-    end
-    io.printf("\n")
-end
---test5()
-
-terra test6()
-    for i in linrange{0, 10} >> drop(4) do
-        io.printf("%d\n", i)
-    end
-    io.printf("\n")
-end
---test6()
-
-
-terra test7()
-    var x = 6
-    for i in linrange{0, 10} >> take_while([terra(i : int, x : int) return i < x end], x) do
-        io.printf("%d\n", i)
-    end
-    io.printf("\n")
-end
---test7()
-
-terra test8()
-    var x = 6
-    for i in linrange{0, 10} >> drop_while([terra(i : int, x : int) return i < x end], x) do
-        io.printf("%d\n", i)
-    end
-    io.printf("\n")
-end
---test8()
-
-
-terra test9()
-    for i,v in linrange{4, 10} >> enumerate() do
-        io.printf("(%d, %d)\n", i, v)
-    end
-    io.printf("\n")
-end
---test9()
-
-terra test10()
-    for v in join(linrange{1, 4}, linrange{4, 6}, linrange{6, 9}) do
-        io.printf("%d\n", v)
-    end
-    io.printf("\n")
-end
---test10()
-
-terra test11()
-    for x in product(linrange{1, 4}) do
-        io.printf("(%d)\n", x)
-    end
-    io.printf("\n")
-end
-test11()
-
-terra test12()
-    for x,y in product(linrange{1, 4}, linrange{4, 6}) do
-        io.printf("(%d, %d)\n", x, y)
-    end
-    io.printf("\n")
-end
-test12()
-
-terra test13()
-    for x,y,z in product(linrange{1, 4}, linrange{4, 6}, linrange{10, 14}) do
-        io.printf("(%d, %d, %d)\n", x, y, z)
-    end
-    io.printf("\n")
-end
-test13()
+--return module
+return {
+    Base = RangeBase,
+    Linrange = Linrange,
+    transform = transform,    
+    filter = filter,
+    take = take,
+    drop = drop, 
+    take_while = take_while,
+    drop_while = drop_while,
+    enumerate = enumerate,
+    join = join,
+    product = product,
+    develop
+}
