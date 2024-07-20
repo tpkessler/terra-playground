@@ -48,6 +48,18 @@ local RangeBase = function(Range, T)
         end
     end
 
+    --collect requires only the 'Stacker' interface
+    local S = Stacker(T)
+    terra linrange:collect(container : S)
+        var count = 0
+        for v in self do
+            --boundschecking is done in the set method (implemented 
+            --in block for dynamic datastructures)
+            container:set(count, v)
+            count = count + 1
+        end
+    end
+
 end
 
 --convenience macro that yields the next value that satisfies the predicate
@@ -100,18 +112,6 @@ local Linrange = function(T)
     --add metamethods
     RangeBase(linrange, T)
 
-    --collect requires only the 'Stacker' interface
-    local S = Stacker(T)
-    terra linrange:collect(container : S)
-        var count = 0
-        for v in self do
-            --boundschecking is done in the set method (implemented 
-            --in block for dynamic datastructures)
-            container:set(count, v)
-            count = count + 1
-        end
-    end
-
     return linrange
 end
 
@@ -154,7 +154,7 @@ local FilteredRange = function(Range, Function)
     --add metamethods
     local T = Range.eltype
     RangeBase(adapter, T)
-    
+
     return adapter
 end
 
