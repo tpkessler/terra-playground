@@ -41,32 +41,20 @@ local RangeBase = function(Range, T)
         return quote
             var iter = self
             var state, value = iter:getfirst()
-            while not iter:islast(state) do
+            while not iter:islast(state, value) do
                 [body(value)]
                 value = iter:getnext(state)
             end
         end
     end
 
-
-    --collect requires only the 'Stacker' interface
-    local S = Stacker(T)
-
-    terra Range:collect(container : S)
-        var count = 0
-        --for v in self do
-            --boundschecking is done in the set method (implemented 
-            --in block for dynamic datastructures)
-            --container:set(count, v)
-            --count = count + 1
-        --end
-    end
 end
 
 --convenience macro that yields the next value that satisfies the predicate
-local __getnextvalue_that_satisfies_predicate = macro(function(self, state, value)
+local __getnextvalue_that_satisfies_predicate = macro(function(self, state, value, condition)
+    local condition = condition or false
     return quote
-        while self.predicate(value)==false do
+        while self.predicate(value)==condition do
             if self.range:islast(state) then break end
             value = self.range:getnext(state)
         end
@@ -101,7 +89,7 @@ local Linrange = function(T)
         end
     end)
 
-    linrange.methods.islast = macro(function(self, state)
+    linrange.methods.islast = macro(function(self, state, value)
         return quote 
             var terminate = (state == self:size())
         in
@@ -111,6 +99,18 @@ local Linrange = function(T)
 
     --add metamethods
     RangeBase(linrange, T)
+
+    --collect requires only the 'Stacker' interface
+    local S = Stacker(T)
+    terra linrange:collect(container : S)
+        var count = 0
+        for v in self do
+            --boundschecking is done in the set method (implemented 
+            --in block for dynamic datastructures)
+            container:set(count, v)
+            count = count + 1
+        end
+    end
 
     return linrange
 end
@@ -143,7 +143,7 @@ local FilteredRange = function(Range, Function)
         end
     end)
 
-    adapter.methods.islast = macro(function(self, state)
+    adapter.methods.islast = macro(function(self, state, value)
         return quote 
             var terminate = self.range:islast(state)
         in
@@ -152,9 +152,9 @@ local FilteredRange = function(Range, Function)
     end)
 
     --add metamethods
-    local T = Function.returntype
+    local T = Range.eltype
     RangeBase(adapter, T)
-
+    
     return adapter
 end
 
@@ -183,7 +183,7 @@ local TransformedRange = function(Range, Function)
         end
     end)
 
-    adapter.methods.islast = macro(function(self, state)
+    adapter.methods.islast = macro(function(self, state, value)
         return quote 
             var terminate = self.range:islast(state)
         in
@@ -218,9 +218,9 @@ local TakeRange = function(Range)
         end
     end)
 
-    adapter.methods.islast = macro(function(self, state)
+    adapter.methods.islast = macro(function(self, state, value)
         return quote 
-            var terminate = (self.take == 1)
+            var terminate = (self.take == 0) or self.range:islast(state)
         in
             terminate
         end
@@ -261,7 +261,7 @@ local DropRange = function(Range)
         end
     end)
 
-    adapter.methods.islast = macro(function(self, state)
+    adapter.methods.islast = macro(function(self, state, value)
         return quote 
             var terminate = self.range:islast(state)
         in
@@ -288,28 +288,16 @@ local TakeWhileRange = function(Range, Function)
     }
 
     adapter.methods.getfirst = macro(function(self)
-        return quote
-            var state, value = self.range:getfirst()
-            while not self.predicate(value) do
-                value = self.range:getnext(state)
-            end
-        in
-            state, value
-        end
+        return `self.range:getfirst()
     end)
 
     adapter.methods.getnext = macro(function(self, state)
-        return quote
-            var value = self.range:getnext(state)
-            self.take = self.take - 1
-        in
-            value
-        end
+        return `self.range:getnext(state)
     end)
 
-    adapter.methods.islast = macro(function(self, state)
+    adapter.methods.islast = macro(function(self, state, value)
         return quote 
-            var terminate = (self.take == 1)
+            var terminate = self.predicate(value)==false
         in
             terminate
         end
@@ -319,40 +307,40 @@ local TakeWhileRange = function(Range, Function)
     local T = Range.eltype
     RangeBase(adapter, T)
 
-    adapter.metamethods.__for = function(iter,body)
-        return quote
-            for i in iter.range do
-                if not iter.predicate(i) then
-                    break
-                end
-                [body(i)]
-            end
-        end
-    end
-
     return adapter
 end
 
 local DropWhileRange = function(Range, Function)
 
-    local struct adapter(RangeBase){
+    local struct adapter{
         range : Range
-        pred : Function
+        predicate : Function
     }
 
-    adapter.metamethods.__for = function(iter,body)
+    adapter.methods.getfirst = macro(function(self)
         return quote
-            var flag = true
-            for i in iter.range do
-                if flag and iter.pred(i)==false then
-                    flag = false
-                end
-                if not flag then
-                    [body(i)]
-                end
-            end
+            var state, value = self.range:getfirst()
+            __getnextvalue_that_satisfies_predicate(self, state, value, true)
+        in
+            state, value
         end
-    end
+    end)
+
+    adapter.methods.getnext = macro(function(self, state)
+        return `self.range:getnext(state)
+    end)
+
+    adapter.methods.islast = macro(function(self, state, value)
+        return quote 
+            var terminate = self.range:islast(state)
+        in
+            terminate
+        end
+    end)
+
+    --add metamethods
+    local T = Range.eltype
+    RangeBase(adapter, T)
 
     return adapter
 end
@@ -361,9 +349,9 @@ local adapter_lambda_factory = function(Adapter)
     local factory = macro(
         function(fun, ...)
             --get the captured variables
-            local captures = terralib.newlist{...}
+            local captures = {...}
             --wrapper struct
-            local struct lambda{}
+            local struct lambda {}
             --overloading the call operator - making 'lambda' a function object
             lambda.metamethods.__apply = macro(function(self, ...)
                 local args = terralib.newlist{...}
@@ -373,7 +361,7 @@ local adapter_lambda_factory = function(Adapter)
             lambda.returntype = fun.tree.type.type.returntype
             --create and return lambda object by value
             return quote
-                var f : lambda
+                var f = lambda{}
             in
                 f
             end
@@ -546,30 +534,37 @@ local ZipRange = function(Ranges)
     --Recursion requires definition of the loop variables in
     --terms of symbols, which require a type. Maybe add as 
     --a type-trait?
-    combirange.metamethods.__for = function(range,body)
+    combirange.metamethods.__for = function(self,body)
         local D = #Ranges
         if D==1 then
             return quote
-                for u in range._0 do
+                var iter = self
+                for u in iter._0 do
                     [body(u)]
                 end
             end
         elseif D==2 then
             return quote
-                for u_1 in range._1 do
-                    for u_0 in range._0 do
-                        [body(u_0, u_1)]
-                    end
+                var iter = self
+                var state_0, value_0 = iter._0:getfirst()
+                var state_1, value_1 = iter._1:getfirst()
+                while not (iter._0:islast(state_0, value_0) or iter._1:islast(state_1, value_1)) do
+                    [body(value_0, value_1)]
+                    value_0 = iter._0:getnext(state_0)
+                    value_1 = iter._1:getnext(state_1)
                 end
             end
         elseif D==3 then
             return quote
-                for u_2 in range._2 do
-                    for u_1 in range._1 do
-                        for u_0 in range._0 do
-                            [body(u_0, u_1, u_2)]
-                        end
-                    end
+                var iter = self
+                var state_0, value_0 = iter._0:getfirst()
+                var state_1, value_1 = iter._1:getfirst()
+                var state_2, value_2 = iter._2:getfirst()
+                while not (iter._0:islast(state_0, value_0) or iter._1:islast(state_1, value_1) or iter._2:islast(state_2, value_2)) do
+                    [body(value_0, value_1, value_2)]
+                    value_0 = iter._0:getnext(state_0)
+                    value_1 = iter._1:getnext(state_1)
+                    value_2 = iter._2:getnext(state_2)
                 end
             end
         end
@@ -624,5 +619,6 @@ return {
     enumerate = enumerate,
     join = join,
     product = product,
+    zip = zip,
     develop
 }

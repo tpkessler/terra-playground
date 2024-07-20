@@ -24,12 +24,15 @@ terra test1()
     io.printf("transform \n")
     var range = linrange{0, 5}
     var x = 3
-    for i in linrange{0, 5} >> rn.transform([terra(i : int, x : int) return x * i end], x) do
+    var g = rn.transform([terra(i : int, x : int) return x * i end], 2)
+    var r = range >> g
+    for i in r do
         io.printf("%d\n", i)
     end
     io.printf("\n")
 end
 test1()
+
 
 terra test2()
     io.printf("filter \n")
@@ -40,10 +43,6 @@ terra test2()
     io.printf("\n")
 end
 test2()
-
-local runtests = false
-
-if runtests then
 
 terra test3()
     io.printf("compose transform and filter - lvalues\n")
@@ -93,7 +92,7 @@ test6()
 
 terra test7()
     io.printf("take_while\n")
-    var x = 6
+    var x = 5
     for i in linrange{0, 10} >> rn.take_while([terra(i : int, x : int) return i < x end], x) do
         io.printf("%d\n", i)
     end
@@ -110,7 +109,6 @@ terra test8()
     io.printf("\n")
 end
 test8()
-
 
 terra test9()
     io.printf("enumerate\n")
@@ -157,4 +155,29 @@ terra test13()
 end
 test13()
 
+terra test14()
+    io.printf("zip - 1\n")
+    for x in rn.zip(linrange{1, 4}) do
+        io.printf("(%d)\n", x)
+    end
+    io.printf("\n")
 end
+test14()
+
+terra test15()
+    io.printf("zip - 2\n")
+    for x, y in rn.zip(linrange{1, 4}, linrange{2, 6}) do
+        io.printf("(%d, %d)\n", x, y)
+    end
+    io.printf("\n")
+end
+test15()
+
+terra test16()
+    io.printf("zip - 2\n")
+    for x, y, z in rn.zip(linrange{1, 4}, linrange{2, 6}, linrange{3, 8}) do
+        io.printf("(%d, %d, %d)\n", x, y, z)
+    end
+    io.printf("\n")
+end
+test16()
