@@ -13,6 +13,7 @@ local Stacker = terralib.memoize(function(T, I)
         }
 end)
 
+
 local RangeBase = function(Range, T)
 
     --set the element type of the range
@@ -50,7 +51,7 @@ local RangeBase = function(Range, T)
 
     --collect requires only the 'Stacker' interface
     local S = Stacker(T)
-    terra linrange:collect(container : S)
+    terra Range:collect(container : S)
         var count = 0
         for v in self do
             --boundschecking is done in the set method (implemented 
