@@ -100,11 +100,6 @@ function Template:new()
 		assert(terralib.types.istype(key) and key:ispointertofunction(),
 			"Need to pass function pointer but got " .. tostring(key))
 		key = key.type
-		for sig, _ in pairs(self.methods) do
-			assert(sig.returntype == key.returntype,
-				"Return types don't match. Expected " .. tostring(sig) ..
-				" but got " .. tostring(key))
-		end
 		self.methods[key] = value
 	end
 

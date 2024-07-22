@@ -29,7 +29,7 @@ foo[Integer -> {}] = function(T)
 	return true
 end
 
-foo[Float -> {}] = function(T)
+foo[Float -> Float] = function(T)
 	return true
 end
 
@@ -80,17 +80,6 @@ testenv "templates" do
 		local ok, ret = pcall(function(T1, T2) return foo(T1, T2) end, int32, int32)
 		test ok == false
 		local i, j = ret:find("Method call is ambiguous.")
-		test i > 1
-	end
-
-	testset "Wrong return type" do
-		local ok, ret = pcall(function()
-			foo[Float -> Float] = function(T)
-				return true
-			end
-		end)
-		test ok == false
-		local i, j = ret:find("Return types don't match.")
 		test i > 1
 	end
 
