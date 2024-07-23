@@ -25,37 +25,38 @@ local Integer = concept.Integer
 --test foo template implementation
 local foo = template.Template:new()
 
-foo[Integer] = function(T)
+foo[Integer -> {}] = function(T)
 	return true
 end
 
-foo[Float] = function(T)
+foo[Float -> Float] = function(T)
 	return true
 end
 
-foo[{Integer,Integer}] = function(T1, T2)
+foo[{Integer, Integer} -> {}] = function(T1, T2)
 	return true
 end
 
-foo[{Integer,Int32}] = function(T1, T2)
+foo[{Integer, Int32} -> {}] = function(T1, T2)
 	return true
 end
 
-foo[{Int32,Integer}] = function(T1, T2)
+foo[{Int32, Integer} -> {}] = function(T1, T2)
 	return true
 end
 
-foo[{Int32,Integer,Float}] = function(T1, T2, T3)
+foo[{Int32, Integer, Float} -> {}] = function(T1, T2, T3)
 	return true
 end
 
-foo[{Int32,Int32,Float}] = function(T1, T2, T3)
+foo[{Int32, Int32, Float} -> {}] = function(T1, T2, T3)
 	return true
 end
 
-foo[{Int32,Int32,Float64}] = function(T1, T2, T3)
+foo[{Int32, Int32, Float64} -> {}] = function(T1, T2, T3)
 	return true
 end
+
 
 testenv "templates" do
 	for _, T in pairs({double, float, int32}) do
@@ -79,6 +80,17 @@ testenv "templates" do
 		local ok, ret = pcall(function(T1, T2) return foo(T1, T2) end, int32, int32)
 		test ok == false
 		local i, j = ret:find("Method call is ambiguous.")
+		test i > 1
+	end
+
+	testset "No function pointer as argument" do
+		local ok, ret = pcall(function()
+			foo[Float] = function(T)
+				return true
+			end
+		end)
+		test ok == false
+		local i, j = ret:find("Need to pass function pointer")
 		test i > 1
 	end
 end

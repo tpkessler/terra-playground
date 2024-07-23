@@ -5,9 +5,9 @@ local concept = require("concept")
 
 
 local Stacker = terralib.memoize(function(T, I)
-    I = I or int64
+    I = I or uint64
     return interface.Interface:new{
-            size = {} -> int64,
+            size = {} -> uint64,
             set = {I, T} -> {},
             get = I -> T
         }

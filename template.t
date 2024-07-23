@@ -18,11 +18,12 @@ function Template:new()
 
     -- Check if method signature satisfies method concepts.
     -- This is used to rule out methods, such that only admissable methods remain.
-    local function concepts_check(concepts, args)
-		if #concepts ~= #args then
+    local function concepts_check(sig, args)
+		if #sig~= #args then
 			return false
 		end
-		return fun.all(function(C, T) return C(T) end, fun.zip(concepts, args))
+		local res = fun.all(function(C, T) return C(T) end, fun.zip(sig, args))
+		return res
 	end
 
 	-- Given two lists of concepts this function returns
@@ -47,9 +48,17 @@ function Template:new()
     -- Return a table of admissable methods.
 	function template:get_methods(...)
 		local args = {...}
-		return fun.filter(function(Carg, func) return concepts_check(Carg, args) end,
+		-- Only check input arguments. We can't control the return type
+		-- when we do method dispatching.
+		return fun.filter(function(sig, func)
+							  return concepts_check(sig.parameters, args)
+						  end,
 						  self.methods
-						 ):tomap()
+						 )
+						 -- For later comparison we only return the function
+						 -- parameters but not its return type.
+						 :map(function(sig, func) return sig.parameters, func end)
+						 :tomap()
 	end
 
 	function template:select_method(...)
@@ -88,25 +97,28 @@ function Template:new()
 
 	local mt = {}
 	function mt:__newindex(key, value)
-		if terralib.types.istype(key) then
-			self.methods[{key}] = value
-		else
-			self.methods[key] = value
-		end
+		assert(terralib.types.istype(key) and key:ispointertofunction(),
+			"Need to pass function pointer but got " .. tostring(key))
+		key = key.type
+		self.methods[key] = value
 	end
 
 	function mt:__call(...)
 		local methods = self:select_method(...) 
 		local len = fun.length(methods)
 		if len > 1 then
-			io.stderr:write("Warning: The following method calls are ambiguous", "\n")
+			local err_str = ""
+			err_str = err_str
+				.. "The following method calls are ambiguous", "\n"
 			-- terralist has a nice tostring method
 			local arg = terralib.newlist({...})
-			io.stderr:write("For signature ", tostring(arg), " there's", "\n")
+			err_str = err_str
+				.. string.format("For signature %s there's", tostring(arg))
 			for sig, func in pairs(methods) do
-				io.stderr:write(tostring(terralib.newlist(sig)), "\n")
+				err_str = err_str
+					.. tostring(terralib.newlist(sig)) .. "\n"
 			end
-        	return error("Method call is ambiguous.", 2)
+        	return error("Method call is ambiguous.\n" .. err_str, 2)
 		else
 			local sig, func = next(methods)
 			return (func or self.default)(...)
