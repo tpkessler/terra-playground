@@ -1,3 +1,4 @@
+require("terralibext")
 local alloc = require("alloc")
 local range = require("range")
 
@@ -10,7 +11,7 @@ local DynamicStack = terralib.memoize(function(T)
     local S = alloc.SmartBlock(T)
 
     local struct stack{
-        data: S
+        data: S     --typed memory block
     }
 
     stack.staticmethods = {}
@@ -53,7 +54,7 @@ local DynamicStack = terralib.memoize(function(T)
 
     stack.methods.islast = macro(function(self, state)
         return quote 
-            var terminate = (state+1 == self:size())
+            var terminate = (state == self:size())
         in
             terminate
         end

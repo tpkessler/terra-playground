@@ -10,8 +10,40 @@ local DefaultAllocator =  Alloc.DefaultAllocator()
 local linrange = rn.Linrange(int)
 
 
+testenv "linrange" do
+
+    terracode
+        var alloc : DefaultAllocator
+        var range = linrange{1, 4}
+        var s = stack.new(&alloc, 3)
+    end
+
+	testset "linrange" do
+        terracode
+            range:collect(&s)
+        end
+        test range:size() == 3
+        test s:get(0)==1
+        test s:get(1)==2
+        test s:get(2)==3
+	end
+
+    testset "transform" do
+        terracode
+            var x = 2
+            var g = rn.transform([terra(i : int, x : int) return x * i end], x)
+            var trange = range >> g
+            trange:collect(&s)
+        end
+        test s:get(0)==2
+        test s:get(1)==4
+        test s:get(2)==6
+    end
+
+end
+
 terra test0()
-    io.printf("linrange \n")
+    io.printf("transform \n")
     var range = linrange{0, 5}
     for i in range do
         io.printf("%d\n", i)
@@ -37,12 +69,17 @@ test1()
 terra test2()
     io.printf("filter \n")
     var x = 0
-    for i in linrange{0, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], x) do
+    for i in linrange{1, 8} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], x) do
         io.printf("%d\n", i)
     end
     io.printf("\n")
 end
 test2()
+
+
+local runtests = false
+
+if runtests then
 
 terra test3()
     io.printf("compose transform and filter - lvalues\n")
@@ -112,7 +149,7 @@ test8()
 
 terra test9()
     io.printf("enumerate\n")
-    for i,v in linrange{4, 10} >> rn.enumerate() do
+    for i,v in rn.enumerate(linrange{4, 10}) do
         io.printf("(%d, %d)\n", i, v)
     end
     io.printf("\n")
@@ -181,3 +218,6 @@ terra test16()
     io.printf("\n")
 end
 test16()
+
+
+end

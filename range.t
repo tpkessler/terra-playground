@@ -42,9 +42,11 @@ local RangeBase = function(Range, T)
         return quote
             var iter = self
             var state, value = iter:getfirst()
-            while not iter:islast(state, value) do
-                [body(value)]
-                value = iter:getnext(state)
+            if not iter:islast(state, value) then
+                repeat
+                    [body(value)]
+                    value = iter:getnext(state)
+                until iter:islast(state, value)
             end
         end
     end
@@ -68,7 +70,7 @@ local __getnextvalue_that_satisfies_predicate = macro(function(self, state, valu
     local condition = condition or false
     return quote
         while self.predicate(value)==condition do
-            if self.range:islast(state) then break end
+            if self.range:islast(state, value) then break end
             value = self.range:getnext(state)
         end
     end
@@ -283,7 +285,7 @@ local TakeWhileRange = function(Range, Function)
     --check that function is a predicate
     assert(Function.returntype == bool)
 
-    local struct adapter(RangeBase){
+    local struct adapter{
         range : Range
         predicate : Function
     }
@@ -346,23 +348,73 @@ local DropWhileRange = function(Range, Function)
     return adapter
 end
 
+
+local lambda_generator = function(fun, ...)
+    --get the captured variables
+    local captures = {...}
+    --wrapper struct
+    local lambda = terralib.types.newstruct("lambda")
+    --add captured variable types as entries to the wrapper struct
+    for i, sym in ipairs(captures) do
+        lambda.entries:insert({field = "_"..tostring(i-1), type = sym.tree.type})
+    end
+    lambda:complete()
+    --overloading the call operator - making 'lambda' a function object
+    lambda.metamethods.__apply = macro(terralib.memoize(function(self, ...)
+        local args = terralib.newlist{...}
+        local capt = terralib.newlist()
+        for i,v in ipairs(self.tree.type.entries) do
+            local field = "_"..tostring(i-1)
+            capt:insert(quote in self.[field] end)
+        end
+        return `fun([args], [capt])
+    end))
+    --determine return-type from lambda expression
+    lambda.returntype = fun.tree.type.type.returntype
+    return lambda
+end
+
+local lambda = macro(function(fun, ...)
+    --get the captured variables
+    local captures = {...}
+    local p = lambda_genetator(fun, captures)
+    --create and return lambda object by value
+    return quote
+        var f = lambda{[captures]}
+    in
+        f
+    end
+end)
+
 local adapter_lambda_factory = function(Adapter)
     local factory = macro(
         function(fun, ...)
             --get the captured variables
             local captures = {...}
             --wrapper struct
-            local struct lambda {}
+            local lambda = terralib.types.newstruct("lambda")
+            --add captured variable types as entries to the wrapper struct
+            for i, sym in ipairs(captures) do
+                lambda.entries:insert({field = "_"..tostring(i-1), type = sym.tree.type})
+            end
+	        lambda:complete()
             --overloading the call operator - making 'lambda' a function object
-            lambda.metamethods.__apply = macro(function(self, ...)
+            lambda.metamethods.__apply = macro(terralib.memoize(function(self, ...)
                 local args = terralib.newlist{...}
-                return `fun([args],[captures])
-            end)
+                local capt = terralib.newlist()
+                for i,v in ipairs(self.tree.type.entries) do
+                    local field = "_"..tostring(i-1)
+                    capt:insert(quote in self.[field] end)
+                end
+                return `fun([args], [capt])
+            end))
+            --set the generator (FilteredRange or TransformedRange, etc)
             lambda.generator = Adapter
+            --determine return-type from lambda expression
             lambda.returntype = fun.tree.type.type.returntype
             --create and return lambda object by value
             return quote
-                var f = lambda{}
+                var f = lambda{[captures]}
             in
                 f
             end
@@ -444,15 +496,20 @@ local newcombiner = function(Ranges, name)
     return combiner
 end
 
-local EnumerateRange = function(Range, Adapter)
+local Enumerator = function(Ranges)
 
-    local struct adapter(RangeBase){
+    --check that a range-for is implemented
+    assert(#Ranges==1)
+    local Range = Ranges[1]
+    assert(Range.metamethods.__for)
+
+    local struct enumerator{
         range : Range
-        adap : Adapter
     }
 
-    adapter.metamethods.__for = function(iter,body)
+    enumerator.metamethods.__for = function(self,body)
         return quote
+            var iter = self
             var i = 0
             for v in iter.range do
                 [body(i,v)]
@@ -461,7 +518,7 @@ local EnumerateRange = function(Range, Adapter)
         end
     end
 
-    return adapter
+    return enumerator
 end
 
 local JoinRange = function(Ranges)
@@ -581,8 +638,8 @@ local take = adapter_view_factory(TakeRange)
 local drop = adapter_view_factory(DropRange)
 local take_while = adapter_lambda_factory(TakeWhileRange)
 local drop_while = adapter_lambda_factory(DropWhileRange)
-local enumerate = adapter_simple_factory(EnumerateRange)
 --generate user api macro's for combi-ranges
+local enumerate = combiner_factory(Enumerator)
 local join = combiner_factory(JoinRange)
 local product = combiner_factory(ProductRange)
 local zip = combiner_factory(ZipRange)
