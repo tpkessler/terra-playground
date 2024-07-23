@@ -1,27 +1,36 @@
-local io = terralib.includec("stdio.h")
 local interface = require("interface")
 local err = require("assert")
 
 local size_t = uint64
 
-local Stacker = terralib.memoize(function(T, I)
-    I = I or uint64
-    return interface.Interface:new{
+--the following interface is used to collect elements in
+--a range
+local Stacker = terralib.memoize(
+    function(T)
+        return interface.Interface:new{
             size = {} -> uint64,
-            set = {I, T} -> {},
-            get = {I} -> {T}
+            push = {T} -> {},
+            pop = {} -> {T}
         }
-end)
+    end
+)
 
-
+--an iterator implements the following macros:
+--  methods.getfirst :: (self) -> (state, value)
+--  methods.getnext :: (self, state) -> (value)
+--  methods.islast :: (self, state, value) -> (true/false)
+--the following base class then overloads the '>>' operator
+--and adds the '__for' metamethod, and adds a 'collect' 
+--method that collects all elements in the range in a container
+--that satsifies the 'Stacker(T)' interface
+--ToDo - maybe its possible to use (mutating) terra functions 
+--rather than macros.
 local RangeBase = function(Range, T)
 
     --set the element type of the range
     Range.eltype = T
 
-    --ranges support __for and __rshift
-    --__for is a spcialization for each range
-    --__rshift is a general implementation
+    --overloading '>>' operator
     Range.metamethods.__rshift = macro(function(self, adapter)
         local self_type = self.tree.type
         local adapter_type = adapter.tree.type
@@ -38,6 +47,7 @@ local RangeBase = function(Range, T)
         end
     end)
 
+    --__for is generated for iterators
     Range.metamethods.__for = function(self,body)
         return quote
             var iter = self
@@ -54,12 +64,8 @@ local RangeBase = function(Range, T)
     --collect requires only the 'Stacker' interface
     local S = Stacker(T)
     terra Range:collect(container : S)
-        var count = 0
         for v in self do
-            --boundschecking is done in the set method (implemented 
-            --in block for dynamic datastructures)
-            container:set(count, v)
-            count = count + 1
+            container:push(v)
         end
     end
 
@@ -75,7 +81,6 @@ local __getnextvalue_that_satisfies_predicate = macro(function(self, state, valu
         end
     end
 end)
-
 
 local Linrange = function(T)
 
@@ -348,7 +353,9 @@ local DropWhileRange = function(Range, Function)
     return adapter
 end
 
-
+--lua function that generates a terra type that are function objects. these wrap
+--a function in the 'apply' metamethod and store any captured variables in the struct
+--as entries
 local lambda_generator = function(fun, ...)
     --get the captured variables
     local captures = {...}
@@ -374,47 +381,31 @@ local lambda_generator = function(fun, ...)
     return lambda
 end
 
+--return a function object with captured variables in ...
 local lambda = macro(function(fun, ...)
     --get the captured variables
     local captures = {...}
-    local p = lambda_genetator(fun, captures)
+    local p = lambda_generator(fun, ...)
     --create and return lambda object by value
     return quote
-        var f = lambda{[captures]}
+        var f = p{[captures]}
     in
         f
     end
 end)
 
+--factory function for range adapters that carry a lambda
 local adapter_lambda_factory = function(Adapter)
     local factory = macro(
         function(fun, ...)
             --get the captured variables
             local captures = {...}
-            --wrapper struct
-            local lambda = terralib.types.newstruct("lambda")
-            --add captured variable types as entries to the wrapper struct
-            for i, sym in ipairs(captures) do
-                lambda.entries:insert({field = "_"..tostring(i-1), type = sym.tree.type})
-            end
-	        lambda:complete()
-            --overloading the call operator - making 'lambda' a function object
-            lambda.metamethods.__apply = macro(terralib.memoize(function(self, ...)
-                local args = terralib.newlist{...}
-                local capt = terralib.newlist()
-                for i,v in ipairs(self.tree.type.entries) do
-                    local field = "_"..tostring(i-1)
-                    capt:insert(quote in self.[field] end)
-                end
-                return `fun([args], [capt])
-            end))
+            local p = lambda_generator(fun, ...)
             --set the generator (FilteredRange or TransformedRange, etc)
-            lambda.generator = Adapter
-            --determine return-type from lambda expression
-            lambda.returntype = fun.tree.type.type.returntype
+            p.generator = Adapter
             --create and return lambda object by value
             return quote
-                var f = lambda{[captures]}
+                var f = p{[captures]}
             in
                 f
             end
@@ -422,6 +413,7 @@ local adapter_lambda_factory = function(Adapter)
     return factory
 end
 
+--factory function for range adapters that carry a view
 local adapter_view_factory = function(Adapter)
     local factory = macro(
         function(n)
@@ -450,6 +442,7 @@ local adapter_view_factory = function(Adapter)
     return factory
 end
 
+--factory function for range adapters that don't cary state
 local adapter_simple_factory = function(Adapter)
     local factory = macro(function()
         --wrapper struct
@@ -466,6 +459,7 @@ local adapter_simple_factory = function(Adapter)
     return factory
 end
 
+--factory function for range combiners
 local combiner_factory = function(Combiner)
     local combiner = macro(function(...)
         local ranges = terralib.newlist{...}
@@ -654,18 +648,12 @@ local develop = {
         lambda_adapter = adapter_view_factory
     },
     newcombinerstruct = newcombiner,
+    lambda_generator = lambda_generator
 }
-
-
-local Ranger = function(T) 
-return interface.Interface:new{
-    first = {} -> {T},
-	next = {T} -> {T}
-}
-end
 
 --return module
 return {
+    lambda = lambda,
     Base = RangeBase,
     Linrange = Linrange,
     transform = transform,    
