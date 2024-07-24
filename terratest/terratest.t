@@ -1,7 +1,7 @@
 local C = terralib.includec("stdio.h")
 
 local mt = getmetatable(_G)
-local runalltests = false
+runalltests = false
 local topfile = ""
 if mt.__declared["arg"]~=nil then
     for i,v in pairs(arg) do

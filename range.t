@@ -164,7 +164,7 @@ local Steprange = function(T)
     end
 
     local new = terra(a : T, b : T, step : T, include_last : bool)
-        err.assert(((b-a) > 0 and step > 0) or ((b-a) < 0 and step < 0))
+        err.assert(((b-a) >= 0 and step > 0) or ((b-a) <= 0 and step < 0))
         b = terralib.select(b > a, b + [int](include_last), b - [int](include_last))
         b = b + (b - a) % step
         return range{a, b, step}

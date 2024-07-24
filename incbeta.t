@@ -1,3 +1,6 @@
+-- Regularized Incomplete Beta Function
+-- according to the C - implementaiton at https://github.com/codeplea/incbeta
+
 local math = require("mathfuns")
 
 local STOP = 1.0e-8
@@ -46,6 +49,4 @@ local terra incbeta(a : double, b : double, x : double) : double
     return 1.0/0.0 --Needed more loops, did not converge
 end
 
-return {
-    beta = incbeta
-}
+return incbeta
