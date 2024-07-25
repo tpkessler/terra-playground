@@ -7,7 +7,7 @@ math.isapprox = terra(a : double, b : double, atol : double)
     return math.abs(b-a) < atol
 end
 
-testenv "beta" do
+testenv "Regularized Incomplete Beta Function" do
 
     local atol = 1e-5
 

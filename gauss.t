@@ -11,60 +11,49 @@ local size_t = uint32
 local Allocator = alloc.Allocator
 local dvec = dvector.DynamicVector(double)
 
-local poly2 = poly.Polynomial(double, 3)
-
-dvec.methods.print = terra(self : &dvec, name : rawstring)
-    for i = 0, self:size() do
-        io.printf("%s[%d] = %0.17f\n", name, i, self(i))
-    end
-    io.printf("\n")
-end
-
-local besselj0_roots = terra()
-    return arrayof(double,
-        2.4048255576957728,
-        5.5200781102863106,
-        8.6537279129110122,
-        11.791534439014281,
-        14.930917708487785,
-        18.071063967910922,
-        21.211636629879258,
-        24.352471530749302,
-        27.493479132040254,
-        30.634606468431975,
-        33.775820213573568,
-        36.917098353664044,
-        40.058425764628239,
-        43.199791713176730,
-        46.341188371661814,
-        49.482609897397817,
-        52.624051841114996,
-        55.765510755019979,
-        58.906983926080942,
-        62.048469190227170
-    )
-end
+local besselj0_roots = terralib.constant(terralib.new(double[20],{
+    2.4048255576957728,
+    5.5200781102863106,
+    8.6537279129110122,
+    11.791534439014281,
+    14.930917708487785,
+    18.071063967910922,
+    21.211636629879258,
+    24.352471530749302,
+    27.493479132040254,
+    30.634606468431975,
+    33.775820213573568,
+    36.917098353664044,
+    40.058425764628239,
+    43.199791713176730,
+    46.341188371661814,
+    49.482609897397817,
+    52.624051841114996,
+    55.765510755019979,
+    58.906983926080942,
+    62.048469190227170
+}))
 
 
-local besselj1_on_besselj0_roots = terra()
-    return arrayof(double,
-        0.2695141239419169,
-        0.1157801385822037,
-        0.07368635113640822,
-        0.05403757319811628,
-        0.04266142901724309,
-        0.03524210349099610,
-        0.03002107010305467,
-        0.02614739149530809,
-        0.02315912182469139,
-        0.02078382912226786
-    )
-end
+local besselj1_on_besselj0_roots = terralib.constant(terralib.new(double[10],{
+    0.2695141239419169,
+    0.1157801385822037,
+    0.07368635113640822,
+    0.05403757319811628,
+    0.04266142901724309,
+    0.03524210349099610,
+    0.03002107010305467,
+    0.02614739149530809,
+    0.02315912182469139,
+    0.02078382912226786
+}))
 
 local poly1 = poly.Polynomial(double, 2)
 local poly2 = poly.Polynomial(double, 3)
 local poly3 = poly.Polynomial(double, 4)
 local poly4 = poly.Polynomial(double, 5)
+local poly5 = poly.Polynomial(double, 6)
+local poly6 = poly.Polynomial(double, 7)
 
 terra bessel_zero_roots(alloc : Allocator, m : size_t)
     --bessel0roots roots of besselj(0,x). Use asymptotics.
@@ -74,9 +63,8 @@ terra bessel_zero_roots(alloc : Allocator, m : size_t)
     var p2 = poly2.from(1.0, c[6], c[4])
     var p3 = poly3.from(1.0, c[6], c[4], c[2])
     --First 20 are precomputed:
-    var jk_0_20 = besselj0_roots()
     for jj = 0, math.min(m, 20) do
-        jk(jj) = jk_0_20[jj]
+        jk(jj) = besselj0_roots[jj]
     end
     for jj = 20, math.min(m, 47) do
         var ak = math.pi * (jj+1. - .25)
@@ -102,9 +90,8 @@ terra besselJ1(alloc : Allocator, m : size_t)
     var p3 = poly3.from(c[4], c[3], c[2], c[1])
     var p4 = poly4.from(c[4], c[3], c[2], c[1], c[0])
     --first 10 are precomputed:
-    var jk2_0_9 = besselj1_on_besselj0_roots()
     for jj = 0, math.min(m, 10) do
-        Jk2(jj) = jk2_0_9[jj]
+        Jk2(jj) = besselj1_on_besselj0_roots[jj]
     end
     for jj = 10, math.min(m, 15) do
         var ak = math.pi * (jj+1. - .25)
@@ -165,9 +152,6 @@ local terra legpts_nodes(alloc : Allocator, n : size_t, a : dvec)
     if (n % 2 ~= 0) then nodes(m-1) = 0.0 end
     return nodes
 end
-
-local poly3 = poly.Polynomial(double, 4)
-local poly6 = poly.Polynomial(double, 7)
 
 local terra legpts_weights(alloc : Allocator, n : size_t, a : dvec)
     --asymptotic expansion for the Gauss-Legendre weights
@@ -308,36 +292,40 @@ end
 
 local terra gausschebyshevt(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
-    for k = 1, n+1 do
-        x(k-1) = math.cos((2. * k - 1.) * math.pi / (2. * n))
-        w(k-1) = math.pi / n
+    for i = 0, n do
+        var k = n - i
+        x(i) = math.cos((2. * k - 1.) * math.pi / (2. * n))
+        w(i) = math.pi / n
     end
     return x, w
 end
 
 local terra gausschebyshevu(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
-    for k = 1, n+1 do
-        x(k-1) = math.cos(k * math.pi / (n + 1.))
-        w(k-1) = math.pi / (n + 1.) * math.pow(math.sin(k / (n + 1.) * math.pi), 2)
+    for i = 0, n do
+        var k = n - i
+        x(i) = math.cos(k * math.pi / (n + 1.))
+        w(i) = math.pi / (n + 1.) * math.pow(math.sin(k / (n + 1.) * math.pi), 2)
     end
     return x, w
 end
 
 local terra gausschebyshevv(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
-    for k = 1, n+1 do
-        x(k-1) = math.cos((k - .5) * math.pi / (n + .5))
-        w(k-1) = 2*math.pi / (n + .5) * math.pow(math.cos((k - .5) * math.pi / (2 * (n + .5))), 2)
+    for i = 0, n do
+        var k = n - i
+        x(i) = math.cos((k - .5) * math.pi / (n + .5))
+        w(i) = 2*math.pi / (n + .5) * math.pow(math.cos((k - .5) * math.pi / (2 * (n + .5))), 2)
     end
     return x, w
 end
 
 local terra gausschebyshevw(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
-    for k = 1, n+1 do
-        x(k-1) = math.cos(k * math.pi / (n + .5))
-        w(k-1) = 2*math.pi / (n + .5) * math.pow(math.sin(k * math.pi / (2. * (n + .5))), 2)
+    for i = 0, n do
+        var k = n - i
+        x(i) = math.cos(k * math.pi / (n + .5))
+        w(i) = 2*math.pi / (n + .5) * math.pow(math.sin(k * math.pi / (2. * (n + .5))), 2)
     end
     return x, w
 end
@@ -414,7 +402,6 @@ local terra jacobi_rec(alloc : Allocator, n : size_t, alpha : double, beta : dou
     --Compute nodes and weights using recurrrence relation.
     var x11, x12 = half_rec(&alloc, n, alpha, beta, true)
     var x21, x22 = half_rec(&alloc, n, beta, alpha, false)
-    
     --allocate vectors for nodes and weights
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
     var m1, m2 = x11:size(), x21:size()
@@ -437,7 +424,7 @@ local terra jacobi_rec(alloc : Allocator, n : size_t, alpha : double, beta : dou
         x(idx) = xi
         sum_w = sum_w + wi
     end
-    var c = math.pow(2.0, alpha+beta+1.) * math.gamma(2.+beta) / (math.gamma(2.+alpha+beta)*(alpha+1.)*(beta+1.))
+    var c = math.pow(2.0, alpha+beta+1.) * math.gamma(2.+alpha) * math.gamma(2.+beta) / (math.gamma(2.+alpha+beta)*(alpha+1.)*(beta+1.))
     w:scal(c / sum_w)
     return x, w
 end
