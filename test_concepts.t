@@ -1,5 +1,6 @@
 local concept = require("concept")
 local interface = require("interface")
+local template = require("template")
 
 local Simple = interface.Interface:new{
 	foo = concept.Real -> concept.Number
@@ -96,6 +97,76 @@ testenv "concepts" do
 		test [concept.Pointer(&opaque)]
 		test [concept.Pointer(concept.Float) == false]
 		test [concept.Pointer(&&int)]
+	end
+
+	testset "Empty abstract interface" do
+		local EmptyInterface = concept.AbstractInterface:new("Empty")
+		test [concept.isconcept(EmptyInterface)]
+	end
+
+	testset "Abstract interface" do
+		local SimpleInterface = concept.AbstractInterface:new("SimpleAbs")
+		test [concept.isconcept(SimpleInterface)]
+		
+		SimpleInterface:adddefinition{cast = concept.Integer -> concept.Real}
+		local struct B {}
+		terra B:cast(x: int8): float end
+		test [SimpleInterface(B)]
+	end
+
+	testset "Self-referencing interface on methods" do
+		local Vec = concept.AbstractInterface:new("Vec")
+		test [concept.isconcept(Vec)]
+		Vec:adddefinition{axpy = {concept.Real, &Vec} -> {}}
+
+		local struct V {}
+		terra V:axpy(x: double, v: &V): {} end
+		test [Vec(V)]
+
+		local struct W {}
+		terra W:axpy(x: float, v: &V): {} end
+		test [Vec(W)]
+
+		local struct Z {}
+		terra Z:axpy(x: float, v: &int): {} end
+		test [Vec(Z) == false]
+
+		local struct U {}
+		terra U:axpy(x: float, v: &Z): {} end
+		test [Vec(U) == false]
+
+		local struct P {}
+		terra P:axpy(x: float, v: V): {} end
+		test [Vec(P) == false]
+	end
+
+	testset "Self-referencing interface on templates" do
+		local Vec = concept.AbstractInterface:new("Vec")
+		test [concept.isconcept(Vec)]
+		Vec:adddefinition{axpy = {concept.Real, &Vec} -> {}}
+
+		local struct F {}
+		F.templates = {}
+		F.templates.axpy = template.Template:new("axpy")
+		F.templates.axpy[{concept.Any, concept.Int8, concept.Float32} -> {}] = true
+		F.templates.axpy[{concept.Any, concept.Real, &Vec} -> {}] = true
+		test[Vec(F)]
+
+		local struct E {}
+		E.templates = {}
+		E.templates.aypx = template.Template:new("aypx")
+		test [Vec(E) == false]
+
+		local struct G {}
+		G.templates = {}
+		G.templates.axpy = template.Template:new("axpy")
+		test [Vec(G) == false]
+
+		local struct H {}
+		G.templates = {}
+		G.templates.axpy = template.Template:new("axpy")
+		G.templates.axpy[{concept.Any, concept.Int8, concept.Float32} -> {}] = true
+		test [Vec(G) == false]
 	end
 
     testset "Function declarations" do
