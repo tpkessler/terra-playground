@@ -5,10 +5,7 @@ local Alloc = require("alloc")
 local rn = require("range")
 local Stack = require("example_stack_heap")
 
-local stack = Stack.DynamicStack(int, int)
 local DefaultAllocator =  Alloc.DefaultAllocator()
-local linrange = rn.Linrange(int)
-
 
 testenv "lambda's" do
 
@@ -31,6 +28,221 @@ testenv "lambda's" do
 
 end
 
+for _, T in ipairs{int, double} do
+
+    local stack = Stack.DynamicStack(T)
+    local unitrange = rn.Unitrange(T)
+    local steprange = rn.Steprange(T)
+
+    testenv(T) "linear ranges - not including last element" do
+
+        terracode
+            var alloc : DefaultAllocator
+            var s = stack.new(&alloc, 10)
+        end
+
+        testset "unitrange" do
+            terracode
+                var r = unitrange.new(1, 4)
+                r:collect(&s)
+            end
+            test s:size() == 3
+            test s:get(0)==1
+            test s:get(1)==2
+            test s:get(2)==3
+            test r(0)==1
+            test r(1)==2
+            test r(2)==3
+        end
+
+        testset "steprange - step=2, %0" do
+            terracode
+                var r = steprange.new(1, 7, 2)
+                r:collect(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==3
+            test s:get(2)==5
+            test r.b==7
+            test r(0)==1
+            test r(1)==3
+            test r(2)==5
+        end
+
+        testset "steprange - step=2, %1" do
+            terracode
+                var r = steprange.new(1, 6, 2)
+                r:collect(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==3
+            test s:get(2)==5
+            test r.b==7
+            test r(0)==1
+            test r(1)==3
+            test r(2)==5
+        end
+
+        testset "steprange - backward step=1" do
+            terracode
+                var r = steprange.new(1, -2, -1)
+                r:collect(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==0
+            test s:get(2)==-1
+            test r.b==-2
+            test r(0)==1
+            test r(1)==0
+            test r(2)==-1
+        end
+
+        testset "steprange - backward step=2, %0" do
+            terracode
+                var r = steprange.new(1, -5, -2)
+                r:collect(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==-1
+            test s:get(2)==-3
+            test r.b==-5
+            test r(0)==1
+            test r(1)==-1
+            test r(2)==-3
+        end
+
+        testset "steprange - backward step=2, %1" do
+            terracode
+                var r = steprange.new(1, -4, -2)
+                r:collect(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==-1
+            test s:get(2)==-3
+            test r.b==-5
+            test r(0)==1
+            test r(1)==-1
+            test r(2)==-3
+        end
+
+    end
+end -- for _, T in ipairs{int, double} do
+
+for _, T in ipairs{int, double} do
+
+    local stack = Stack.DynamicStack(T)
+    local unitrange = rn.Unitrange(T)
+    local steprange = rn.Steprange(T)
+
+    testenv(T) "linear ranges - including last element" do
+
+        terracode
+            var alloc : DefaultAllocator
+            var s = stack.new(&alloc, 10)
+        end
+
+        testset "unitrange" do
+            terracode
+                var r = unitrange.new(1, 3, rn.include_last)
+                r:collect(&s)
+            end
+            test s:size() == 3
+            test s:get(0)==1
+            test s:get(1)==2
+            test s:get(2)==3
+            test r.b ==4
+            test r(0)==1
+            test r(1)==2
+            test r(2)==3
+        end
+
+        testset "steprange - step=2, %0" do
+            terracode
+                var r = steprange.new(1, 5, 2, rn.include_last)
+                r:collect(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==3
+            test s:get(2)==5
+            test r.b==7
+            test r(0)==1
+            test r(1)==3
+            test r(2)==5
+        end
+
+        testset "steprange - step=2, %1" do
+            terracode
+                var r = steprange.new(1, 6, 2, rn.include_last)
+                r:collect(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==3
+            test s:get(2)==5
+            test r.b==7
+            test r(0)==1
+            test r(1)==3
+            test r(2)==5
+        end
+
+        testset "steprange - backward step=1" do
+            terracode
+                var r = steprange.new(1, -1, -1, rn.include_last)
+                r:collect(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==0
+            test s:get(2)==-1
+            test r.b==-2
+            test r(0)==1
+            test r(1)==0
+            test r(2)==-1
+        end
+
+        testset "steprange - backward step=2, %0" do
+            terracode
+                var r = steprange.new(1, -3, -2, rn.include_last)
+                r:collect(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==-1
+            test s:get(2)==-3
+            test r.b==-5
+            test r(0)==1
+            test r(1)==-1
+            test r(2)==-3
+        end
+
+        testset "steprange - backward step=2, %1" do
+            terracode
+                var r = steprange.new(1, -4, -2, rn.include_last)
+                r:collect(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==-1
+            test s:get(2)==-3
+            test r.b==-5
+            test r(0)==1
+            test r(1)==-1
+            test r(2)==-3
+        end
+
+    end
+end -- for _, T in ipairs{int, double} do
+
+local stack = Stack.DynamicStack(int)
+local unitrange = rn.Unitrange(int)
+local steprange = rn.Steprange(int)
+
 testenv "range adapters" do
 
     terracode
@@ -38,22 +250,11 @@ testenv "range adapters" do
         var s = stack.new(&alloc, 10)
     end
 
-	testset "linrange" do
-        terracode
-            var range = linrange{1, 4}
-            range:collect(&s)
-        end
-        test s:size() == 3
-        test s:get(0)==1
-        test s:get(1)==2
-        test s:get(2)==3
-	end
-
     testset "transform" do
         terracode
             var x = 2
             var g = rn.transform([terra(i : int, x : int) return x * i end], x)
-            var range = linrange{1, 4} >> g
+            var range = unitrange.new(1, 4) >> g
             range:collect(&s)
         end
         test s:size()==3
@@ -65,7 +266,7 @@ testenv "range adapters" do
     testset "filter" do
         terracode
             var x = 1
-            var range = linrange{1, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
+            var range = unitrange{1, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
             range:collect(&s)
         end
         test s:size()==3
@@ -76,7 +277,7 @@ testenv "range adapters" do
 
     testset "take" do
         terracode
-            var range = linrange{1, 10} >> rn.take(3)
+            var range = unitrange{1, 10} >> rn.take(3)
             range:collect(&s)
         end
         test s:size()==3
@@ -87,7 +288,7 @@ testenv "range adapters" do
 
     testset "drop" do
         terracode
-            var range = linrange{1, 10} >> rn.drop(6)
+            var range = unitrange{1, 10} >> rn.drop(6)
             range:collect(&s)
         end
         test s:size()==3
@@ -98,7 +299,7 @@ testenv "range adapters" do
 
     testset "take_while" do
         terracode
-            var range = linrange{1, 10} >> rn.take_while([terra(i : int) return i < 4 end])
+            var range = unitrange{1, 10} >> rn.take_while([terra(i : int) return i < 4 end])
             range:collect(&s)
         end
         test s:size()==3
@@ -110,7 +311,7 @@ testenv "range adapters" do
     testset "drop_while" do
         terracode
             var x = 5
-            var range = linrange{1, 10} >> rn.drop_while([terra(i : int) return i < 7 end])
+            var range = unitrange{1, 10} >> rn.drop_while([terra(i : int) return i < 7 end])
             range:collect(&s)
         end
         test s:size()==3
@@ -131,7 +332,7 @@ testenv "range composition" do
 
     testset "compose transform and filter - lvalues" do
         terracode
-            var r = linrange{0, 5}
+            var r = unitrange{0, 5}
             var x = 0
             var y = 3
             var g = rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
@@ -149,7 +350,7 @@ testenv "range composition" do
         terracode
             var x = 0
             var y = 3
-            for v in linrange{0, 5} >> 
+            for v in unitrange{0, 5} >> 
                         rn.filter([terra(i : int, x : int) return i % 2 == x end], x) >>
                             rn.transform([terra(i : int, y : int) return y * i end], y) do
                 s:push(v)
@@ -173,7 +374,7 @@ testenv "range combiners" do
 
     testset "join" do
         terracode
-            var range = rn.join(linrange{1, 3}, linrange{3, 5}, linrange{5, 7})
+            var range = rn.join(unitrange{1, 3}, unitrange{3, 5}, unitrange{5, 7})
             for v in range do
                 s:push(v)
             end
@@ -186,7 +387,7 @@ testenv "range combiners" do
 
     testset "enumerate" do
         terracode
-            for i,v in rn.enumerate(linrange{1, 4}) do
+            for i,v in rn.enumerate(unitrange{1, 4}) do
                 j:push(i)
                 s:push(v)
             end
@@ -200,7 +401,7 @@ testenv "range combiners" do
     testset "zip - 1" do
         terracode
             var U = stack.new(&alloc, 10)
-            for u in rn.zip(linrange{1, 4}) do
+            for u in rn.zip(unitrange{1, 4}) do
                 U:push(u)
             end
         end
@@ -214,7 +415,7 @@ testenv "range combiners" do
         terracode
             var U = stack.new(&alloc, 10)
             var V = stack.new(&alloc, 10)
-            for u,v in rn.zip(linrange{1, 4}, linrange{2, 6}) do
+            for u,v in rn.zip(unitrange{1, 4}, unitrange{2, 6}) do
                 U:push(u)
                 V:push(v)
             end
@@ -230,7 +431,7 @@ testenv "range combiners" do
             var U = stack.new(&alloc, 10)
             var V = stack.new(&alloc, 10)
             var W = stack.new(&alloc, 10)
-            for u,v,w in rn.zip(linrange{1, 4}, linrange{2, 6}, linrange{3, 7}) do
+            for u,v,w in rn.zip(unitrange{1, 4}, unitrange{2, 6}, unitrange{3, 7}) do
                 U:push(u)
                 V:push(v)
                 W:push(w)
@@ -245,7 +446,7 @@ testenv "range combiners" do
     testset "product - 1" do
         terracode
             var U = stack.new(&alloc, 10)
-            for u in rn.product(linrange{1, 4}) do
+            for u in rn.product(unitrange{1, 4}) do
                 U:push(u)
             end
         end
@@ -259,7 +460,7 @@ testenv "range combiners" do
         terracode
             var U = stack.new(&alloc, 10)
             var V = stack.new(&alloc, 10)
-            for u,v in rn.product(linrange{1, 4}, linrange{2, 4}) do
+            for u,v in rn.product(unitrange{1, 4}, unitrange{2, 4}) do
                 U:push(u)
                 V:push(v)
             end
@@ -278,7 +479,7 @@ testenv "range combiners" do
             var U = stack.new(&alloc, 16)
             var V = stack.new(&alloc, 16)
             var W = stack.new(&alloc, 16)
-            for u,v,w in rn.product(linrange{1, 4}, linrange{2, 4}, linrange{3, 5}) do
+            for u,v,w in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3, 5}) do
                 U:push(u)
                 V:push(v)
                 W:push(w)

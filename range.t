@@ -1,7 +1,11 @@
 local interface = require("interface")
 local err = require("assert")
+local io = terralib.includec("stdio.h")
 
 local size_t = uint64
+--lets not make this package depend on the mathfuns.t lib.
+local terra abs(x : size_t) return terralib.select(x > 0, x, -x) end
+
 
 --the following interface is used to collect elements in
 --a range
@@ -82,25 +86,42 @@ local __getnextvalue_that_satisfies_predicate = macro(function(self, state, valu
     end
 end)
 
-local Linrange = function(T)
+local Unitrange = function(T)
 
-    local struct linrange{
+    local struct range{
         a : T
         b : T
     }
 
-    terra linrange:size()
+    range.staticmethods = {}
+
+    range.metamethods.__getmethod = function(self, methodname)
+        return self.methods[methodname] or range.staticmethods[methodname]
+    end
+
+    local new = terra(a : T, b : T, include_last : bool)
+        err.assert((b-a) > 0)
+        var size = [size_t](b-a) + [int](include_last)
+        return range{a, a + size}
+    end
+
+    range.staticmethods.new = terralib.overloadedfunction("new",{
+        new,
+        terra(a : T, b : T) return new(a, b, false) end
+    })
+
+    terra range:size()
         return self.b - self.a
     end
 
-    linrange.methods.getfirst = macro(function(self)
+    range.methods.getfirst = macro(function(self)
         return quote 
         in
             0, self.a
         end
     end)
 
-    linrange.methods.getnext = macro(function(self, state)
+    range.methods.getnext = macro(function(self, state)
         return quote 
             state = state + 1
             var value = self.a + state
@@ -109,7 +130,7 @@ local Linrange = function(T)
         end
     end)
 
-    linrange.methods.islast = macro(function(self, state, value)
+    range.methods.islast = macro(function(self, state, value)
         return quote 
             var terminate = (state == self:size())
         in
@@ -118,9 +139,79 @@ local Linrange = function(T)
     end)
 
     --add metamethods
-    RangeBase(linrange, T)
+    RangeBase(range, T)
 
-    return linrange
+    range.metamethods.__apply = terra(self : &range, i : size_t)
+        err.assert(i < self:size())
+        return self.a + i
+    end
+
+    return range
+end
+
+local Steprange = function(T)
+
+    local struct range{
+        a : T
+        b : T
+        step : T
+    }
+
+    range.staticmethods = {}
+
+    range.metamethods.__getmethod = function(self, methodname)
+        return self.methods[methodname] or range.staticmethods[methodname]
+    end
+
+    local new = terra(a : T, b : T, step : T, include_last : bool)
+        err.assert(((b-a) >= 0 and step > 0) or ((b-a) <= 0 and step < 0))
+        b = terralib.select(b > a, b + [int](include_last), b - [int](include_last))
+        b = b + (b - a) % step
+        return range{a, b, step}
+    end
+
+    range.staticmethods.new = terralib.overloadedfunction("new",{
+        new,
+        terra(a : T, b : T, step : T) return new(a, b, step, false) end
+    })
+    
+    terra range:size() : size_t
+        return (self.b-self.a) / self.step
+    end
+
+    range.methods.getfirst = macro(function(self)
+        return quote 
+        in
+            self.a, self.a
+        end
+    end)
+
+    range.methods.getnext = macro(function(self, state)
+        return quote 
+            state = state + self.step
+            var value = state
+        in
+            value
+        end
+    end)
+
+    range.methods.islast = macro(function(self, state, value)
+        return quote 
+            var terminate = (value == self.b)
+        in
+            terminate
+        end
+    end)
+
+    --add metamethods
+    RangeBase(range, T)
+
+    range.metamethods.__apply = terra(self : &range, i : size_t)
+        err.assert(i < self:size())
+        return self.a + i * self.step
+    end
+
+    return range
 end
 
 local FilteredRange = function(Range, Function)
@@ -653,9 +744,11 @@ local develop = {
 
 --return module
 return {
+    include_last = true,
     lambda = lambda,
     Base = RangeBase,
-    Linrange = Linrange,
+    Unitrange = Unitrange,
+    Steprange = Steprange,
     transform = transform,    
     filter = filter,
     take = take,
