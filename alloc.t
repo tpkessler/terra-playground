@@ -113,6 +113,14 @@ local SmartBlock = terralib.memoize(function(T)
 			self.ptr[i] = v
 		end
 		block.methods.set:setinlined(true)
+
+        block.metamethods.__apply = macro(function(self, i)
+            return quote
+                err.assert(i < self:size())
+            in
+                self.ptr[i]
+            end
+        end)
 	end
 
 	-- Cast block of one type to another
