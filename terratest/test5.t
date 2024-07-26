@@ -8,7 +8,7 @@ SVector = terralib.memoize(function(T,N)
     Class.Vector = Vector
 
     terra Vector:size() : int
-	return N 
+	    return N 
     end
 
     Vector.metamethods.__apply = macro(function(self,idx)
