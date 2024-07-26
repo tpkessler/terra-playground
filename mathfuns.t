@@ -111,6 +111,7 @@ math.isapprox = terra(a : double, b : double, atol : double)
     return math.dist(a, b) < atol
 end
 
+<<<<<<< HEAD
 for _, name in pairs({"real", "imag", "conj"}) do
     math[name] = terralib.overloadedfunction(name)
     for _, T in ipairs{int32, int64, float, double} do
@@ -125,3 +126,6 @@ for _, name in pairs({"real", "imag", "conj"}) do
 end
 
 return math
+=======
+return math
+>>>>>>> 4e595ec (Gaussian quadrature rules (#10))

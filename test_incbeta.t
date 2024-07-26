@@ -1,8 +1,11 @@
+<<<<<<< HEAD
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
+=======
+>>>>>>> 4e595ec (Gaussian quadrature rules (#10))
 import "terratest/terratest"
 
 local math = require("mathfuns")
