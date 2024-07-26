@@ -1,11 +1,9 @@
 local interface = require("interface")
+local lambdas = require("lambdas")
 local err = require("assert")
 local io = terralib.includec("stdio.h")
 
 local size_t = uint64
---lets not make this package depend on the mathfuns.t lib.
-local terra abs(x : size_t) return terralib.select(x > 0, x, -x) end
-
 
 --the following interface is used to collect elements in
 --a range
@@ -444,54 +442,13 @@ local DropWhileRange = function(Range, Function)
     return adapter
 end
 
---lua function that generates a terra type that are function objects. these wrap
---a function in the 'apply' metamethod and store any captured variables in the struct
---as entries
-local lambda_generator = function(fun, ...)
-    --get the captured variables
-    local captures = {...}
-    --wrapper struct
-    local lambda = terralib.types.newstruct("lambda")
-    --add captured variable types as entries to the wrapper struct
-    for i, sym in ipairs(captures) do
-        lambda.entries:insert({field = "_"..tostring(i-1), type = sym.tree.type})
-    end
-    lambda:complete()
-    --overloading the call operator - making 'lambda' a function object
-    lambda.metamethods.__apply = macro(terralib.memoize(function(self, ...)
-        local args = terralib.newlist{...}
-        local capt = terralib.newlist()
-        for i,v in ipairs(self.tree.type.entries) do
-            local field = "_"..tostring(i-1)
-            capt:insert(quote in self.[field] end)
-        end
-        return `fun([args], [capt])
-    end))
-    --determine return-type from lambda expression
-    lambda.returntype = fun.tree.type.type.returntype
-    return lambda
-end
-
---return a function object with captured variables in ...
-local lambda = macro(function(fun, ...)
-    --get the captured variables
-    local captures = {...}
-    local p = lambda_generator(fun, ...)
-    --create and return lambda object by value
-    return quote
-        var f = p{[captures]}
-    in
-        f
-    end
-end)
-
 --factory function for range adapters that carry a lambda
 local adapter_lambda_factory = function(Adapter)
     local factory = macro(
         function(fun, ...)
             --get the captured variables
             local captures = {...}
-            local p = lambda_generator(fun, ...)
+            local p = lambdas.lambda_generator(fun, ...)
             --set the generator (FilteredRange or TransformedRange, etc)
             p.generator = Adapter
             --create and return lambda object by value
@@ -639,6 +596,11 @@ local ProductRange = function(Ranges)
     --a type-trait?
     combirange.metamethods.__for = function(range,body)
         local D = #Ranges
+        if D > 3 then
+            error("Product range is only implemented for D=1,2,3.") 
+            -- right now only implemented for D=1,2,3
+            --ToDo: eventially implement using 'getfirst', 'getnext', 'islast'?
+        end
         if D==1 then
             return quote
                 for u in range._0 do
@@ -679,6 +641,11 @@ local ZipRange = function(Ranges)
     --a type-trait?
     combirange.metamethods.__for = function(self,body)
         local D = #Ranges
+        if D > 3 then
+            error("Zip range is only implemented for D=1,2,3.") 
+            -- right now only implemented for D=1,2,3
+            --ToDo: eventially implement using 'getfirst', 'getnext', 'islast'?
+        end
         if D==1 then
             return quote
                 var iter = self
@@ -739,13 +706,11 @@ local develop = {
         lambda_adapter = adapter_view_factory
     },
     newcombinerstruct = newcombiner,
-    lambda_generator = lambda_generator
 }
 
 --return module
 return {
     include_last = true,
-    lambda = lambda,
     Base = RangeBase,
     Unitrange = Unitrange,
     Steprange = Steprange,
@@ -759,5 +724,5 @@ return {
     join = join,
     product = product,
     zip = zip,
-    develop
+    develop = develop
 }

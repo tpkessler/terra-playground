@@ -49,6 +49,7 @@ A 'concept' defines an equivalence class, that is, a set with an equivalence rel
 ``` 
 --]]
 local interface = require("interface")
+local fun = require("fun")
 
 local shim_concept = terralib.memoize(function(name)
 	local concept = terralib.types.newstruct(name)
@@ -72,7 +73,11 @@ function Concept:new(arg, default)
     end
 	local concept = shim_concept(name)
 	rawset(concept, "default", default)
-    
+
+	function concept:setdefault(new_default)
+		self.default = new_default
+	end
+
     local mt = getmetatable(concept)
     --overload the call operator to make the struct act as a functor
     function mt:__call(...)
@@ -143,8 +148,113 @@ local function isconcept(C)
 	return terralib.types.istype(C) and C.type == "concept"
 end
 
+local AbstractInterface = {}
+function AbstractInterface:new(name, ref_methods)
+	ref_methods = ref_methods or {}
+
+	local interface = Concept:new(name)
+	interface.ref_methods = ref_methods
+
+	function interface:adddefinition(methods)
+		for method, ptr in pairs(methods) do
+			assert(interface.ref_methods[method] == nil,
+				   "The method " .. method .. " is already defined in " ..
+				   self.name)
+			assert(terralib.types.istype(ptr)
+				   and ptr:ispointertofunction(),
+				   "Need to pass a function pointer but got " .. tostring(ptr))
+			self.ref_methods[method] = ptr.type
+		end
+	end
+
+	local function trim_self(sig)
+		local new_sig = {}
+		for i = 2, #sig do
+			new_sig[i - 1] = sig[i]
+		end
+
+		return new_sig
+	end
+
+	local function is_self(Tref, Tcheck)
+		if Tref == Tcheck then
+			return true
+		elseif Tcheck:ispointer() then
+			return is_self(Tref, Tcheck.type)
+		else
+			return false
+		end
+	end
+
+	local function implements_interface(T)
+		if not T:isstruct() then
+			return false
+		end
+		local function is_implemented(sig, ref_sig)
+			local param = trim_self(sig.parameters)
+			if #param ~= #ref_sig.parameters then
+				return false
+			else
+				local function go(C, S)
+					if C:ispointer() then
+						if not S:ispointer() then
+							return false
+						else
+							return go(C.type, S.type)
+						end
+					else
+						return is_self(T, S) or C(S)
+					end
+				end
+				local res = fun.all(go, fun.zip(ref_sig.parameters, param))
+				-- Ignore return values as we don't have control over them
+				-- during the concept dispatching for templates.
+				return res
+			end
+		end
+
+		local function check_method(name, ref_sig)
+			if T.methods[name] then
+				return is_implemented(T.methods[name].type, ref_sig)
+			else
+				return false
+			end
+		end
+
+		local function check_template(name, ref_sig)
+			if T.templates == nil then
+				return false
+			else
+				if T.templates[name] then
+					local methods = T.templates[name].methods
+					local res = fun.any(function(sig)
+											return is_implemented(sig, ref_sig)
+										end,
+										fun.map(function(k, v) return k end,
+												methods)
+										)
+					return res
+				else
+					return false
+				end
+			end
+		end
+
+		local res = fun.all(function(name, ref_sig)
+								return check_method(name, ref_sig)
+									   or check_template(name, ref_sig)
+							end, interface.ref_methods)
+		return res
+	end
+
+	interface:setdefault(implements_interface)
+
+	return interface
+end
+
 local M = {
 	Concept = Concept,
+	AbstractInterface = AbstractInterface,
 	isconcept = isconcept
 }
 
