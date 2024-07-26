@@ -596,6 +596,11 @@ local ProductRange = function(Ranges)
     --a type-trait?
     combirange.metamethods.__for = function(range,body)
         local D = #Ranges
+        if D > 3 then
+            error("Product range is only implemented for D=1,2,3.") 
+            -- right now only implemented for D=1,2,3
+            --ToDo: eventially implement using 'getfirst', 'getnext', 'islast'?
+        end
         if D==1 then
             return quote
                 for u in range._0 do
@@ -636,6 +641,11 @@ local ZipRange = function(Ranges)
     --a type-trait?
     combirange.metamethods.__for = function(self,body)
         local D = #Ranges
+        if D > 3 then
+            error("Zip range is only implemented for D=1,2,3.") 
+            -- right now only implemented for D=1,2,3
+            --ToDo: eventially implement using 'getfirst', 'getnext', 'islast'?
+        end
         if D==1 then
             return quote
                 var iter = self
@@ -714,5 +724,5 @@ return {
     join = join,
     product = product,
     zip = zip,
-    develop
+    develop = develop
 }
