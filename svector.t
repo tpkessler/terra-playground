@@ -1,57 +1,65 @@
-local io = terralib.includec("stdio.h")
-local base = require("vector_base")
 local err = require("assert")
+local base = require("base")
+local vecbase = require("vector_base")
+local concept = require("concept")
 
-local size_t = uint64
+local StaticVector = terralib.memoize(function(T, N)
+    local function create_static_vector(T, N)
+        if T:isprimitive() then
+            local nbytes = sizeof(T) * N
+            if nbytes < 64 then
+                N = 64 / sizeof(T)
+            end
+            local SIMD = vector(T, N)
+            local M = sizeof(SIMD) / sizeof(T)
+            local struct V(base.AbstractBase){
+                union {
+                    data: T[M]
+                    simd: SIMD
+                }
+            }
+            return V
+        else
+           local struct V(base.AbstractBase){
+                data: T[N]
+            }
+            return V
+        end
+    end
 
-local StackBase = terralib.memoize(function(S, T, N)
+    local V = create_static_vector(T, N)
+    V.name = string.format("StaticVector(%s, %d)", tostring(T), N)
+    V.eltype = T
 
-    S.eltype = T
+    V.metamethods.__typename = function(self)
+        return V.name
+    end
 
-    S.methods.size = terra(self : &S) : size_t
+    terra V:size(): uint64
         return N
     end
 
-    S.methods.get = terra(self : &S, i : size_t) : T
+    terra V:get(i: uint64)
         err.assert(i < N)
         return self.data[i]
     end
 
-    S.methods.set = terra(self : &S, i : size_t, value : T)
+    terra V:set(i: uint64, x: T)
         err.assert(i < N)
-        self.data[i] = value
+        self.data[i] = x
     end
 
-    S.metamethods.__apply = macro(function(self, i)
-        return quote
-            err.assert(i < N)
-        in
-            self.data[i]
-        end
-    end)
-
-    return S
-end)
-
-local VectorBase = terralib.memoize(function(V, T, N)
-
-    --add all functionality of StackBase
-    StackBase(V,T,N)
-
-    V.staticmethods = {}
-
-    V.metamethods.__getmethod = function(self, methodname)
-        return self.methods[methodname] or V.staticmethods[methodname]
-    end
 
     V.staticmethods.new = terra()
-        return V{}
+        return V {}
     end
 
-    V.staticmethods.fill = terra(value : T)
+    V.staticmethods.fill = terra(value: T)
         var v = V.new()
-        for i=0,N do
-            v.data[i] = value
+        escape
+            for i = 0, N - 1 do
+                emit quote v.data[i] = value end
+            end
         end
         return v
     end
@@ -82,18 +90,20 @@ local VectorBase = terralib.memoize(function(V, T, N)
         end
     )
 
+    vecbase.VectorBase(V, T)
+
+    if T:isprimitive() then
+        V.templates.axpy[{V.SelfPtr, concept.Number, V.Self + V.SelfPtr} -> {}] =
+            function(V1, S, V2)
+                print("Calling special vector implementation")
+                local terra axpy(y: V1, a: S, x: V2)
+                    y.simd = y.simd + a * x.simd
+                end
+                return axpy
+            end
+    end
+
     return V
-end)
-
-local StaticVector = terralib.memoize(function(T, N)
-    
-    local Base = function(V) VectorBase(V,T,N) end
-
-    local struct vec(Base){
-        data : T[N]
-    }
-
-    return vec
 end)
 
 return {

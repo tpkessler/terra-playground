@@ -39,6 +39,7 @@ function Template:new()
 			elseif c_1:supertypeof(c_2) then
 				s[2] = s[2] + 1
 			end
+			print("Compare the concepts", c_1, "and", c_2, "with results", c_1(c_2), c_2(c_1))
 			return s
 		end
 		local res = fun.foldl(compare, {0, 0}, fun.zip(clist_1, clist_2))
@@ -64,6 +65,10 @@ function Template:new()
 	function template:select_method(...)
 		local args = {...}
 		local admissible = self:get_methods(...)
+		print("Found admissible methods")
+		for k, v in pairs(admissible) do
+			print(k, v)
+		end
 	
 		-- Matches every concept
 		local Any = concept.Any
@@ -72,7 +77,9 @@ function Template:new()
 			saved:insert(Any)
 		end
 		local function minimal(acc, sig, func)
+			print("Acc is", acc, "with sig", sig, "for function", func)
 			local s = compare_two_methods(sig, acc)
+			print("Compare", sig, "and", acc, "with result", s)
 			if s > 0 then -- sig is more specialized
 				return sig
 			else
@@ -109,11 +116,11 @@ function Template:new()
 		if len > 1 then
 			local err_str = ""
 			err_str = err_str
-				.. "The following method calls are ambiguous", "\n"
+				.. "The following method calls are ambiguous:\n"
 			-- terralist has a nice tostring method
 			local arg = terralib.newlist({...})
 			err_str = err_str
-				.. string.format("For signature %s there's", tostring(arg))
+				.. string.format("For signature %s there's\n", tostring(arg))
 			for sig, func in pairs(methods) do
 				err_str = err_str
 					.. tostring(terralib.newlist(sig)) .. "\n"

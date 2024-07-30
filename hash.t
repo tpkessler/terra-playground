@@ -1,5 +1,4 @@
 local C = terralib.includec("hashmap.h")
-local stack = require("stack")
 local err = require("assert")
 local template = require("template")
 local concept = require("concept")
@@ -132,9 +131,6 @@ M.HashMap = function(I, T, length, compare)
 		err.assert(res ~= nil)
 		return [&entry](res).val
 	end
-
-	local S = stack.Stacker(T, I)
-	S:isimplemented(hash)
 
 	local static_methods = {
 		new = new

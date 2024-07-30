@@ -6,7 +6,7 @@ local io = terralib.includec("stdio.h")
 testenv "Static vector" do
 
     for _,T in ipairs{int32,int64,float,double} do
-        for N=1,3 do
+        for N=1,8 do
 
             local svec = SVector.StaticVector(T,N)   
          
@@ -74,6 +74,32 @@ testenv "Static vector" do
             test v:get(0) == 1
             test v:get(1) == 2
             test v:get(2) == 3
+        end
+
+        testset "copy (N=4)" do
+            local svec = SVector.StaticVector(T, 4)
+            terracode
+                var v = svec.from(1, 2, 3, 4)
+                var w = svec.new()
+                w:copy(&v)
+            end
+            test w:size() == 4
+            for i = 0, 3 do
+                test w:get(i) == i + 1
+            end
+        end
+
+        testset "axpy (N=5)" do
+            local svec = SVector.StaticVector(T, 5)
+            terracode
+                var v = svec.from(1, 2, 3, 4, 5)
+                var w = svec.from(5, 4, 3, 2, 1)
+                w:axpy(1, &v)
+            end
+            test w:size() == 5
+            for i = 0, 4 do
+                test w:get(i) == 6
+            end
         end
 
     end --T

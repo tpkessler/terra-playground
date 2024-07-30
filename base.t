@@ -28,27 +28,49 @@ local AbstractBase = Base:new("AbstractBase",
 		assert(terralib.types.istype(T))
 		assert(T:isstruct())
 		local Self = concept.Concept:new(tostring(T),
-										 function(Tp) return Tp.name == T.name end
-										) 
-		for key, val in pairs({static_methods = {}, templates = {}, Self = Self})  do
+										 function(Tp) print(T.name, Tp.name, Tp.name == T.name); return Tp.name == T.name end
+										)
+		local SelfPtr = concept.Ptr(Self)
+		for key, val in pairs({staticmethods = {}, templates = {}, Self = Self,
+													 SelfPtr = SelfPtr})  do
 			if T.key == nil then
 				rawset(T, key, val)
 			end
 		end
+		Self.methods = T.methods
+		Self.staticmethods = T.staticmethods
+		Self.templates = T.templates
+
+		T.metamethods.__getmethod = function(self,methodname)
+	    local fnlike = self.methods[methodname] or self.staticmethods[methodname]
+	    if not fnlike and terralib.ismacro(self.metamethods.__methodmissing) then
+	        fnlike = terralib.internalmacro(function(ctx,tree,...)
+	            return self.metamethods.__methodmissing:run(ctx,tree,methodname,...)
+	        end)
+	    end
+	    return fnlike
+		end
+
+		T.metamethods.__methodmissing = macro(function(methodname,...)
+    local gen = X.template[methodname]
+    if gen then
+        local args = terralib.newlist{...}
+        local types = args:map(function(v) return v.tree.type end)
+        local f = gen(unpack(types))
+        return `f(args)
+    end
+end)
 
 		T.metamethods.__methodmissing = macro(function(name, obj, ...)
-			local is_static = (S.static_methods[name] ~= nil)
+			local is_static = (T.staticmethods[name] ~= nil)
 			local args = terralib.newlist({...})
-			if is_static then
-				args:insert(1, obj)
-			end
 			local types = args:map(function(t) return t.tree.type end)
 			if is_static then
-				local method = S.static_methods[name]
-				return `method([args])
+				local method = T.staticmethods[name]
+				return quote method([args]) end
 			else
-				types:insert(1, &S)
-				local method = S.templates[name]
+				types:insert(1, &T)
+				local method = T.templates[name]
 				local func = method(unpack(types))
 				return quote [func](&obj, [args]) end
 			end

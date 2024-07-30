@@ -108,7 +108,7 @@ testenv "concepts" do
 		local SimpleInterface = concept.AbstractInterface:new("SimpleAbs")
 		test [concept.isconcept(SimpleInterface)]
 		
-		SimpleInterface:adddefinition{cast = concept.Integer -> concept.Real}
+		SimpleInterface:addmethod{cast = concept.Integer -> concept.Real}
 		local struct B {}
 		terra B:cast(x: int8): float end
 		test [SimpleInterface(B)]
@@ -117,7 +117,7 @@ testenv "concepts" do
 	testset "Self-referencing interface on methods" do
 		local Vec = concept.AbstractInterface:new("Vec")
 		test [concept.isconcept(Vec)]
-		Vec:adddefinition{axpy = {concept.Real, &Vec} -> {}}
+		Vec:addmethod{axpy = {concept.Real, &Vec} -> {}}
 
 		local struct V {}
 		terra V:axpy(x: double, v: &V): {} end
@@ -141,9 +141,9 @@ testenv "concepts" do
 	end
 
 	testset "Self-referencing interface on templates" do
-		local Vec = concept.AbstractInterface:new("Vec")
+		local Vec = concept.AbstractInterface:new("Vec2")
 		test [concept.isconcept(Vec)]
-		Vec:adddefinition{axpy = {concept.Real, &Vec} -> {}}
+		Vec:addmethod{axpy = {concept.Real, &Vec} -> {}}
 
 		local struct F {}
 		F.templates = {}

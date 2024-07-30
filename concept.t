@@ -153,28 +153,28 @@ function AbstractInterface:new(name, ref_methods)
 	ref_methods = ref_methods or {}
 
 	local interface = Concept:new(name)
-	interface.ref_methods = ref_methods
 
-	function interface:adddefinition(methods)
+	function interface:addmethod(methods)
+		local function prepend_self(ptr)
+			local par = {&interface}
+			for i, k in ipairs(ptr.type.parameters) do
+				par[i + 1] = k
+			end
+			return par -> ptr.type.returntype
+		end
+
 		for method, ptr in pairs(methods) do
-			assert(interface.ref_methods[method] == nil,
+			assert(interface.methods[method] == nil,
 				   "The method " .. method .. " is already defined in " ..
 				   self.name)
 			assert(terralib.types.istype(ptr)
 				   and ptr:ispointertofunction(),
 				   "Need to pass a function pointer but got " .. tostring(ptr))
-			self.ref_methods[method] = ptr.type
+			self.methods[method] = prepend_self(ptr)
 		end
 	end
 
-	local function trim_self(sig)
-		local new_sig = {}
-		for i = 2, #sig do
-			new_sig[i - 1] = sig[i]
-		end
-
-		return new_sig
-	end
+	interface:addmethod(ref_methods)
 
 	local function is_self(Tref, Tcheck)
 		if Tref == Tcheck then
@@ -191,8 +191,7 @@ function AbstractInterface:new(name, ref_methods)
 			return false
 		end
 		local function is_implemented(sig, ref_sig)
-			local param = trim_self(sig.parameters)
-			if #param ~= #ref_sig.parameters then
+			if #sig.parameters ~= #ref_sig.parameters then
 				return false
 			else
 				local function go(C, S)
@@ -206,7 +205,11 @@ function AbstractInterface:new(name, ref_methods)
 						return is_self(T, S) or C(S)
 					end
 				end
-				local res = fun.all(go, fun.zip(ref_sig.parameters, param))
+				-- Check all but the first parameter, the reference to self.
+				local res = fun.all(go,
+											fun.zip(ref_sig.parameters,
+															sig.parameters
+														 ):tail())
 				-- Ignore return values as we don't have control over them
 				-- during the concept dispatching for templates.
 				return res
@@ -215,7 +218,7 @@ function AbstractInterface:new(name, ref_methods)
 
 		local function check_method(name, ref_sig)
 			if T.methods[name] then
-				return is_implemented(T.methods[name].type, ref_sig)
+				return is_implemented(T.methods[name].type, ref_sig.type)
 			else
 				return false
 			end
@@ -228,7 +231,7 @@ function AbstractInterface:new(name, ref_methods)
 				if T.templates[name] then
 					local methods = T.templates[name].methods
 					local res = fun.any(function(sig)
-											return is_implemented(sig, ref_sig)
+											return is_implemented(sig, ref_sig.type)
 										end,
 										fun.map(function(k, v) return k end,
 												methods)
@@ -243,7 +246,7 @@ function AbstractInterface:new(name, ref_methods)
 		local res = fun.all(function(name, ref_sig)
 								return check_method(name, ref_sig)
 									   or check_template(name, ref_sig)
-							end, interface.ref_methods)
+							end, interface.methods)
 		return res
 	end
 
@@ -252,9 +255,24 @@ function AbstractInterface:new(name, ref_methods)
 	return interface
 end
 
+local Ptr = terralib.memoize(function(C)
+	assert(isconcept(C), "Argument for pointer factory has to be a concept")
+	local function check(T)
+		if not T:ispointer() then
+			return false
+		else
+			return C(T.type)
+		end
+	end
+	local ptr = Concept:new("&" .. C.name, check)
+
+	return ptr
+end)
+
 local M = {
 	Concept = Concept,
 	AbstractInterface = AbstractInterface,
+	Ptr = Ptr,
 	isconcept = isconcept
 }
 
