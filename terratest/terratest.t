@@ -328,11 +328,18 @@ function printtable(table)
 end
 
 function setenv(env, stmts)
-    for i,s in pairs(stmts.tree.statements) do
+    for i,s in ipairs(stmts.tree.statements) do
         --variables that are directly initialized
         if s.lhs~=nil then
             for _, v in ipairs(s.lhs) do
-                env[v.name] = v.symbol
+                if v.symbol ~= nil then
+                    env[v.name] = v.symbol
+                else
+                    --the other options are
+                    if v.select ~= nil then
+                        env[v.name] = v.select.symbol
+                    end
+                end
             end
         end
         --variables that are allocated

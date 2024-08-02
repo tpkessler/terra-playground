@@ -34,9 +34,9 @@ function Template:new()
 		assert(#clist_1 == #clist_2,
 			   "Can only compare function signatures of equal size")
 		local function compare(s, c_1, c_2)
-			if c_1:subtypeof(c_2) then
+			if concept.is_specialized_over(c_1, c_2) then
 				s[1] = s[1] + 1
-			elseif c_1:supertypeof(c_2) then
+			elseif concept.is_specialized_over(c_1, c_2) then
 				s[2] = s[2] + 1
 			end
 			return s
@@ -109,11 +109,11 @@ function Template:new()
 		if len > 1 then
 			local err_str = ""
 			err_str = err_str
-				.. "The following method calls are ambiguous", "\n"
+				.. "The following method calls are ambiguous:\n"
 			-- terralist has a nice tostring method
 			local arg = terralib.newlist({...})
 			err_str = err_str
-				.. string.format("For signature %s there's", tostring(arg))
+				.. string.format("For signature %s there's\n", tostring(arg))
 			for sig, func in pairs(methods) do
 				err_str = err_str
 					.. tostring(terralib.newlist(sig)) .. "\n"
