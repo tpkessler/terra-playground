@@ -34,12 +34,11 @@ function Template:new()
 		assert(#clist_1 == #clist_2,
 			   "Can only compare function signatures of equal size")
 		local function compare(s, c_1, c_2)
-			if c_1:subtypeof(c_2) then
+			if concept.is_specialized_over(c_1, c_2) then
 				s[1] = s[1] + 1
-			elseif c_1:supertypeof(c_2) then
+			elseif concept.is_specialized_over(c_1, c_2) then
 				s[2] = s[2] + 1
 			end
-			print("Compare the concepts", c_1, "and", c_2, "with results", c_1(c_2), c_2(c_1))
 			return s
 		end
 		local res = fun.foldl(compare, {0, 0}, fun.zip(clist_1, clist_2))
@@ -65,10 +64,6 @@ function Template:new()
 	function template:select_method(...)
 		local args = {...}
 		local admissible = self:get_methods(...)
-		print("Found admissible methods")
-		for k, v in pairs(admissible) do
-			print(k, v)
-		end
 	
 		-- Matches every concept
 		local Any = concept.Any
@@ -77,9 +72,7 @@ function Template:new()
 			saved:insert(Any)
 		end
 		local function minimal(acc, sig, func)
-			print("Acc is", acc, "with sig", sig, "for function", func)
 			local s = compare_two_methods(sig, acc)
-			print("Compare", sig, "and", acc, "with result", s)
 			if s > 0 then -- sig is more specialized
 				return sig
 			else
