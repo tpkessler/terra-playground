@@ -1,14 +1,10 @@
+local stack = require("stack")
 local err = require("assert")
 local template = require("template")
 local concept = require("concept")
 
-local Stack = concept.AbstractInterface:new("Stack", {
-  size = {} -> concept.UInteger,
-  get = concept.UInteger -> concept.Number,
-  set = {concept.UInteger, concept.Number} -> {},
-})
-
 local Vector = concept.AbstractInterface:new("Vector")
+local Stack = stack.Stack
 Vector:inheritfrom(Stack)
 Vector:addmethod{
   fill = concept.Number -> {},

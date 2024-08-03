@@ -54,7 +54,7 @@ local StaticVector = terralib.memoize(function(T, N)
         return V {}
     end
 
-    V.staticmethods.fill = terra(value: T)
+    V.staticmethods.all = terra(value: T)
         var v = V.new()
         escape
             for i = 0, N - 1 do
@@ -65,11 +65,11 @@ local StaticVector = terralib.memoize(function(T, N)
     end
 
     V.staticmethods.zeros = terra()
-        return V.fill(0)
+        return V.all(0)
     end
 
     V.staticmethods.ones = terra()
-        return V.fill(1)
+        return V.all(1)
     end
 
     V.staticmethods.from = macro(
@@ -93,6 +93,27 @@ local StaticVector = terralib.memoize(function(T, N)
     vecbase.VectorBase(V, T)
 
     if T:isprimitive() then
+        V.templates.fill[{&V.Self, concept.Number} -> {}] = function(Self, S)
+            local terra fill(self: Self, a: S)
+                self.simd = a
+            end
+            return fill
+        end
+
+        V.templates.copy[{&V.Self, &V.Self} -> {}] = function(V1, V2)
+            local terra copy(self: V1, other: V2)
+                self.simd = other.simd
+            end
+            return copy
+        end
+
+        V.templates.scal[{&V.Self, concept.Number} -> {}] = function(Self, S)
+            local terra scal(self: Self, a: S)
+                self.simd = a * self.simd
+            end
+            return scal
+        end
+
         V.templates.axpy[{&V.Self, concept.Number, &V.Self} -> {}] =
             function(V1, S, V2)
                 local terra axpy(y: V1, a: S, x: V2)
@@ -100,6 +121,9 @@ local StaticVector = terralib.memoize(function(T, N)
                 end
                 return axpy
             end
+        -- dot impletation doesn't profit from a vectorized implementation
+        -- as the operation works vertically and thus requires synchronization
+        -- of the vector registers.
     end
 
     return V
