@@ -89,6 +89,18 @@ for _, S in pairs({int, uint, int64, uint64, float, double}) do
             test v:get(1) == 2
             test v:get(2) == 1
         end
+
+        testset "copy" do
+            terracode
+                var w = dvector.from(&alloc, 3, 2, 1)
+                var v = dvector.like(&alloc, &w)
+                v:copy(&w)
+            end
+            test v:size() == 3
+            test v:get(0) == 3
+            test v:get(1) == 2
+            test v:get(2) == 1
+        end
     end
 end
 end

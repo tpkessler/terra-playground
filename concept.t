@@ -292,6 +292,9 @@ for _, C in pairs({M.Float, M.Integer, M.UInteger}) do
 	M.Number:addfrom(C)
 end
 
+M.BLASNumber = Concept:new("BLASNumber")
+M.BLASNumber:addimplementations{float, double}
+
 M.Primitive = Concept:new("Primitive")
 for _, C in pairs({M.Integer, M.UInteger, M.Bool, M.Float}) do
 	M.Primitive:addfrom(C)

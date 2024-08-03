@@ -1,6 +1,8 @@
 local alloc = require("alloc")
 local base = require("base")
+local concept = require("concept")
 local vecbase = require("vector_base")
+local vecblas = require("vector_blas")
 local err = require("assert")
 
 local Allocator = alloc.Allocator
@@ -76,6 +78,17 @@ local DynamicVector = terralib.memoize(function(T)
                 [vec]
             end
         end)
+
+    if concept.BLASNumber(T) then
+        terra V:getblasinfo()
+            var n = self:size()
+            var data = self.data.ptr
+            var inc = self.inc
+            return n, data, inc
+        end
+
+        vecblas.VectorBLASBase(V)
+    end
 
     return V
 end)
