@@ -93,9 +93,8 @@ local StaticVector = terralib.memoize(function(T, N)
     vecbase.VectorBase(V, T)
 
     if T:isprimitive() then
-        V.templates.axpy[{V.SelfPtr, concept.Number, V.Self + V.SelfPtr} -> {}] =
+        V.templates.axpy[{&V.Self, concept.Number, &V.Self} -> {}] =
             function(V1, S, V2)
-                print("Calling special vector implementation")
                 local terra axpy(y: V1, a: S, x: V2)
                     y.simd = y.simd + a * x.simd
                 end

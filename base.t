@@ -27,12 +27,9 @@ local AbstractBase = Base:new("AbstractBase",
 	function(T)
 		assert(terralib.types.istype(T))
 		assert(T:isstruct())
-		local Self = concept.Concept:new(tostring(T),
-										 function(Tp) print(T.name, Tp.name, Tp.name == T.name); return Tp.name == T.name end
-										)
-		local SelfPtr = concept.Ptr(Self)
-		for key, val in pairs({staticmethods = {}, templates = {}, Self = Self,
-													 SelfPtr = SelfPtr})  do
+		local Self = concept.Concept:new("Self" .. tostring(T))
+		Self:addimplementations{T}
+		for key, val in pairs({staticmethods = {}, templates = {}, Self = Self}) do
 			if T.key == nil then
 				rawset(T, key, val)
 			end
