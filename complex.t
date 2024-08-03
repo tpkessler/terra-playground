@@ -1,15 +1,18 @@
 local C = terralib.includec("math.h")
 local sqrt = terralib.overloadedfunction("sqrt", {C.sqrt, C.sqrtf})
 
-local function complex(T)
+local base = require("base")
+local concept = require("concept")
 
-    local struct complex{
+local complex = terralib.memoize(function(T)
+
+    local struct complex(base.AbstractBase){
         re: T
         im: T
     }
     complex:setconvertible("array")
 
-    complex.scalar_type = T
+    complex.eltype = T
 
     function complex.metamethods.__cast(from, to, exp)
         if to == complex then
@@ -75,37 +78,22 @@ local function complex(T)
         return self:real() == other:real() and self:imag() == other:imag()
     end
 
-    local terra from(x: T, y: T)
+    terra complex.staticmethods.from(x: T, y: T)
         return complex {x , y}
     end
     
-    local I = `from(0, 1)
-
-    local staticmethods = {
-        from = from,
-        I = I,
-        unit = I
-    }
-
-    complex.metamethods.__getmethod = function(Self, methodname)
-        local method = complex.methods[methodname]
-        if method ~= nil then
-            return method
-        end
-
-        local method = staticmethods[methodname]
-        if method ~= nil then
-            return method
-        end
-
-        error("Method " .. methodname .. " not implemented for " ..
-              tostring(Self))
+    local I = `complex.from(0, 1)
+    for _, name in pairs({"I", "unit"}) do
+        complex.staticmethods[name] = terra() return complex.from(0, 1) end
+        complex.staticmethods[name]:setinlined(true)
     end
-    
-    return complex
-end
 
-local complex = terralib.memoize(complex)
+    if concept.Number(T) then
+        concept.Number:addimplementations{complex}
+    end
+
+    return complex
+end)
 
 return {
     complex = complex

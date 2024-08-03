@@ -23,6 +23,10 @@ local VectorBase = function(V, T)
     "A vector base implementation requires a valid stack implementation")
   T = T or double
 
+  V.metamethods.__apply = macro(function(self, i)
+    return `self.data(i)
+  end)
+
   V.templates.fill = template.Template:new("fill")
   V.templates.fill[{&V.Self, concept.Number} -> {}] = function(Self, T)
     local terra fill(self: Self, a: T)
