@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
 --
@@ -13,6 +14,12 @@ local BLASVector = vecblas.VectorBLAS
 local BLASNumber = concept.BLASNumber
 local Complex = concept.Complex
 local Bool = concept.Bool
+=======
+local matrix = require("matrix")
+local concept = require("concept")
+
+local BLASNumber = concept.BLASNumber
+>>>>>>> f6d2464 (Abstract matrix interface)
 local UInteger = concept.UInteger
 
 local BLASDenseMatrix = concept.AbstractInterface:new("BLASDenseMatrix")
@@ -22,6 +29,7 @@ BLASDenseMatrix:addmethod{
 }
 
 local function BLASDenseMatrixBase(M)
+<<<<<<< HEAD
     assert(BLASDenseMatrix(M))
 
     local conjtrans = function(T)
@@ -121,6 +129,9 @@ local function BLASDenseMatrixBase(M)
         end
         return mul
     end
+=======
+
+>>>>>>> f6d2464 (Abstract matrix interface)
 end
 
 return {
