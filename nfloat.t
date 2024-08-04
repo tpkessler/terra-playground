@@ -4,6 +4,7 @@ local gr = terralib.includec("flint/gr.h", {"-DGR_INLINES_C=1"})
 terralib.linklibrary("libflint.so")
 local io = terralib.includec("stdio.h")
 local mathfun = require("mathfuns")
+local concept = require("concept")
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
 local float_type = {}
@@ -12,7 +13,7 @@ for _, N in pairs(suffix) do
     float_type[N] = flint[string.format("nfloat%d_struct", N)]
     -- Meta information on fixed precision floats is stored in a context.
     -- Mathematically, they represent rings.
-    -- Here, we store them as global variables in table such that
+    -- Here, we store them as global variables in a table such that
     -- each float type has exactly one context it will use.
     context[N] = global(flint.gr_ctx_t)
     local ctx = context[N]:get()
@@ -159,11 +160,12 @@ local FixedFloat = terralib.memoize(function(N)
         mathfun[func]:adddefinition(impl)
     end
 
-    mathfun.fusedmuladd:adddefinition(
-        terra impl(x: nfloat, y: nfloat, z: nfloat)
+    do
+        local terra impl(x: nfloat, y: nfloat, z: nfloat)
             return x * y + z
         end
-    )
+        mathfun.fusedmuladd:adddefinition(impl)
+    end
 
     local staticmethods = {
         from = from,
@@ -174,6 +176,9 @@ local FixedFloat = terralib.memoize(function(N)
     nfloat.metamethods.__getmethod = function(self, methodname)
         return staticmethods[methodname] or nfloat.methods[methodname]
     end
+
+    concept.Real:addimplementations{nfloat}
+    concept.Number:addimplementations{nfloat}
 
     return nfloat
 end)

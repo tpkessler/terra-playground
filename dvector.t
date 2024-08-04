@@ -15,6 +15,7 @@ local DynamicVector = terralib.memoize(function(T)
         data: S
         inc: size_t
     }
+    V.eltype = T
 
     terra V:size()
         return self.data:size()
