@@ -56,10 +56,27 @@ local function isconcept(C)
 	return terralib.types.istype(C) and C.type == "concept"
 end
 
+local Any = Concept:new("Any", function(...) return true end)
+
 local function is_specialized_over(C1, C2)
 	for _, C in pairs({C1, C2}) do
 		assert(terralib.types.istype(C),
 			"Argument " .. tostring(C) .. " is not a terra type!")
+	end
+
+	-- The Any concept can only be more specialized
+	-- if compared to the Any concept.
+	if C1 == Any then
+		if C2 == Any then
+			return true
+		else
+			return false
+		end
+	end
+
+	-- Every concept is more specialized then the Any concept.
+	if C2 == Any then
+		return true
 	end
 
 	-- Checks can fail if the concept is empty,
@@ -76,11 +93,6 @@ local function is_specialized_over(C1, C2)
 			  .. tostring(C1) .. " and " .. tostring(C2))
 	end
 
-	-- Any works for all comparisons except the second argument is also Any.
-	if C1.name == "Any" and C2.name == "Any" then
-		return true
-	end
-
 	local ret = false
 	for T, _ in pairs(C1:getimplementations()) do
 		ret = ret or C2(T)
@@ -89,6 +101,17 @@ local function is_specialized_over(C1, C2)
 		end
 	end
 	return ret
+end
+
+local function has_implementation(C, T)
+	assert(terralib.types.istype(C) and terralib.types.istype(T))
+	if C:ispointer() and T:ispointer() then
+		return has_implementation(C.type, T.type)
+	elseif isconcept(C) then
+		return C(T)
+	else
+		error("Argument " .. tostring(C) .. " has to a concept")
+	end
 end
 
 local AbstractInterface = {}
@@ -120,8 +143,17 @@ function AbstractInterface:new(name, ref_methods)
 	interface:addmethod(ref_methods)
 
 	function interface:inheritfrom(C)
+		local function drop_self(ptr)
+			local par = {}
+			for i, k in ipairs(ptr.type.parameters) do
+				if i > 1 then
+					par[#par + 1] = k
+				end
+			end
+			return par -> ptr.type.returntype
+		end
 		for name, method in pairs(C.methods) do
-			self.addmethod{name = method}
+			self:addmethod{[name] = drop_self(method)}
 		end
 	end
 
@@ -218,10 +250,11 @@ local M = {
 	Concept = Concept,
 	AbstractInterface = AbstractInterface,
 	isconcept = isconcept,
+	has_implementation = has_implementation,
 	is_specialized_over = is_specialized_over
 }
 
-M.Any = Concept:new("Any", function(...) return true end)
+M.Any = Any
 M.Bool = Concept:new("Bool")
 M.Bool:addimplementations{bool}
 M.RawString = Concept:new("RawString")
@@ -258,6 +291,9 @@ M.Number = Concept:new("Number")
 for _, C in pairs({M.Float, M.Integer, M.UInteger}) do
 	M.Number:addfrom(C)
 end
+
+M.BLASNumber = Concept:new("BLASNumber")
+M.BLASNumber:addimplementations{float, double}
 
 M.Primitive = Concept:new("Primitive")
 for _, C in pairs({M.Integer, M.UInteger, M.Bool, M.Float}) do

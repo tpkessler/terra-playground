@@ -1,42 +1,44 @@
 local alloc = require("alloc")
-local interface = require("interface")
-local stack = require("stack")
+local base = require("base")
+local concept = require("concept")
+local vecbase = require("vector_base")
+local vecblas = require("vector_blas")
 local err = require("assert")
 
 local Allocator = alloc.Allocator
 local size_t = uint64
 
+local DynamicVector = terralib.memoize(function(T)
+    local S = alloc.SmartBlock(T)
 
-local VectorBase = terralib.memoize(function(V, T)
-
-    V.eltype = T
-    rawset(V, "staticmethods", {})
-
-    V.metamethods.__getmethod = function(self, methodname)
-        return self.methods[methodname] or self.staticmethods[methodname]
-    end
+    local struct V(base.AbstractBase){
+        data: S
+        inc: size_t
+    }
 
     terra V:size()
         return self.data:size()
     end
 
-    terra V:get(i : size_t)
-        return self.data:get(i)
+    terra V:get(i: size_t)
+        return self.data:get(self.inc * i)
     end
 
-    terra V:set(i : size_t, v : T)
-        self.data:set(i, v)
+    terra V:set(i: size_t, a: T)
+        return self.data:set(self.inc * i, a)
     end
 
-    V.metamethods.__apply = macro(function(self, i)
-        return `self.data(i)
-    end)
+    vecbase.VectorBase(V, T)
 
-    V.staticmethods.new = terra(alloc : Allocator, size : size_t)
-        return V{alloc:allocate(sizeof(T), size)}
+    V.staticmethods.new = terra(alloc: Allocator, size: size_t)
+        return V{alloc:allocate(sizeof(T), size), 1}
     end
 
-    V.staticmethods.fill = terra(alloc : Allocator, size : size_t, value : T)
+    V.staticmethods.like = terra(alloc: Allocator, w: &V)
+        return V.new(alloc, w:size())
+    end
+
+    V.staticmethods.all = terra(alloc: Allocator, size: size_t, value: T)
         var v = V.new(alloc, size)
         for i = 0, size do
             v:set(i, value)
@@ -44,12 +46,20 @@ local VectorBase = terralib.memoize(function(V, T)
         return v
     end
 
-    V.staticmethods.zeros = terra(alloc : Allocator, size : size_t)
-        return V.fill(alloc, size, 0)
+    V.staticmethods.zeros = terra(alloc: Allocator, size: size_t)
+        return V.all(alloc, size, 0)
     end
 
     V.staticmethods.ones = terra(alloc : Allocator, size : size_t)
-        return V.fill(alloc, size, 1)
+        return V.all(alloc, size, 1)
+    end
+
+    V.staticmethods.zeros_like = terra(alloc: Allocator, w: &V)
+        return V.zeros(alloc, w:size())
+    end
+
+    V.staticmethods.ones_like = terra(alloc: Allocator, w: &V)
+        return V.ones(alloc, w:size())
     end
 
     V.staticmethods.from = macro(
@@ -59,68 +69,28 @@ local VectorBase = terralib.memoize(function(V, T)
             local vec = symbol(V)
             local set_values = terralib.newlist()
             for i, v in ipairs(args) do
-                set_values:insert(quote [vec]:set(i-1, v) end)
+                set_values:insert(quote [vec]:set(i - 1, v) end)
             end
             return quote
                 var [vec] = V.new(allocator, size)
-                   [set_values]     
+                [set_values]     
             in
                 [vec]
             end
-        end
-    )
+        end)
 
-    terra V:dot(x : V)
-		err.assert(self:size() == x:size())
-        var size = self:size()
-        var res : T = 0
-        for i = 0, size do
-            res = res + self:get(i) * x:get(i)
+    if concept.BLASNumber(T) then
+        terra V:getblasinfo()
+            var n = self:size()
+            var data = self.data.ptr
+            var inc = self.inc
+            return n, data, inc
         end
-        return res
+
+        vecblas.VectorBLASBase(V)
     end
-
-    terra V:scal(a : T)
-        for i = 0, self:size() do
-            self:set(i, self:get(i) * a)
-        end
-    end
-
-    terra V:sum()
-		var res : T = 0
-        for i = 0, self:size() do
-            res = res + self:get(i)
-        end
-        return res
-    end
-
-    V.methods.map = macro(function(self, other, f)
-        return quote
-            var size = self:size()
-            err.assert(size <= other:size())
-            for i = 0, size do
-                other:set(i, f(self:get(i)))
-            end
-        in
-            other
-        end
-    end)
 
     return V
-end)
-
-
-local DynamicVector = terralib.memoize(function(T)
-
-    local S = alloc.SmartBlock(T)
-
-    local Base = function(V) VectorBase(V,T) end
-
-    local struct vector(Base){
-        data: S
-    }
-
-    return vector
 end)
 
 return {

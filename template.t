@@ -22,7 +22,9 @@ function Template:new()
 		if #sig~= #args then
 			return false
 		end
-		local res = fun.all(function(C, T) return C(T) end, fun.zip(sig, args))
+		local res = fun.all(function(C, T)
+													return concept.has_implementation(C, T)
+												end, fun.zip(sig, args))
 		return res
 	end
 
@@ -36,7 +38,8 @@ function Template:new()
 		local function compare(s, c_1, c_2)
 			if concept.is_specialized_over(c_1, c_2) then
 				s[1] = s[1] + 1
-			elseif concept.is_specialized_over(c_1, c_2) then
+			end
+			if concept.is_specialized_over(c_2, c_1) then
 				s[2] = s[2] + 1
 			end
 			return s

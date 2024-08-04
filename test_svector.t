@@ -43,9 +43,9 @@ testenv "Static vector" do
                 end 
             end 
 
-            testset(N,T) "fill" do                       
+            testset(N,T) "all" do                       
                 terracode                                  
-                    var v = svec.fill(T(3))
+                    var v = svec.all(T(3))
                 end 
                 test v:size()==N
                 for i=0,N-1 do              
