@@ -6,7 +6,7 @@ local err = require("assert")
 local VectorBLAS = concept.AbstractInterface:new("VectorBLAS")
 VectorBLAS:inheritfrom(vecbase.Vector)
 VectorBLAS:addmethod{
-    getblasinfo = {} -> {concept.UInteger, &concept.Number, concept.UInteger},
+    getblasinfo = {} -> {concept.UInteger, &concept.BLASNumber, concept.UInteger},
 }
 
 local function VectorBLASBase(V)
