@@ -3,7 +3,7 @@ local base = require("base")
 local concept = require("concept")
 local matrix = require("matrix")
 local err = require("assert")
-local nfloat = require("nfloat")
+local fun = require("fun")
 
 local Allocator = alloc.Allocator
 local size_t = uint64
@@ -47,8 +47,68 @@ local DynamicMatrix = terralib.memoize(function(T)
         matblas.BLASDenseMatrixBase(M)
     end
 
+    terra M.staticmethods.new(alloc: Allocator, rows: size_t, cols: size_t)
+        return M {alloc:allocate(sizeof(T), rows * cols), rows, cols, cols}
+    end
+
+    terra M.staticmethods.like(alloc: Allocator, m: &M)
+        return M.new(alloc, m:rows(), m:cols())
+    end
+
+    terra M.staticmethods.all(alloc: Allocator, rows: size_t, cols: size_t, a: T)
+        var m = M.new(alloc, rows, cols)
+        for i = 0, rows do
+            for j = 0, cols do
+                m:set(i, j, a)
+            end
+        end
+        return m
+    end
+
+    terra M.staticmethods.zeros(alloc: Allocator, rows: size_t, cols: size_t)
+        return M.all(alloc, rows, cols, 0)
+    end
+
+    terra M.staticmethods.all_like(alloc: Allocator, m: &M, a: T)
+        return M.all(alloc, m:rows(), m:cols(), a)
+    end
+
+    terra M.staticmethods.zeros_like(alloc: Allocator, m: &M)
+        return M.all(alloc, m:rows(), m:cols(), 0)
+    end
+
+    M.staticmethods.from = macro(function(alloc, tabl)
+        -- The type of an entry of a tuple is stored in the second entry
+        -- of each element of the entries table, see
+        -- https://github.com/terralang/terra/blob/249b231abf3cd51705ab2c503b6b77eac8130e80/src/terralib.lua#L1774
+        local coltab = fun.map(function(t) return #t[2].entries end,
+                               tabl.tree.type.entries):totable()
+        local rows = #coltab
+        local cols = coltab[1]
+        assert(fun.all(function(c) return c == cols end, coltab))
+
+        local m = symbol(M)
+        local loop = terralib.newlist()
+
+        local function get(tpl, i, j)
+            return `tpl.["_" .. tostring(i)].["_" .. tostring(j)]
+        end
+        for i = 0, rows - 1 do
+            for j = 0, cols - 1 do
+                loop:insert(quote [m]:set(i, j, [get(tabl, i, j)]) end)
+            end
+        end
+        return quote
+            var [m] = M.new(alloc, rows, cols)
+            [loop]
+        in
+            [m]
+        end
+    end)
+
     return M
 end)
 
-local bigfloat = nfloat.FixedFloat(64)
-local dmatrix = DynamicMatrix(double)
+return {
+    DynamicMatrix = DynamicMatrix
+}

@@ -38,39 +38,23 @@ local AbstractBase = Base:new("AbstractBase",
 		Self.staticmethods = T.staticmethods
 		Self.templates = T.templates
 
-		T.metamethods.__getmethod = function(self,methodname)
-	    local fnlike = self.methods[methodname] or self.staticmethods[methodname]
-	    if not fnlike and terralib.ismacro(self.metamethods.__methodmissing) then
-	        fnlike = terralib.internalmacro(function(ctx,tree,...)
-	            return self.metamethods.__methodmissing:run(ctx,tree,methodname,...)
-	        end)
-	    end
-	    return fnlike
+		T.metamethods.__getmethod = function(self, methodname)
+		    local fnlike = self.methods[methodname] or self.staticmethods[methodname]
+		    if not fnlike and terralib.ismacro(self.metamethods.__methodmissing) then
+		        fnlike = terralib.internalmacro(function(ctx, tree, ...)
+		            return self.metamethods.__methodmissing:run(ctx, tree, methodname, ...)
+		        end)
+		    end
+		    return fnlike
 		end
 
-		T.metamethods.__methodmissing = macro(function(methodname,...)
-    local gen = X.template[methodname]
-    if gen then
-        local args = terralib.newlist{...}
-        local types = args:map(function(v) return v.tree.type end)
-        local f = gen(unpack(types))
-        return `f(args)
-    end
-end)
-
 		T.metamethods.__methodmissing = macro(function(name, obj, ...)
-			local is_static = (T.staticmethods[name] ~= nil)
 			local args = terralib.newlist({...})
 			local types = args:map(function(t) return t.tree.type end)
-			if is_static then
-				local method = T.staticmethods[name]
-				return quote method([args]) end
-			else
-				types:insert(1, &T)
-				local method = T.templates[name]
-				local func = method(unpack(types))
-				return quote [func](&obj, [args]) end
-			end
+			types:insert(1, &T)
+			local method = T.templates[name]
+			local func = method(unpack(types))
+			return `[func](&obj, [args])
 		end)
 	end
 )

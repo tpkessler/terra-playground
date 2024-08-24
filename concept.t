@@ -12,6 +12,7 @@ local Concept = {}
 function Concept:new(name, custom_check)
 	assert(name, "Give a name for the concept!")
 	local concept = shim_concept(name)
+	concept.superconcepts = {}
 
 	local mt = getmetatable(concept)
 
@@ -26,6 +27,7 @@ function Concept:new(name, custom_check)
 	end
 
 	function mt:addfrom(C)
+		self.superconcepts[C] = true
 		self:addimplementations(fun.map(function(T, v) return T end,
 								C:getimplementations()
 							   ):totable())
@@ -93,6 +95,13 @@ local function is_specialized_over(C1, C2)
 			  .. tostring(C1) .. " and " .. tostring(C2))
 	end
 
+	-- If C1 inherits properties of C2, it is always specialized over C2.
+	if C1.superconcepts[C2] then
+		return true
+	elseif C2.superconcepts[C1] then
+		return false
+	end
+
 	local ret = false
 	for T, _ in pairs(C1:getimplementations()) do
 		ret = ret or C2(T)
@@ -143,6 +152,7 @@ function AbstractInterface:new(name, ref_methods)
 	interface:addmethod(ref_methods)
 
 	function interface:inheritfrom(C)
+		interface.superconcepts[C] = true
 		local function drop_self(ptr)
 			local par = {}
 			for i, k in ipairs(ptr.type.parameters) do
@@ -286,6 +296,8 @@ M.Real = Concept:new("Real")
 for _, C in pairs({M.Float, M.Integer}) do
 	M.Real:addfrom(C)
 end
+
+M.Complex = Concept:new("Complex")
 
 M.Number = Concept:new("Number")
 for _, C in pairs({M.Float, M.Integer, M.UInteger}) do

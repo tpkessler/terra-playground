@@ -9,4 +9,3 @@ local Stack = concept.AbstractInterface:new("Stack", {
 return {
     Stack = Stack,
 }
-

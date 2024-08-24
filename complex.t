@@ -90,6 +90,7 @@ local complex = terralib.memoize(function(T)
 
     if concept.Number(T) then
         concept.Number:addimplementations{complex}
+        concept.Complex:addimplementations{complex}
     end
 
     if concept.BLASNumber(T) then
