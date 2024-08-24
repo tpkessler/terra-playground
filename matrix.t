@@ -36,7 +36,7 @@ local function MatrixBase(M)
                 var ny = y:size()
                 err.assert(ms == ny and ns == nx)
                 for i = 0, ms do
-                    var res = [Self.eltype](0)
+                    var res = [Self.type.eltype](0)
                     for j = 0, ns do
                         res = res + self:get(j, i) * x:get(j)
                     end
@@ -49,7 +49,7 @@ local function MatrixBase(M)
                 var ny = y:size()
                 err.assert(ns == ny and ms == nx)
                 for i = 0, ns do
-                    var res = [Self.eltype](0)
+                    var res = [Self.type.eltype](0)
                     for j = 0, ms do
                         res = res + self:get(i, j) * x:get(j)
                     end
@@ -57,6 +57,7 @@ local function MatrixBase(M)
                 end
             end
         end
+        return apply
     end
     assert(operator.Operator(M))
     operator.Operator:addimplementations{M}
@@ -214,13 +215,60 @@ local function MatrixBase(M)
         end
         return dot
     end
+
+    local function get(A, atrans, i, j)
+        if atrans then
+            return `[A]:get([j], [i])
+        else
+            return `[A]:get([i], [j])
+        end
+    end
+
+    local function kernel(C, beta, alpha, atrans, A, btrans, B)
+        local dim = quote
+            var d: uint64
+            if atrans then
+                d = [A]:rows()
+            else
+                d = [A]:cols()
+            end
+        in
+            d
+        end
+        return quote
+            for i = 0, [C]:rows() do
+                for j = 0, [C]:cols() do
+                    var sum = beta * [C]:get(i, j)
+                    for k = 0, [dim] do
+                        sum = sum + alpha * [get(A, atrans, i, k)]
+                                          * [get(B, btrans, k, j)]
+                    end
+                    [C]:set(i, j, sum)
+                end
+            end
+        end
+    end
+    
     M.templates.mul = template.Template:new("mul")
     M.templates.mul[{&M.Self, Number, Number, Bool, &Matrix, Bool, &Matrix} -> {}]
     = function(Self, S1, S2, B1, M1, B2, M2)
         local terra mul(self: Self, beta: S1, alpha: S2, atrans: B1, a: M1, btrans: B2, b: M2)
-            -- TODO Write implementation for all cases
-            if atrans then
+            if atrans and btrans then
+                err.assert(self:rows() == a:cols() and self:cols() == b:rows())
+                err.assert(a:rows() == b:cols())
+                [kernel(`self, `beta, `alpha, true, `a, true, `b)]
+            elseif atrans and not btrans then
+                err.assert(self:rows() == a:cols() and self:cols() == b:cols())
+                err.assert(a:rows() == b:rows())
+                [kernel(`self, `beta, `alpha, true, `a, false, `b)]
+            elseif not atrans and btrans then
+                err.assert(self:rows() == a:rows() and self:cols() == b:rows())
+                err.assert(a:cols() == b:cols())
+                [kernel(`self, `beta, `alpha, false, `a, true, `b)]
             else
+                err.assert(self:rows() == a:rows() and self:cols() == b:cols())
+                err.assert(a:cols() == b:rows())
+                [kernel(`self, `beta, `alpha, false, `a, false, `b)]
             end
         end
         return mul
