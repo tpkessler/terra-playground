@@ -32,6 +32,7 @@ function Concept:new(name, custom_check)
 	end
 
 	function mt:addfrom(C)
+		self.superconcepts[C] = true
 		self:addimplementations(fun.map(function(T, v) return T end,
 								C:getimplementations()
 							   ):totable())
@@ -157,9 +158,12 @@ function AbstractInterface:new(name, ref_methods)
 
 	function interface:inheritfrom(C)
 		interface.superconcepts[C] = true
+<<<<<<< HEAD
 		for k, _ in pairs(C.superconcepts or {}) do
 			interface.superconcepts[k] = true
 		end
+=======
+>>>>>>> 7459d5b (Unit tests for matrix concepts)
 		local function drop_self(ptr)
 			local par = {}
 			for i, k in ipairs(ptr.type.parameters) do

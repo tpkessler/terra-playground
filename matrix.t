@@ -7,11 +7,7 @@ local operator = require("operator")
 local concept = require("concept")
 local template = require("template")
 local err = require("assert")
-<<<<<<< HEAD
 local vecbase = require("vector")
-=======
-local vecbase = require("vector_base")
->>>>>>> f6d2464 (Abstract matrix interface)
 
 local Bool = concept.Bool
 local UInteger = concept.UInteger
@@ -34,7 +30,6 @@ Matrix:addmethod{
 }
 
 local function MatrixBase(M)
-<<<<<<< HEAD
     local T = M.eltype
     local function get(A, atrans, i, j)
         if atrans then
@@ -48,8 +43,6 @@ local function MatrixBase(M)
         end
     end
     
-=======
->>>>>>> f6d2464 (Abstract matrix interface)
     M.templates.apply = template.Template:new("apply")
     M.templates.apply[{&M.Self, Bool, Number, &Vector, Number, &Vector} -> {}]
     = function(Self, B, S1, V1, S2, V2)
@@ -61,15 +54,9 @@ local function MatrixBase(M)
                 var ny = y:size()
                 err.assert(ms == ny and ns == nx)
                 for i = 0, ms do
-<<<<<<< HEAD
                     var res = [Self.type.eltype](0)
                     for j = 0, ns do
                         res = res + [get(self, true, i, j)] * x:get(j)
-=======
-                    var res = [Self.eltype](0)
-                    for j = 0, ns do
-                        res = res + self:get(j, i) * x:get(j)
->>>>>>> f6d2464 (Abstract matrix interface)
                     end
                     y:set(i, beta * y:get(i) + alpha * res)
                 end
@@ -80,11 +67,7 @@ local function MatrixBase(M)
                 var ny = y:size()
                 err.assert(ns == ny and ms == nx)
                 for i = 0, ns do
-<<<<<<< HEAD
                     var res = [Self.type.eltype](0)
-=======
-                    var res = [Self.eltype](0)
->>>>>>> f6d2464 (Abstract matrix interface)
                     for j = 0, ms do
                         res = res + self:get(i, j) * x:get(j)
                     end
@@ -92,10 +75,7 @@ local function MatrixBase(M)
                 end
             end
         end
-<<<<<<< HEAD
         return apply
-=======
->>>>>>> f6d2464 (Abstract matrix interface)
     end
     assert(operator.Operator(M))
     operator.Operator:addimplementations{M}
@@ -253,7 +233,6 @@ local function MatrixBase(M)
         end
         return dot
     end
-<<<<<<< HEAD
 
 
     local function kernel(C, beta, alpha, atrans, A, btrans, B)
@@ -281,13 +260,10 @@ local function MatrixBase(M)
         end
     end
     
-=======
->>>>>>> f6d2464 (Abstract matrix interface)
     M.templates.mul = template.Template:new("mul")
     M.templates.mul[{&M.Self, Number, Number, Bool, &Matrix, Bool, &Matrix} -> {}]
     = function(Self, S1, S2, B1, M1, B2, M2)
         local terra mul(self: Self, beta: S1, alpha: S2, atrans: B1, a: M1, btrans: B2, b: M2)
-<<<<<<< HEAD
             if atrans and btrans then
                 err.assert(self:rows() == a:cols() and self:cols() == b:rows())
                 err.assert(a:rows() == b:cols())
@@ -304,11 +280,6 @@ local function MatrixBase(M)
                 err.assert(self:rows() == a:rows() and self:cols() == b:cols())
                 err.assert(a:cols() == b:rows())
                 [kernel(`self, `beta, `alpha, false, `a, false, `b)]
-=======
-            -- TODO Write implementation for all cases
-            if atrans then
-            else
->>>>>>> f6d2464 (Abstract matrix interface)
             end
         end
         return mul

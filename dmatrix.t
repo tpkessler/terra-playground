@@ -1,22 +1,15 @@
-<<<<<<< HEAD
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
-=======
->>>>>>> f6d2464 (Abstract matrix interface)
 local alloc = require("alloc")
 local base = require("base")
 local concept = require("concept")
 local matrix = require("matrix")
 local err = require("assert")
-<<<<<<< HEAD
 local fun = require("fun")
 local tupl = require("tuple")
-=======
-local nfloat = require("nfloat")
->>>>>>> f6d2464 (Abstract matrix interface)
 
 local Allocator = alloc.Allocator
 local size_t = uint64
@@ -24,24 +17,17 @@ local size_t = uint64
 local DynamicMatrix = terralib.memoize(function(T)
     local S = alloc.SmartBlock(T)
     
-<<<<<<< HEAD
     local struct M{
-=======
-    local struct M(base.AbstractBase){
->>>>>>> f6d2464 (Abstract matrix interface)
         data: S
         rows: size_t
         cols: size_t
         ld: size_t
     }
     M.eltype = T
-<<<<<<< HEAD
     function M.metamethods.__typename(self)
         return ("DynamicMatrix(%s)"):format(tostring(T))
     end
     base.AbstractBase(M)
-=======
->>>>>>> f6d2464 (Abstract matrix interface)
 
     terra M:rows()
         return self.rows
@@ -61,13 +47,10 @@ local DynamicMatrix = terralib.memoize(function(T)
         self.data:set(j + self.ld * i, a)
     end
 
-<<<<<<< HEAD
     M.metamethods.__apply = macro(function(self, i, j)
         return `self.data(j + self.ld * i)
     end)
 
-=======
->>>>>>> f6d2464 (Abstract matrix interface)
     matrix.MatrixBase(M)
 
     if concept.BLASNumber(T) then
@@ -78,7 +61,6 @@ local DynamicMatrix = terralib.memoize(function(T)
         matblas.BLASDenseMatrixBase(M)
     end
 
-<<<<<<< HEAD
     terra M.staticmethods.new(alloc: Allocator, rows: size_t, cols: size_t)
         return M {alloc:allocate(sizeof(T), rows * cols), rows, cols, cols}
     end
@@ -139,10 +121,3 @@ end)
 return {
     DynamicMatrix = DynamicMatrix
 }
-=======
-    return M
-end)
-
-local bigfloat = nfloat.FixedFloat(64)
-local dmatrix = DynamicMatrix(double)
->>>>>>> f6d2464 (Abstract matrix interface)
