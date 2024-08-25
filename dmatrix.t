@@ -4,6 +4,7 @@ local concept = require("concept")
 local matrix = require("matrix")
 local err = require("assert")
 local fun = require("fun")
+local tupl = require("tuple")
 
 local Allocator = alloc.Allocator
 local size_t = uint64
@@ -78,14 +79,9 @@ local DynamicMatrix = terralib.memoize(function(T)
     end
 
     M.staticmethods.from = macro(function(alloc, tabl)
-        -- The type of an entry of a tuple is stored in the second entry
-        -- of each element of the entries table, see
-        -- https://github.com/terralang/terra/blob/249b231abf3cd51705ab2c503b6b77eac8130e80/src/terralib.lua#L1774
-        local coltab = fun.map(function(t) return #t[2].entries end,
-                               tabl.tree.type.entries):totable()
-        local rows = #coltab
-        local cols = coltab[1]
-        assert(fun.all(function(c) return c == cols end, coltab))
+        local dim = tupl.tensortuple(tabl.tree.type)
+        assert(#dim == 2)
+        local rows, cols = unpack(dim)
 
         local m = symbol(M)
         local loop = terralib.newlist()
