@@ -27,7 +27,6 @@ function Concept:new(name, custom_check)
 	end
 
 	function mt:addfrom(C)
-		self.superconcepts[C] = true
 		self:addimplementations(fun.map(function(T, v) return T end,
 								C:getimplementations()
 							   ):totable())
@@ -119,7 +118,7 @@ local function has_implementation(C, T)
 	elseif isconcept(C) then
 		return C(T)
 	else
-		error("Argument " .. tostring(C) .. " has to a concept")
+		error("Argument " .. tostring(C) .. " has to be a concept")
 	end
 end
 
