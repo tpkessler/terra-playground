@@ -22,7 +22,7 @@ local complex = terralib.memoize(function(T)
         end
     end
 
-    function complex.metamethods.__typename()
+    function complex.metamethods.__typename(self)
         return string.format("complex(%s)", tostring(T))
     end
 

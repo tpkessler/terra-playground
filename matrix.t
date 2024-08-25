@@ -25,6 +25,19 @@ Matrix:addmethod{
 }
 
 local function MatrixBase(M)
+    local T = M.eltype
+    local function get(A, atrans, i, j)
+        if atrans then
+            if concept.Complex(T) then
+                return quote var x = [A]:get([j], [i]) in x:conj() end
+            else
+                return `[A]:get([j], [i])
+            end
+        else
+            return `[A]:get([i], [j])
+        end
+    end
+    
     M.templates.apply = template.Template:new("apply")
     M.templates.apply[{&M.Self, Bool, Number, &Vector, Number, &Vector} -> {}]
     = function(Self, B, S1, V1, S2, V2)
@@ -38,7 +51,7 @@ local function MatrixBase(M)
                 for i = 0, ms do
                     var res = [Self.type.eltype](0)
                     for j = 0, ns do
-                        res = res + self:get(j, i) * x:get(j)
+                        res = res + [get(self, true, i, j)] * x:get(j)
                     end
                     y:set(i, beta * y:get(i) + alpha * res)
                 end
@@ -216,13 +229,6 @@ local function MatrixBase(M)
         return dot
     end
 
-    local function get(A, atrans, i, j)
-        if atrans then
-            return `[A]:get([j], [i])
-        else
-            return `[A]:get([i], [j])
-        end
-    end
 
     local function kernel(C, beta, alpha, atrans, A, btrans, B)
         local dim = quote
