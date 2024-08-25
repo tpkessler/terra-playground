@@ -4,6 +4,7 @@ local dmatrix = require("dmatrix")
 local dvector = require("dvector")
 local alloc = require("alloc")
 local complex = require("complex")
+local concept = require("concept")
 
 local cfloat = complex.complex(float)
 local cdouble = complex.complex(double)
@@ -160,6 +161,56 @@ for _, T in pairs({double, float, int32, int64, cdouble, cfloat, cint}) do
             end
             for i = 0, 2 do
                 test y:get(i) == yref:get(i)
+            end
+        end
+
+        testset "Mul" do
+            terracode
+                var alloc: DefaultAlloc
+                var a = Mat.from(&alloc, {{1, 2}, {3, 4}})
+                var b = Mat.from(&alloc, {{2, -1}, {-1, 2}})
+                var c = Mat.zeros_like(&alloc, &a)
+                c:mul([T](0), [T](1), false, &a, false, &b)
+                var cref = Mat.from(&alloc, {{0, 3}, {2, 5}})
+                var ct = Mat.zeros_like(&alloc, &a)
+                var ctref = Mat.from(&alloc, {{-1, 5}, {0, 6}})
+                ct:mul([T](0), [T](1), true, &a, false, &b)
+            end
+            test c:rows() == 2
+            test c:cols() == 2
+            for i = 0, 1 do
+                for j = 0, 1 do
+                    test c:get(i, j) == cref:get(i, j)
+                end
+            end
+
+            test ct:rows() == 2
+            test ct:cols() == 2
+            for i = 0, 1 do
+                for j = 0, 1 do
+                    test ct:get(i, j) == ctref:get(i, j)
+                end
+            end
+        end
+
+        if concept.Complex(T) then
+            testset "Mul complex" do
+                terracode
+                    var alloc: DefaultAlloc
+                    var I = T.unit()
+                    var a = Mat.from(&alloc, {{1 + 4 * I, 2 + 3 * I}, {3 + 2 * I, 4 + I}})
+                    var b = Mat.from(&alloc, {{2, -1 - I}, {-1 + I, 2}})
+                    var c = Mat.zeros_like(&alloc, &a)
+                    var cref = Mat.from(&alloc, {{-3 + 7 * I, 7 + I}, {1 + 7 * I, 7 - 3 * I}})
+                    c:mul([T](0), [T](1), false, &a, true, &b)
+                end
+                test c:rows() == 2
+                test c:cols() == 2
+                for i = 0, 1 do
+                    for j = 0, 1 do
+                        test c:get(i, j) == cref:get(i, j)
+                    end
+                end
             end
         end
     end
