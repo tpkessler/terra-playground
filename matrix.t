@@ -2,7 +2,7 @@ local operator = require("operator")
 local concept = require("concept")
 local template = require("template")
 local err = require("assert")
-local vecbase = require("vector_base")
+local vecbase = require("vector")
 
 local Bool = concept.Bool
 local UInteger = concept.UInteger

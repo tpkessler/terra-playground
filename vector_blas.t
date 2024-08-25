@@ -1,6 +1,6 @@
 local blas = require("blas")
 local concept = require("concept")
-local vecbase = require("vector_base")
+local vecbase = require("vector")
 local err = require("assert")
 
 local VectorBLAS = concept.AbstractInterface:new("VectorBLAS")
