@@ -18,13 +18,22 @@ Vector:addmethod{
   dot = &Stack -> concept.Number
 }
 
-local VectorBase = function(V, T)
+local VectorBase = function(V)
   assert(Stack(V),
     "A vector base implementation requires a valid stack implementation")
-  T = T or double
+  local T = V.eltype
 
-  V.metamethods.__apply = macro(function(self, i)
-    return `self.data(i)
+  -- Promote this to a templated method with proper concepts for callable objects
+  V.methods.map = macro(function(self, other, f)
+    return quote
+      var size = self:size()
+      err.assert(size <= other:size())
+      for i = 0, size do
+        other:set(i, f(self:get(i)))
+      end
+    in
+      other
+    end
   end)
 
   V.templates.fill = template.Template:new("fill")
