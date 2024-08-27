@@ -1,7 +1,7 @@
 local alloc = require("alloc")
 local base = require("base")
 local concept = require("concept")
-local vecbase = require("vector_base")
+local vecbase = require("vector")
 local vecblas = require("vector_blas")
 local err = require("assert")
 
@@ -15,6 +15,7 @@ local DynamicVector = terralib.memoize(function(T)
         data: S
         inc: size_t
     }
+    V.eltype = T
 
     terra V:size()
         return self.data:size()
@@ -28,7 +29,11 @@ local DynamicVector = terralib.memoize(function(T)
         return self.data:set(self.inc * i, a)
     end
 
-    vecbase.VectorBase(V, T)
+    V.metamethods.__apply = macro(function(self, i)
+        return `self.data(self.inc * i)
+    end)
+
+    vecbase.VectorBase(V)
 
     V.staticmethods.new = terra(alloc: Allocator, size: size_t)
         return V{alloc:allocate(sizeof(T), size), 1}

@@ -23,8 +23,8 @@ function Template:new()
 			return false
 		end
 		local res = fun.all(function(C, T)
-													return concept.has_implementation(C, T)
-												end, fun.zip(sig, args))
+								return concept.has_implementation(C, T)
+							end, fun.zip(sig, args))
 		return res
 	end
 

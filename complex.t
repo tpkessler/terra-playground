@@ -22,7 +22,7 @@ local complex = terralib.memoize(function(T)
         end
     end
 
-    function complex.metamethods.__typename()
+    function complex.metamethods.__typename(self)
         return string.format("complex(%s)", tostring(T))
     end
 
@@ -90,6 +90,7 @@ local complex = terralib.memoize(function(T)
 
     if concept.Number(T) then
         concept.Number:addimplementations{complex}
+        concept.Complex:addimplementations{complex}
     end
 
     if concept.BLASNumber(T) then
