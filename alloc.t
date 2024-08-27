@@ -58,9 +58,6 @@ local SmartBlock = terralib.memoize(function(T)
 	
     function block.metamethods.__staticinitialize(self)
 
-        print("initializing block " .. tostring(T))
-        print(self)
-
         --type traits
         block.isblock = true
         block.type = block
