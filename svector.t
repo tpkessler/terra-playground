@@ -1,6 +1,6 @@
 local err = require("assert")
 local base = require("base")
-local vecbase = require("vector_base")
+local vecbase = require("vector")
 local concept = require("concept")
 
 local StaticVector = terralib.memoize(function(T, N)
@@ -49,6 +49,11 @@ local StaticVector = terralib.memoize(function(T, N)
         self.data[i] = x
     end
 
+    V.metamethods.__apply = macro(function(self, i)
+        return quote err.assert(i < N) in self.data[i] end
+    end)
+
+    
 
     V.staticmethods.new = terra()
         return V {}
@@ -90,7 +95,7 @@ local StaticVector = terralib.memoize(function(T, N)
         end
     )
 
-    vecbase.VectorBase(V, T)
+    vecbase.VectorBase(V)
 
     if T:isprimitive() then
         V.templates.fill[{&V.Self, concept.Number} -> {}] = function(Self, S)

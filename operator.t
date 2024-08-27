@@ -1,5 +1,5 @@
 local concept = require("concept")
-local vecbase = require("vector_base")
+local vecbase = require("vector")
 
 local Bool = concept.Bool
 local UInteger = concept.UInteger

@@ -1,3 +1,5 @@
+local tuple = require("tuple")
+
 local function get_local_vars()
   --[=[
   	Return a key-value list of all lua variables available in the current scope.
@@ -53,55 +55,6 @@ local function get_terra_types()
   return types
 end
 
-local function istuple(T)
-  --[=[
-  	Check if a given type is a tuple
-  --]=]
-  assert(terralib.types.istype(T))
-  if T:isunit() then
-    return true
-  end
-  if not T:isstruct() then
-    return false
-  end
-  local entries = T.entries
-  -- An empty struct cannot be the empty tuple as we already checked for unit, the empty tuple.
-  if #entries == 0 then
-    return false
-  end
-  -- Entries are named _0, _1, ...
-  for i = 1, #entries do
-	  if entries[i][1] ~= "_" .. tostring(i - 1) then
-		  return false
-	  end
-  end
-  return true
-end
-
-local function unpacktuple(T)
-    --[=[
-        Return list of types in given tuple type
-
-        Args:
-            tpl: Tuple type
-
-        Returns:
-            One-based terra list composed of the types in the tuple
-
-        Examples:
-            print(unpacktuple(tuple(int, double))[2])
-            -- double
-    --]=]
-
-    -- The entries key of a tuple type is a terra list of tables,
-    -- where each table stores the index (zero based) and the type.
-    -- Hence we can use the map method of a terra list to extract a list
-    -- of terra types. For details, see the implementation of the tuples type
-    -- https://github.com/terralang/terra/blob/4d32a10ffe632694aa973c1457f1d3fb9372c737/src/terralib.lua#L1762
-	assert(istuple(T))
-	return T.entries:map(function(e) return e[2] end)
-end
-
 local function striplist(a)
   --[=[
   	Convert a terra list into a lua table.
@@ -126,8 +79,8 @@ local function serialize_pointertofunction(func)
   func = func.type
   local param = striplist(func.parameters)
   local ret
-  if istuple(func.returntype) then
-    ret = unpacktuple(func.returntype)
+  if tuple.istuple(func.returntype) then
+    ret = tuple.unpacktuple(func.returntype)
     ret = striplist(ret)
   else
     ret = {func.returntype}
