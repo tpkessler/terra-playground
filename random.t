@@ -73,7 +73,7 @@ local PRNGBase = terralib.memoize(function(G, I, F, range)
     var u1 = self:rand_uniform()
     var u2 = self:rand_uniform()
 
-    var r = log(u1)
+    var r = sqrt(2 * log(1 / u1))
     var theta = [F](2) * [F](C.M_PI) * u2
     return m + s * r * cos(theta)
   end
