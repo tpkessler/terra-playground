@@ -38,6 +38,10 @@ local DynamicMatrix = terralib.memoize(function(T)
         self.data:set(j + self.ld * i, a)
     end
 
+    M.metamethods.__apply = macro(function(self, i, j)
+        return `self.data(j + self.ld * i)
+    end)
+
     matrix.MatrixBase(M)
 
     if concept.BLASNumber(T) then
