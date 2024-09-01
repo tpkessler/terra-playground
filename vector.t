@@ -130,8 +130,9 @@ local VectorBase = function(V)
       for i = 0, size do
           res = res + self:get(i) * x:get(i)
       end
+      return res
     end
-    return res
+    return dot
   end
 
   assert(Vector(V), "Incomplete implementation of vector base class")

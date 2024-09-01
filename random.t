@@ -1,22 +1,12 @@
 local C = terralib.includecstring[[
+  #include <stdio.h> // fopen()
+  #include <stdlib.h> // random()
   #include <math.h>
-  #include <stdio.h>
-  #include <stdlib.h>
   #include "tinymt/tinymt64.h"
   #include "pcg/pcg_variants.h"
 ]]
--- terra does not import macros other than those that set a constant number
--- this causes an issue on macos, where 'stderr', etc are defined by referencing
--- to another implementation in a file. So we set them here. 
-if rawget(C, "stderr") == nil and rawget(C, "__stderrp") ~= nil then
-    rawset(C, "stderr", C.__stderrp)
-end
-if rawget(C, "stdin") == nil and rawget(C, "__stdinp") ~= nil then
-    rawset(C, "stdin", C.__stdinp)
-end 
-if rawget(C, "stdout") == nil and rawget(C, "__stdoutp") ~= nil then
-    rawset(C, "stdout", C.__stdoutp)
-end 
+local interface = require("interface")
+local err = require("assert")
 
 -- Compile C libraries with make first before using this module
 local uname = io.popen("uname", "r"):read("*a")
@@ -29,8 +19,6 @@ elseif uname == "Linux\n" then
 else
 	error("OS Unknown")
 end
-
-local interface = require("interface")
 
 local ldexp = terralib.overloadedfunction("ldexp", {C.ldexp, C.ldexpf})
 local sqrt = terralib.overloadedfunction("sqrt", {C.sqrt, C.sqrtf})
@@ -67,7 +55,7 @@ end)
 -- I is the integral return type of G;
 -- F is the return type for the RandomDistributer interface;
 -- range is the number of random bytes, typically 32 or 64.
-local PRNG = terralib.memoize(function(G, I, F, range)
+local PRNGBase = terralib.memoize(function(G, I, F, range)
   if F ~= double and F ~= float then
     error("Unsupported floating point type " .. tostring(F))
   end
@@ -85,7 +73,7 @@ local PRNG = terralib.memoize(function(G, I, F, range)
     var u1 = self:rand_uniform()
     var u2 = self:rand_uniform()
 
-    var r = log(u1)
+    var r = sqrt(2 * log(1 / u1))
     var theta = [F](2) * [F](C.M_PI) * u2
     return m + s * r * cos(theta)
   end
@@ -97,25 +85,17 @@ local PRNG = terralib.memoize(function(G, I, F, range)
 
   local RandomDistributer = RandomDistributer(F)
   RandomDistributer:isimplemented(G)
-
-  return G
 end)
 
 -- Read a truely random value of type T from /dev/urandom
-read_urandom = terralib.memoize(function(T)
+local read_urandom = terralib.memoize(function(T)
     local terra impl()
         var f = C.fopen("/dev/urandom", "r")
-        if f == nil then
-            C.fprintf(C.stderr, "Cannot open /dev/urandom")
-            C.abort()
-        end
+		err.assert(f ~= nil)
 
         var x: T
         var num_read = C.fread(&x, sizeof(T), 1, f)
-        if num_read ~= 1 then
-            C.fprintf(C.stderr, "Cannot read from /dev/urandom")
-            C.abort()
-        end
+		err.assert(num_read == 1)
         C.fclose(f)
 
         return x
@@ -131,7 +111,7 @@ local LibC = terralib.memoize(function(F)
     return C.random()
   end
 
-  libc = PRNG(libc, int64, F, 31)
+  PRNGBase(libc, int64, F, 31)
 
 
   local random_seed = read_urandom(uint32)
@@ -165,7 +145,7 @@ local TinyMT = terralib.memoize(function(F)
         return C.tinymt64_generate_uint64_public(&self.state)
     end
 
-	tinymt = PRNG(tinymt, uint64, F, 64)
+	PRNGBase(tinymt, uint64, F, 64)
 
 	local random_seed = read_urandom(uint64)
 	local from = macro(function(seed)
@@ -218,7 +198,7 @@ local KISS = terralib.memoize(function(F)
   	return self.x + self.y + self.z
   end
 
-  kiss = PRNG(kiss, uint32, F, 32)
+  PRNGBase(kiss, uint32, F, 32)
 
   local random_seed = read_urandom(uint32)
   local from = macro(function(seed)
@@ -252,7 +232,8 @@ local MinimalPCG = terralib.memoize(function(F)
 	return (xorshifted >> rot) or (xorshifted << ((-rot) and 31))
   end
 
-  pcg = PRNG(pcg, uint32, F, 32)
+  PRNGBase(pcg, uint32, F, 32)
+
   local random_seed = read_urandom(uint32) 
   local from = macro(function(seed, stream)
       seed = seed or random_seed()
@@ -289,7 +270,7 @@ local PCG = terralib.memoize(function(F)
 		return C.pcg_setseq_128_xsl_rr_64_random_r(&self.state)
 	end
 
-	pcg = PRNG(pcg, uint64, F, 64)
+	PRNGBase(pcg, uint64, F, 64)
 
 	local struct uint128 {
 		lo: uint64
@@ -304,8 +285,12 @@ local PCG = terralib.memoize(function(F)
 	end
 	local random_seed = read_urandom(uint128)
 	local from = macro(function(seed, stream)
-		seed = seed and quote var a: uint128 = [seed] in &a end or quote var a = random_seed() in &a end
-		stream = stream and quote var a: uint128 = [stream] in &a end or quote var a: uint128 = 1 in &a end
+		seed = seed
+				and quote var a: uint128 = [seed] in &a end
+				or quote var a = random_seed() in &a end
+		stream = stream
+				and quote var a: uint128 = [stream] in &a end
+				or quote var a: uint128 = 1 in &a end
 		return quote
 				var rand: pcg
 				C.pcg_setseq_128_void_srandom_r(&rand.state, [seed], [stream])

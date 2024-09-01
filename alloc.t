@@ -53,108 +53,114 @@ local SmartBlock = terralib.memoize(function(T)
     	alloc : &allochandle    --Handle to opaque allocator object
     }
 
-	--type traits
-	block.isblock = true
-	block.type = block
-	block.eltype = T
-    
-    block.methods.isempty = terra(self : &block)
-		return self.ptr==nil and self.alloc == nil
-	end
-
-    -- sizeof(T) if T is a concrete type
-    block.methods.elsize = macro(function()
-        if T==opaque then
-            return `1
-        else
-            return `sizeof(T)
-        end
-    end)
-
-    block.methods.bytes = terra(self : &block) : size_t
-        if not self:isempty() then
-            return ([&u8](self.alloc) - [&u8](self.ptr))
-        end
-        return 0
-	end
-    block.methods.bytes:setinlined(true)
-
-	block.methods.size = terra(self : &block) : size_t
-        err.assert(self:bytes() % self:elsize() == 0) 
-        return self:bytes() / self:elsize()
-	end
-	block.methods.size:setinlined(true)
-
-	block.methods.__init = terra(self : &block)
-		self.ptr = nil
-		self.alloc = nil
-	end
-
-    block.methods.__dtor = terra(self : &block)
-        --using 'self.alloc.fhandle' function pointer to 
-        --deallocate 'self'
-        if not self:isempty() then
-            var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
-            free(self.alloc.handle, self, 0)
-        end
-    end
-
-	--only add setters and getters to the memory if the type
+    --only add setters and getters to the memory if the type
 	--is known (so when its not an opaque type)
-	if T~=opaque then
-		block.methods.get = terra(self : &block, i : size_t)
-		    err.assert(i < self:size())
-			return self.ptr[i]
-		end
-		block.methods.get:setinlined(true)
+	
+    function block.metamethods.__staticinitialize(self)
 
-		block.methods.set = terra(self : &block, i : size_t, v : T)
-			err.assert(i < self:size())
-			self.ptr[i] = v
-		end
-		block.methods.set:setinlined(true)
+        --type traits
+        block.isblock = true
+        block.type = block
+        block.eltype = T
 
-        block.metamethods.__apply = macro(function(self, i)
-            return quote
-                err.assert(i < self:size())
-            in
-                self.ptr[i]
+        -- sizeof(T) if T is a concrete type
+        block.methods.elsize = macro(function()
+            if T==opaque then
+                return `1
+            else
+                return `sizeof(T)
             end
         end)
-	end
 
-	-- Cast block of one type to another
-	function block.metamethods.__cast(from, to, exp)
-        local pass_by_value = true
-        if from:ispointertostruct() and to:ispointertostruct() then
-            to, from = to.type, from.type
-            pass_by_value = false
-        end 
-		if to.isblock and from.isblock then
-            local B = to.type
-			local T2 = to.eltype
-			local Size2 = T2==opaque and 1 or sizeof(T2)
-            if pass_by_value then
-                --passing by value
+        block.methods.isempty = terra(self : &block)
+            return self.ptr==nil and self.alloc == nil
+        end
+
+        block.methods.bytes = terra(self : &block) : size_t
+            if not self:isempty() then
+                return ([&u8](self.alloc) - [&u8](self.ptr))
+            end
+            return 0
+        end
+        block.methods.bytes:setinlined(true)
+
+        block.methods.size = terra(self : &block) : size_t
+            err.assert(self:bytes() % self:elsize() == 0) 
+            return self:bytes() / self:elsize()
+        end
+        block.methods.size:setinlined(true)
+
+        if T~=opaque then
+
+            block.methods.get = terra(self : &block, i : size_t)
+                err.assert(i < self:size())
+                return self.ptr[i]
+            end
+            block.methods.get:setinlined(true)
+
+            block.methods.set = terra(self : &block, i : size_t, v : T)
+                err.assert(i < self:size())
+                self.ptr[i] = v
+            end
+            block.methods.set:setinlined(true)
+
+            block.metamethods.__apply = macro(function(self, i)
                 return quote
-                    var blk = exp
-                    --debug check if sizes are compatible, that is, is the
-                    --remainder zero after integer division
-                    err.assert(blk:bytes() % Size2  == 0)
+                    err.assert(i < self:size())
                 in
-                    B {[&T2](blk.ptr), blk.alloc}
+                    self.ptr[i]
                 end
-            else
-                --passing by reference
-                return quote
-                    var blk = exp
-                    err.assert(blk:bytes() % Size2  == 0)
-                in
-                    [&B](blk)
+            end)
+        end
+
+        block.methods.__init = terra(self : &block)
+            self.ptr = nil
+            self.alloc = nil
+        end
+
+        block.methods.__dtor = terra(self : &block)
+            --using 'self.alloc.fhandle' function pointer to 
+            --deallocate 'self'
+            if not self:isempty() then
+                var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
+                free(self.alloc.handle, self, 0)
+            end
+        end
+
+        -- Cast block of one type to another
+        function block.metamethods.__cast(from, to, exp)
+            local pass_by_value = true
+            if from:ispointertostruct() and to:ispointertostruct() then
+                to, from = to.type, from.type
+                pass_by_value = false
+            end 
+            if to.isblock and from.isblock then
+                local B = to.type
+                local T2 = to.eltype
+                local Size2 = T2==opaque and 1 or sizeof(T2)
+                if pass_by_value then
+                    --passing by value
+                    return quote
+                        var blk = exp
+                        --debug check if sizes are compatible, that is, is the
+                        --remainder zero after integer division
+                        err.assert(blk:bytes() % Size2  == 0)
+                    in
+                        B {[&T2](blk.ptr), blk.alloc}
+                    end
+                else
+                    --passing by reference
+                    return quote
+                        var blk = exp
+                        err.assert(blk:bytes() % Size2  == 0)
+                    in
+                        [&B](blk)
+                    end
                 end
             end
         end
-	end
+
+    end
 
 	return block
 end)

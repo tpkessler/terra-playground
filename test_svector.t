@@ -102,6 +102,16 @@ testenv "Static vector" do
             end
         end
 
+        testset "dot (N=6)" do
+            local svec = SVector.StaticVector(T, 6)
+            terracode
+                var v = svec.from(1, 2, 3, 4, 5, 6)
+                var w = svec.from(5, 4, 3, 2, 1, 0)
+                var res = w:dot(&v)
+            end
+            test res == 35
+        end
+
     end --T
 
 end --testenv
