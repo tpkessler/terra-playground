@@ -1,5 +1,22 @@
-local C = terralib.includec("stdio.h")
+--terratest.t provides a unit testing framework for the terra programming
+--language. It's implemented as a terra language extension.
+--terratest.t can be used from the terminal as follows:
+--"terra terrafile.t --test".
+--tests are only run for the "topfile" with the "--test" or "-t" option
+--check the tests and README.md for more information on how to use terratest.t
 
+--used for debugging
+local function printtable(table)
+    for i,s in pairs(table) do
+        print(i)
+        print("\n")
+        print(s)
+        print("\n")
+    end
+end
+
+--get metatable and check if "--test" or "-t" option is provided as
+--an optional argument. 
 local mt = getmetatable(_G)
 runalltests = false
 local topfile = ""
@@ -11,24 +28,29 @@ if mt.__declared["arg"]~=nil then
     end 
     topfile = arg[0]
 end
-       
+
+--define colors for printing test-statistics
 format = terralib.newlist()
 format.normal = "\27[0m"
 format.bold = "\27[1m"
 format.red = "\27[31m"
 format.green = "\27[32m"
 
+--data structure that saves the number of passed and
+--failed tests
 local struct Stats{
     passed : int
     failed : int
 }
 
+--collecting terra statements - used in 'testenv' and 'testset'
 local function collect_terra_stmts(env, terrastmts)
-    return quote         
+    return terra()         
         var [env.counter] = 0   
         var [env.passed] = 0    
         var [env.failed] = 0
-        escape                         
+        escape                  
+            --the counters are updated here       
             for i=1,#terrastmts do 
                 emit quote  [terrastmts[i]] end                 
             end
@@ -45,14 +67,7 @@ local function print_single_failed_test(file, linenumber)
     print("  "..format.bold..format.red.."test failed in "..file..", linenumber "..linenumber..format.normal) 
 end
 
-local function evaluate_test_results(passed, file, linenumber)
-    if passed then            
-        print_single_passed_test(file, linenumber)
-    else                         
-        print_single_failed_test(file, linenumber)
-    end 
-end
-
+--printing test statistics - used in 'testenv' and 'testset'
 local function print_test_stats(name, stats)
     local ntotal = stats.passed + stats.failed  
     print(name)
@@ -64,15 +79,7 @@ local function print_test_stats(name, stats)
     end
 end
 
-local function print_failed_tests(tests)
-    for i,test in pairs(tests) do
-        if not test.passed then
-            print_single_failed_test(test.filename, test.linenumber)
-        end
-    end
-end
-
---process the parameters in a parameterized testset or testenv
+--process the parameters in a parameterized 'testset' or 'testenv'
 local function process_env_parameters(lex)
     local isparametric = false                                   
     local params = terralib.newlist()         
@@ -89,8 +96,30 @@ local function process_env_parameters(lex)
     return isparametric, params
 end
 
+--get the paramtric name of a 'testset' or 'testenv'
+local function get_parametric_name(env, envname, params, isparametric)
+    local parametricname = envname
+    if isparametric then                 
+        parametricname = envname.."("..params[1].."="..tostring(env[params[1]])
+        for i=2,#params do               
+            parametricname = parametricname..","..params[i].."="..tostring(env[params[i]])
+        end                              
+        parametricname = parametricname..")"
+    end
+    return parametricname
+end
+
 local function process_testenv(self, lex)
-    lex:expect("testenv") --open the testenv environment
+    --definition of some locally used functions
+    local function print_failed_tests(tests)
+        for i,test in pairs(tests) do
+            if not test.passed then
+                print_single_failed_test(test.filename, test.linenumber)
+            end
+        end
+    end
+    --open the testenv environment
+    lex:expect("testenv")
     -- treat case of parameterized testenv                       
     local isparametric, params = process_env_parameters(lex)
     --generate testset name and parse code  
@@ -101,12 +130,12 @@ local function process_testenv(self, lex)
     local lasttoken = lex:expect("end")
     --exit with nothing if this is not the topfile
     local runtests = runalltests and lasttoken.filename==topfile
-
+    --return env-function
     return function(envfun)
+        --return if tests need not be run
         if not runtests then
  	        return
 	    end
-
         --reinitialize global variables
         self.env = {scope1 = terralib.newlist(), scope2 = terralib.newlist()}
         self.terrastmts = {notests = terralib.newlist(), scope1 = terralib.newlist(), scope2 = terralib.newlist()}
@@ -114,39 +143,24 @@ local function process_testenv(self, lex)
         self.env["scope1"].passed = symbol(int)                   
         self.env["scope1"].failed = symbol(int)
         self.tests = terralib.newlist()
-
-        -- enter scope
+        --enter scope
         self.scopelevel = 1  -- enter testenv, scopelevel 1
         local env = envfun()
         addtoenv(env, self.env["scope1"]) --everything from scope level 1 should be accessible
-        
-        -- print parametric name
-        local parametricname = testenvname   
-            if isparametric then                 
-                parametricname = testenvname.."("..params[1].."="..tostring(env[params[1]])
-                for i=2,#params do               
-                    parametricname = parametricname..","..params[i].."="..tostring(env[params[i]])
-                end                              
-                parametricname = parametricname..")"
-            end
+        --print parametric name
+        local parametricname = get_parametric_name(env, testenvname, params, isparametric)
         print("\n"..format.bold.."Test Environment: "..format.normal, parametricname)
-
+        --give control back to lua, generating code from 'testset' block, 'terracode' block, and 'test' definition
         local f = function()
             luaexprs(env)
         end
         f() -- evaluate all expressions in a new scope
-        
         -- collect all terra statements and evaluate in a new scope                        
-        local terrastmts = collect_terra_stmts(env, self.terrastmts["scope1"])
-        local g = terra()                                         
-            [terrastmts]                                           
-        end                                                       
-        local stats = g() --extract test statistics
-
+        local terrastmts = collect_terra_stmts(env, self.terrastmts["scope1"])                                                    
+        local stats = terrastmts() --extract test statistics
         -- process test statistics
         print_test_stats("\n  "..format.bold.."inline tests"..format.normal, stats)
         print_failed_tests(self.tests)
-        
         -- exit scope
         self.scopelevel = 0  -- exit testenv, back to scopelevel 0
         self.tests = terralib.newlist()
@@ -162,6 +176,7 @@ local function process_testset(self, lex)
     lex:expect("do")
     local luaexprs = lex:luastats() --give control back to lua
     lex:expect("end")
+    --return env-function
     return function(envfun)
         -- check current scope
         if self.scopelevel~=1 then
@@ -177,30 +192,19 @@ local function process_testset(self, lex)
         local env = envfun()
         addtoenv(env, self.env["scope1"]) --everything from scope level 1 should be accessible 
         addtoenv(env, self.env["scope2"]) --everything from scope level 2 should be accessible
-        -- evaluate all expressions in a new scope
+        --give control back to lua, generating code from 'terracode' block, and 'test' definition
         local f = function()
             --initialize scope 2 with everything but tests from scope 1
             self.terrastmts["scope2"] = addtoenv(terralib.newlist(), self.terrastmts["notests"])
             luaexprs(env)
         end
         f()
-        -- generate and run terra function
+        -- collect all terra statements and evaluate in a new scope
         local terrastmts = collect_terra_stmts(env, self.terrastmts["scope2"])
-        local g = terra()
-            [terrastmts]
-        end
-        local stats = g() --extract test statistics
+        local stats = terrastmts() --extract test statistics
         -- process test statistics
-        local parametricname = testsetname
-        if isparametric then
-            parametricname = testsetname.."("..params[1].."="..tostring(env[params[1]])
-            for i=2,#params do
-                parametricname = parametricname..","..params[i].."="..tostring(env[params[i]])
-            end
-            parametricname = parametricname..")"
-        end
+        local parametricname = get_parametric_name(env, testsetname, params, isparametric)
         print_test_stats("\n  "..format.bold.."testset:\t\t"..format.normal..parametricname, stats)
-
         -- exit current scope
     	self.scopelevel = 1  --exit testset, back to scopelevel 1
     end                       
@@ -210,6 +214,7 @@ local function process_terrastats(self, lex)
     lex:expect("terracode")
     local terrastmts = lex:terrastats()
     lex:expect("end")
+    --return env-function
     return function(envfun)
     	local env = envfun()
       	local stmts = terrastmts(env)
@@ -227,9 +232,19 @@ local function process_terrastats(self, lex)
 end
 
 local function process_test(self, lex)
+    --definition of locally used functions
+    local function evaluate_test_results(passed, file, linenumber)
+        if passed then            
+            print_single_passed_test(file, linenumber)
+        else                         
+            print_single_failed_test(file, linenumber)
+        end
+    end
+    --open test terra statement
     local testtoken = lex:expect("test")
     local testexpr = lex:terraexpr()    --extract the test statement
     local luaexprs = lex:luastats()     --give control back to lua (since `test` has no `end`)
+    --return env-function
     return function(envfun)
         local env = envfun()
         --add results to self.tests table
@@ -259,7 +274,11 @@ local function process_test(self, lex)
         --test in scopelevel 0, direct evaluation of tests without support for test statistics
         if self.scopelevel==0 then
             local ex = testexpr(env)
-            local passed = terra() process_test_expr(ex) end
+            local passed = terra() : bool
+                var passed = [ex]
+                addToTestResults(passed)
+                return passed
+            end
             evaluate_test_results(passed(), testtoken.filename, testtoken.linenumber)
         --test in scopelevel 1
         elseif self.scopelevel==1 then
@@ -302,15 +321,6 @@ local testlang = {
         end
     end;
 }
-
-function printtable(table)
-    for i,s in pairs(table) do
-        print(i)
-        print("\n")
-        print(s)
-        print("\n")
-    end
-end
 
 function setenv(env, stmts)
     for i,s in ipairs(stmts.tree.statements) do
