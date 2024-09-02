@@ -2,8 +2,8 @@ local blas = require("blas")
 local complex = require("complex")
 local C = terralib.includecstring[[
     #include <stdio.h>
-    #include <math.h>
 ]]
+local mathfun = require("mathfuns")
 local complexFloat = complex.complex(float)
 local complexDouble = complex.complex(double)
 
@@ -16,8 +16,8 @@ local types = {
 local unit = {
 	["s"] = `float(0),
 	["d"] = `double(0),
-	["c"] = `complexFloat.I,
-	["z"] = `complexDouble.I}
+	["c"] = `complexFloat.I(),
+	["z"] = `complexDouble.I()}
 
 import "terratest/terratest"
 
@@ -195,8 +195,7 @@ for prefix, T in pairs(types) do
         testset "norm vectors" do
             local n = 4
             local incx = 3
-            local sqrt = terralib.overloadedfunction("sqrt", {C.sqrt, C.sqrtf})
-            local Ts = T.scalar_type or T
+            local Ts = T.eltype or T
             terracode
                 var x: T[n * incx]
                 var xre: Ts[n * incx]
@@ -215,7 +214,7 @@ for prefix, T in pairs(types) do
                     ref = ref + xre[i * incx] * xre[i * incx]
                 end
                 escape
-                    if T.scalar_type then
+                    if T.eltype then
                         emit quote
                             for i = 0, n do
                                 ref = ref + xim[i * incx] * xim[i * incx]
@@ -224,7 +223,7 @@ for prefix, T in pairs(types) do
                     end --if
                 end --escape
 
-                ref = sqrt(ref)
+                ref = mathfun.sqrt(ref)
             end
 
             test num == ref
