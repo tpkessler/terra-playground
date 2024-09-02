@@ -310,5 +310,9 @@ M.Primitive = Concept:new("Primitive")
 for _, C in pairs({M.Integer, M.UInteger, M.Bool, M.Float}) do
 	M.Primitive:addfrom(C)
 end
+M.Integral = Concept:new("Integral")
+for _, C in pairs({M.Integer, M.UInteger}) do
+	M.Integral:addfrom(C)
+end
 
 return M

@@ -1,8 +1,8 @@
 local C = terralib.includec("math.h")
-local sqrt = terralib.overloadedfunction("sqrt", {C.sqrt, C.sqrtf})
 
 local base = require("base")
 local concept = require("concept")
+local mathfun = require("mathfuns")
 
 local complex = terralib.memoize(function(T)
 
@@ -57,8 +57,9 @@ local complex = terralib.memoize(function(T)
 
     if T:isfloat() then
         terra complex:norm(): T
-            return sqrt(self:normsq())
+            return mathfun.sqrt(self:normsq())
         end
+        mathfun.abs:adddefinition(terra(x: complex) return x:norm() end)
     end
 
     terra complex:inverse()
