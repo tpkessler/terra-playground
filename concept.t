@@ -152,6 +152,9 @@ function AbstractInterface:new(name, ref_methods)
 
 	function interface:inheritfrom(C)
 		interface.superconcepts[C] = true
+		for k, _ in pairs(C.superconcepts or {}) do
+			interface.superconcepts[k] = true
+		end
 		local function drop_self(ptr)
 			local par = {}
 			for i, k in ipairs(ptr.type.parameters) do

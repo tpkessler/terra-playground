@@ -1,10 +1,10 @@
 local blas = require("blas")
 local concept = require("concept")
-local vecbase = require("vector")
+local veccont = require("vector_contiguous")
 local err = require("assert")
 
 local VectorBLAS = concept.AbstractInterface:new("VectorBLAS")
-VectorBLAS:inheritfrom(vecbase.Vector)
+VectorBLAS:inheritfrom(veccont.VectorContiguous)
 VectorBLAS:addmethod{
     getblasinfo = {} -> {concept.UInteger, &concept.BLASNumber, concept.UInteger},
 }
