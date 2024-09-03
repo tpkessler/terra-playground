@@ -8,7 +8,7 @@ terralib.linklibrary("./libhash.so")
 local M = {}
 
 local primitive_compare = template.Template:new()
-primitive_compare[concept.Primitive] = function(T)
+primitive_compare[concept.Primitive -> {}] = function(T)
 	local terra impl(a: &T, b: &T)
 		if @a > @b then
 			return 1
@@ -22,7 +22,10 @@ primitive_compare[concept.Primitive] = function(T)
 	return impl
 end
 
-primitive_compare[concept.Pointer] = function(T)
+local Pointer = concept.Concept:new("Pointer")
+Pointer:addimplementations{&opaque}
+
+primitive_compare[Pointer -> {}] = function(T)
 	local impl64 = primitive_compare(int64)
 	local terra impl(a: &T, b: &T)
 		var ae = [int64](@a)
@@ -33,7 +36,7 @@ primitive_compare[concept.Pointer] = function(T)
 	return impl
 end
 
-primitive_compare[concept.RawString] = function(T)
+primitive_compare[concept.RawString -> {}] = function(T)
 	local terra impl(a: &rawstring, b: &rawstring)
 		return string.strcmp(@a, @b)
 	end
@@ -43,7 +46,7 @@ end
 
 local primitive_length = template.Template:new()
 
-primitive_length[concept.Primitive] = function(T)
+primitive_length[concept.Primitive -> {}] = function(T)
 	local terra impl(a: &T)
 		var size: int64 = sizeof(T)
 		return size
@@ -51,14 +54,14 @@ primitive_length[concept.Primitive] = function(T)
 	return impl
 end
 
-primitive_length[concept.Pointer] = function(T)
+primitive_length[Pointer -> {}] = function(T)
 	local terra impl(a: &T)
 		return 8l -- 64 bit platform
 	end
 	return impl
 end
 
-primitive_length[concept.RawString] = function(T)
+primitive_length[concept.RawString -> {}] = function(T)
 	local terra impl(a: &rawstring)
 		var size: int64 = string.strlen(@a)
 		return size
