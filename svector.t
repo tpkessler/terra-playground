@@ -24,7 +24,6 @@ local StaticVector = terralib.memoize(function(T, N)
            V = struct{
                 data: T[N]
             }
-            return V
         end
         function V.metamethods.__typename(self)
             return ("StaticVector(%s, %d)"):format(tostring(T), N)

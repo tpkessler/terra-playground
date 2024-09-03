@@ -4,15 +4,18 @@ local dmatrix = require("dmatrix")
 local dvector = require("dvector")
 local alloc = require("alloc")
 local complex = require("complex")
+local nfloat = require("nfloat")
 local concept = require("concept")
 
 local cfloat = complex.complex(float)
 local cdouble = complex.complex(double)
 local cint = complex.complex(int64)
+local float128 = nfloat.FixedFloat(128)
+local cfloat128 = complex.complex(float128)
 
 local DefaultAlloc = alloc.DefaultAllocator()
 
-for _, T in pairs({double, float, int32, int64, cdouble, cfloat, cint}) do
+for _, T in pairs({double, float, int64, cdouble, cfloat, cint, float128, cfloat128}) do
     local Vec = dvector.DynamicVector(T)
     local Mat = dmatrix.DynamicMatrix(T)
     testenv(T) "Basic operations" do

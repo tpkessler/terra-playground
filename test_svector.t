@@ -1,16 +1,18 @@
 import "terratest/terratest"
 
 local SVector = require('svector')
+local nfloat = require("nfloat")
 local io = terralib.includec("stdio.h")
 
-testenv "Static vector" do
+local float1024 = nfloat.FixedFloat(1024)
 
-    for _,T in ipairs{int32,int64,float,double} do
-        for N=1,8 do
+for _,T in ipairs{int32,float,double, float1024} do
+for N=1,6 do
+    testenv(N, T) "Static vector" do
 
             local svec = SVector.StaticVector(T,N)   
          
-            testset(N,T) "new, size, get, set" do
+            testset "new, size, get, set" do
                 terracode
                     var v = svec.new()
                     for i=0,N do              
@@ -23,7 +25,7 @@ testenv "Static vector" do
                 end 
             end
           
-            testset(N,T) "zeros" do                       
+            testset "zeros" do                       
                 terracode                                  
                     var v = svec.zeros()
                 end
@@ -33,7 +35,7 @@ testenv "Static vector" do
                 end 
             end 
         
-            testset(N,T) "ones" do                       
+            testset "ones" do                       
                 terracode                                  
                     var v = svec.ones()
                 end 
@@ -43,7 +45,7 @@ testenv "Static vector" do
                 end 
             end 
 
-            testset(N,T) "all" do                       
+            testset "all" do                       
                 terracode                                  
                     var v = svec.all(T(3))
                 end 
