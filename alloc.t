@@ -76,6 +76,12 @@ local SmartBlock = terralib.memoize(function(T)
             return self.ptr==nil and self.alloc == nil
         end
 
+        --akin to a weak pointer, which points to data but
+        --is not allocated on the heap.
+        block.methods.isweak = terra(self : &block)
+            return self.ptr~=nil and self.alloc == nil
+        end
+
         block.methods.bytes = terra(self : &block) : size_t
             if not self:isempty() then
                 return ([&u8](self.alloc) - [&u8](self.ptr))
@@ -117,6 +123,9 @@ local SmartBlock = terralib.memoize(function(T)
             self.ptr = nil
             self.alloc = nil
         end
+
+        terra block.methods.__dtor :: {&block}->{}
+
 
         block.methods.__dtor = terra(self : &block)
             --using 'self.alloc.fhandle' function pointer to 
