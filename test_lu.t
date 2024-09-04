@@ -37,8 +37,10 @@ for _, Ts in pairs({float, double, float128, float1024}) do
                 var tol: Ts = [ tol[tostring(Ts)] ]
                 var lu = LUDense.new(&a, &p, tol)
                 var x = DVec.from(&alloc, 2, 1)
+                var xt = DVec.from(&alloc, 4, 2)
                 lu:factorize()
-                lu:solve(&x)
+                lu:solve(false, &x)
+                lu:solve(true, &xt)
             end
 
             if not concept.BLASNumber(T) then
@@ -57,16 +59,23 @@ for _, Ts in pairs({float, double, float128, float1024}) do
                 test mathfun.abs(x(0) - [T](-3)) < tol
                 test mathfun.abs(x(1) - [T](5) / 2) < tol
             end
+
+            testset "Solve transposed" do
+                test mathfun.abs(xt(0) - [T](-5)) < tol
+                test mathfun.abs(xt(1) - [T](3)) < tol
+            end
         end
 
         testenv(T) "LU factorization for random matrix" do
             local n = 41
+            local io = terralib.includec("stdio.h")
             terracode
                 var alloc: Alloc
                 var rand = Rand.from(2359586)
                 var a = DMat.new(&alloc, n, n)
                 var x = DVec.new(&alloc, n)
                 var y = DVec.like(&alloc, &x)
+                var yt = DVec.like(&alloc, &x)
                 for i = 0, n do
                     x(i) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
                     for j = 0, n do
@@ -74,16 +83,24 @@ for _, Ts in pairs({float, double, float128, float1024}) do
                     end
                 end
                 a:apply(false, [T](1), &x, [T](0), &y)
+                a:apply(true, [T](1), &x, [T](0), &yt)
                 var p = PVec.new(&alloc, n)
                 var tol: Ts = [ tol[tostring(Ts)] ]
                 var lu = LUDense.new(&a, &p, tol)
                 lu:factorize()
-                lu:solve(&y)
+                lu:solve(false, &y)
+                lu:solve(true, &yt)
             end
 
             testset "Solve" do
                 for i = 0, n - 1 do
                     test mathfun.abs(y(i) - x(i)) < 1000 * tol * mathfun.abs(x(i)) + tol
+                end
+            end
+
+            testset "Solve transposed" do
+                for i = 0, n - 1 do
+                    test mathfun.abs(yt(i) - x(i)) < 2000 * tol * mathfun.abs(x(i)) + tol
                 end
             end
         end

@@ -182,6 +182,14 @@ local FixedFloat = terralib.memoize(function(N)
         mathfun[func]:adddefinition(impl)
     end
 
+    mathfun.min:adddefinition(terra(x : nfloat, y : nfloat)
+                                  return terralib.select(x < y, x, y)
+                              end)
+    mathfun.max:adddefinition(terra(x : nfloat, y : nfloat)
+                                  return terralib.select(x > y, x, y)
+                              end)
+    mathfun.conj:adddefinition(terra(x: nfloat) return x end)
+
     do
         local terra impl(x: nfloat, y: nfloat, z: nfloat)
             return x * y + z

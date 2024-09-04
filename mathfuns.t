@@ -106,4 +106,9 @@ math.isapprox = terra(a : double, b : double, atol : double)
     return math.dist(a, b) < atol
 end
 
+math.conj = terralib.overloadedfunction("conj")
+for _, T in ipairs{int32, int64, float, double} do
+    math.min:adddefinition(terra(x : T) return x end)
+end
+
 return math
