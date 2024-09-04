@@ -14,8 +14,8 @@ local float128 = nfloat.FixedFloat(128)
 local float1024 = nfloat.FixedFloat(1024)
 local tol = {["float"] = 1e-6,
              ["double"] = 1e-15,
-             [tostring(float128)] = `[float128](1e-30),
-             [tostring(float1024)] = `[float1024](1e-100),
+             [tostring(float128)] = `[float128]("1e-30"),
+             [tostring(float1024)] = `[float1024]("1e-300"),
             }
 
 for _, Ts in pairs({float, double, float128, float1024}) do
@@ -68,7 +68,6 @@ for _, Ts in pairs({float, double, float128, float1024}) do
 
         testenv(T) "LU factorization for random matrix" do
             local n = 41
-            local io = terralib.includec("stdio.h")
             terracode
                 var alloc: Alloc
                 var rand = Rand.from(2359586)
