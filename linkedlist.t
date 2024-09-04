@@ -16,50 +16,11 @@ struct snode{
 }
 snode:complete()
 
-terra smrt_snode.methods.__dtor :: {&smrt_snode} -> {}
-
-terra smrt_snode.methods.__dtor(self : &smrt_snode)
-    if not self:isempty() then
-        io.printf("__dtor(self : &smrt_snode) node %d\n", self.ptr.index)
-        --get a temporary handle 'tmp' to the next element
-        --this will automatically destroy all managed resources
-        --when 'tmp' runs out of scope, using tail recursion.
-        --the tail recursion should be optimized by LLVM to A
-        --simple loop
-        var tmp = self.ptr.next
-        --reset 'ptr' in case of a weak pointer
-        if tmp:isweak() then tmp.ptr = nil end
-        --free current resources
-        var free = [{&opaque, &smrt_snode, size_t}->{}](self.alloc.fhandle)
-        free(self.alloc.handle, self, 0)
-    end
-end
-
-terra main()
-    var A : DefaultAllocator     
-    --head dsode
-    var node_0 : snode
-    node_0.index = 0
-    node_0.next = A:allocate(sizeof(snode), 1)
-    --node 1
-    var node_1 = node_0.next.ptr
-    node_1.index = 1
-    node_1.next = A:allocate(sizeof(snode), 1)
-    --node 2
-    var node_2 = node_1.next.ptr
-    node_2.index = 2
-    node_2.next = A:allocate(sizeof(snode), 1)
-    --node 3
-    var node_3 = node_2.next.ptr
-    node_3.index = 3
-    node_3.next.ptr = &node_0 --close the loop
-end
-main()
-
 local struct dnode
 local smrt_dnode = alloc.SmartBlock(dnode)
 
 struct dnode{
+    index : int
     prev : smrt_dnode
     next : smrt_dnode
 }
@@ -68,33 +29,34 @@ dnode:complete()
 
 import "terratest/terratest"
 
-testenv "singly linked list" do
+testenv "singly linked list - that is a cycle" do
 
     terracode
-        var A : DefaultAllocator     
-        --head dsode
-        var node_0 : snode
-        node_0.next = A:allocate(sizeof(snode), 1)
-        --node 1
-        var node_1 = node_0.next.ptr
-        node_1.next = A:allocate(sizeof(snode), 1)
-        --node 2
-        var node_2 = node_1.next.ptr
-        node_2.next = A:allocate(sizeof(snode), 1)
-        --node 3
-        var node_3 = node_2.next.ptr
-        node_3.next.ptr = &node_0 --close the loop
+        var A : DefaultAllocator 
     end
 
     testset "next" do
-         test node_0.next.ptr==node_1
-         test node_1.next.ptr==node_2
-         test node_2.next.ptr==node_3
-         test node_3.next.ptr==&node_0
+        terracode 
+            --head dsode
+            var node_0 : snode
+            node_0.next = A:allocate(sizeof(snode), 1)
+            --node 1
+            var node_1 = node_0.next.ptr
+            node_1.next = A:allocate(sizeof(snode), 1)
+            --node 2
+            var node_2 = node_1.next.ptr
+            node_2.next = A:allocate(sizeof(snode), 1)
+            --node 3
+            var node_3 = node_2.next.ptr
+            node_3.next.ptr = &node_0 --close the loop
+        end
+        test node_0.next.ptr==node_1
+        test node_1.next.ptr==node_2
+        test node_2.next.ptr==node_3
+        test node_3.next.ptr==&node_0
     end
 
 end
-
 
 
 testenv "doubly linked list" do
