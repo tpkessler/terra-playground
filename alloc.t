@@ -124,15 +124,42 @@ local SmartBlock = terralib.memoize(function(T)
             self.alloc = nil
         end
 
-        terra block.methods.__dtor :: {&block}->{}
+        if T==opaque then
+            terra block.methods.__dtor(self : &block)
+                --using 'self.alloc.fhandle' function pointer to 
+                --deallocate 'self'
+                if not self:isempty() then
+                    var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
+                    free(self.alloc.handle, self, 0)
+                end
+            end
+        else
+            --declaring terra function for use in recursion
+            terra block.methods.__dtor :: {&block} -> {}
 
-
-        block.methods.__dtor = terra(self : &block)
-            --using 'self.alloc.fhandle' function pointer to 
-            --deallocate 'self'
-            if not self:isempty() then
-                var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
-                free(self.alloc.handle, self, 0)
+            terra block.methods.__dtor(self : &block)
+                if not self:isempty() then
+                    --get a temporary handle 'tmp' to each of the managed fields 
+                    --and add a deferred destructor call. this will destroy all 
+                    --managed resources when 'tmp' runs out of scope, using tail 
+                    --recursion. the tail recursion should be optimized by LLVM to A
+                    --simple loop
+                    escape
+                        local entries = T:getentries()
+                        for i,e in ipairs(entries) do
+                            if e.field and e.type:isstruct() and e.type.methods.__dtor then
+                                emit quote 
+                                    var tmp = self.ptr.[e.field] 
+                                    if tmp:isweak() then tmp.ptr = nil end
+                                    defer tmp:__dtor()
+                                end
+                            end
+                        end
+                    end
+                    --free current resources
+                    var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
+                    free(self.alloc.handle, self, 0)
+                end
             end
         end
 
