@@ -108,7 +108,7 @@ end
 
 math.conj = terralib.overloadedfunction("conj")
 for _, T in ipairs{int32, int64, float, double} do
-    math.min:adddefinition(terra(x : T) return x end)
+    math.conj:adddefinition(terra(x : T) return x end)
 end
 
 return math
