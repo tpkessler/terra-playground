@@ -2,6 +2,7 @@ local alloc = require("alloc")
 local base = require("base")
 local concept = require("concept")
 local vecbase = require("vector")
+local veccont = require("vector_contiguous")
 local vecblas = require("vector_blas")
 local err = require("assert")
 
@@ -11,11 +12,17 @@ local size_t = uint64
 local DynamicVector = terralib.memoize(function(T)
     local S = alloc.SmartBlock(T)
 
-    local struct V(base.AbstractBase){
+    local struct V{
         data: S
         inc: size_t
     }
     V.eltype = T
+
+    function V.metamethods.__typename(self)
+        return ("DynamicVector(%s)"):tostring(T)
+    end
+
+    base.AbstractBase(V)
 
     terra V:size()
         return self.data:size()
@@ -34,6 +41,13 @@ local DynamicVector = terralib.memoize(function(T)
     end)
 
     vecbase.VectorBase(V)
+
+    terra V:getbuffer()
+        err.assert(self.inc == 1)
+        return self:size(), self.data.ptr 
+    end
+
+    veccont.VectorContiguous:addimplementations{V}
 
     V.staticmethods.new = terra(alloc: Allocator, size: size_t)
         return V{alloc:allocate(sizeof(T), size), 1}

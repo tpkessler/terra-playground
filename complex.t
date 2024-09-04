@@ -6,12 +6,10 @@ local mathfun = require("mathfuns")
 
 local complex = terralib.memoize(function(T)
 
-    local struct complex(base.AbstractBase){
+    local struct complex{
         re: T
         im: T
     }
-    complex:setconvertible("array")
-
     complex.eltype = T
 
     function complex.metamethods.__cast(from, to, exp)
@@ -22,9 +20,14 @@ local complex = terralib.memoize(function(T)
         end
     end
 
-    function complex.metamethods.__typename(self)
-        return string.format("complex(%s)", tostring(T))
+    function complex.metamethods.__typename()
+        return ("complex(%s)"):format(tostring(T))
     end
+
+    -- The tostring method is cached and calling the base operation in the
+    -- struct declaration already defines it.
+    -- Hence we can only call it _after_ __typename is defined.  
+    base.AbstractBase(complex)
 
     terra complex.metamethods.__add(self: complex, other: complex)
         return complex {self.re + other.re, self.im + other.im}
@@ -55,7 +58,7 @@ local complex = terralib.memoize(function(T)
         return complex {self.re, -self.im}
     end
 
-    if T:isfloat() then
+    if concept.Float(T) then
         terra complex:norm(): T
             return mathfun.sqrt(self:normsq())
         end
@@ -64,7 +67,7 @@ local complex = terralib.memoize(function(T)
 
     terra complex:inverse()
        var nrmsq = self:normsq()
-       return {self.re / nrmsq, -self.im / nrmsq}
+       return complex {self.re / nrmsq, -self.im / nrmsq}
     end
 
     terra complex.metamethods.__sub(self: complex, other: complex)

@@ -1,10 +1,12 @@
 local err = require("assert")
 local base = require("base")
 local vecbase = require("vector")
+local veccont = require("vector_contiguous")
 local concept = require("concept")
 
 local StaticVector = terralib.memoize(function(T, N)
     local function create_static_vector(T, N)
+        local V
         if T:isprimitive() then
             local nbytes = sizeof(T) * N
             if nbytes < 64 then
@@ -12,28 +14,26 @@ local StaticVector = terralib.memoize(function(T, N)
             end
             local SIMD = vector(T, N)
             local M = sizeof(SIMD) / sizeof(T)
-            local struct V(base.AbstractBase){
+            V = struct{
                 union {
                     data: T[M]
                     simd: SIMD
                 }
             }
-            return V
         else
-           local struct V(base.AbstractBase){
+           V = struct{
                 data: T[N]
             }
-            return V
         end
+        function V.metamethods.__typename(self)
+            return ("StaticVector(%s, %d)"):format(tostring(T), N)
+        end
+        base.AbstractBase(V)
+        return V
     end
 
     local V = create_static_vector(T, N)
-    V.name = string.format("StaticVector(%s, %d)", tostring(T), N)
     V.eltype = T
-
-    V.metamethods.__typename = function(self)
-        return V.name
-    end
 
     terra V:size(): uint64
         return N
@@ -53,7 +53,11 @@ local StaticVector = terralib.memoize(function(T, N)
         return quote err.assert(i < N) in self.data[i] end
     end)
 
-    
+    terra V:getbuffer()
+        return self:size(), &self.data[0]
+    end
+
+    veccont.VectorContiguous:addimplementations{V}
 
     V.staticmethods.new = terra()
         return V {}
