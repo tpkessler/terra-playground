@@ -57,6 +57,7 @@ local complex = terralib.memoize(function(T)
     terra complex:conj()
         return complex {self.re, -self.im}
     end
+    mathfun.conj:adddefinition(terra(x: complex) return x:conj() end)
 
     if concept.Float(T) then
         terra complex:norm(): T

@@ -76,48 +76,91 @@ factorize[{&MatBLAS, &VectorContiguous, Number} -> {}] = function(M, P, T)
     return factorize
 end
 
+local Bool = concept.Bool
 local solve = template.Template:new("solve")
-solve[{&Matrix, &Vector, &Vector} -> {}] = function(M, P, V)
+solve[{Bool, &Matrix, &Vector, &Vector} -> {}] = function(B, M, P, V)
     assert(concept.Integral(P.type.eltype), "Permutation array doesn't have integral type")
-    local terra solve(a: M, p: P, x: V)
+    local conj = mathfun.conj
+    local terra solve(trans: B, a: M, p: P, x: V)
         var n = a:rows()
-        for i = 0, n do
-            var idx = p:get(i)
-            while idx < i do
-                idx = p:get(idx)
+        if not trans then
+            for i = 0, n do
+                var idx = p:get(i)
+                while idx < i do
+                    idx = p:get(idx)
+                end
+                var tmp = x:get(i)
+                x:set(i, x:get(idx))
+                x:set(idx, tmp)
             end
-            var tmp = x:get(i)
-            x:set(i, x:get(idx))
-            x:set(idx, tmp)
-        end
 
-        for i = 0, n do
-            for k = 0, i do
-                x:set(i, x:get(i) - a:get(i, k) * x:get(k))
+            for i = 0, n do
+                for k = 0, i do
+                    x:set(i, x:get(i) - a:get(i, k) * x:get(k))
+                end
             end
-        end
 
-        for ii = 0, n do
-            var i = n - 1 - ii
-            for k = i + 1, n do
-                x:set(i, x:get(i) - a:get(i, k) * x:get(k))
+            for ii = 0, n do
+                var i = n - 1 - ii
+                for k = i + 1, n do
+                    x:set(i, x:get(i) - a:get(i, k) * x:get(k))
+                end
+                x:set(i, x:get(i) / a:get(i, i))
             end
-            x:set(i, x:get(i) / a:get(i, i))
+        else
+            for i = 0, n do
+                for k = 0, i do
+                    x:set(i, x:get(i) - conj(a:get(k, i)) * x:get(k))
+                end
+                x:set(i, x:get(i) / conj(a:get(i, i)))
+            end
+
+            for ii = 0, n do
+                var i = n - 1 - ii
+                for k = i + 1, n do
+                    x:set(i, x:get(i) - conj(a:get(k, i)) * x:get(k))
+                end
+            end
+
+            for ii = 0, n do
+                var i = n - 1 - ii
+                var idx = p:get(i)
+                while idx < i do
+                    idx = p:get(idx)
+                end
+                var tmp = x:get(i)
+                x:set(i, x:get(idx))
+                x:set(idx, tmp)
+            end
         end
     end
     return solve
 end
 
+local function get_trans(T)
+    if concept.Complex(T) then
+        return "C"
+    else
+        return "T"
+    end
+end
+
 local VectorBLAS = vecblas.VectorBLAS
-solve[{&MatBLAS, &VectorContiguous, &VectorBLAS} -> {}] = function(M, P, V)
+solve[{Bool, &MatBLAS, &VectorContiguous, &VectorBLAS} -> {}] = function(B, M, P, V)
     assert(P.type.eltype == int32, "Only 32 bit LAPACK interface supported")
-    local terra solve(a: M, p: P, x: V)
+    local terra solve(trans: B, a: M, p: P, x: V)
         var n, m, adata, lda = a:getblasdenseinfo()
         err.assert(n == m)
         var np, pdata = p:getbuffer()
         err.assert(n == np)
         var nx, xdata, incx = x:getblasinfo()
-        lapack.getrs(lapack.ROW_MAJOR, @"N", n, 1, adata, lda, pdata, xdata, incx)
+        var lapack_trans: rawstring
+        if trans then
+            lapack_trans = [get_trans(M.type.eltype)]
+        else
+            lapack_trans = "N"
+        end
+        lapack.getrs(lapack.ROW_MAJOR, @lapack_trans, n, 1, adata, lda, pdata, xdata, incx)
     end
 
     return solve
@@ -133,11 +176,14 @@ local LUFactory = terralib.memoize(function(M, P)
     local T = M.eltype
     local Ts = T
     local Ts = concept.Complex(T) and T.eltype or T
-    local lu = terralib.types.newstruct("LU" .. tostring(M))
-    lu.entries:insert{field = "a", type = &M}
-    lu.entries:insert{field = "p", type = &P}
-    lu.entries:insert{field = "tol", type = Ts}
-    lu:complete()
+    local struct lu{
+        a: &M
+        p: &P
+        tol: Ts
+    }
+    function lu.metamethods.__typename(self)
+        return ("LUFactorization(%s)"):format(tostring(T))
+    end
     base.AbstractBase(lu)
 
     terra lu:rows()
@@ -154,13 +200,28 @@ local LUFactory = terralib.memoize(function(M, P)
     end
 
     lu.templates.solve = template.Template:new("solve")
-    lu.templates.solve[{&lu.Self, &Vector} -> {}] = function(Self, V)
-        local impl = solve(&M, &P, V)
-        local terra solve(self: Self, x: V)
-            impl(self.a, self.p, x)
+    lu.templates.solve[{&lu.Self, Bool, &Vector} -> {}] = function(Self, B, V)
+        local impl = solve(B, &M, &P, V)
+        local terra solve(self: Self, trans: B, x: V)
+            impl(trans, self.a, self.p, x)
         end
         return solve
     end
+
+    local Number = concept.Number
+    lu.templates.apply = template.Template:new("apply")
+    lu.templates.apply[{&lu.Self, Bool, Number, &Vector, Number, &Vector} -> {}]
+    = function(Self, B, T1, V1, T2, V2)
+        local terra apply(self: Self, trans: B, a: T1, x: V1, b: T2, y: V2)
+            self:solve(trans, x)
+            y:scal(b)
+            y:axpy(a, x)
+        end
+        return apply
+    end
+
+    assert(factorization.Factorization(lu))
+    factorization.Factorization:addimplementations{lu}
 
     lu.staticmethods.new = terra(a: &M, p: &P, tol: Ts)
         err.assert(a:rows() == a:cols())

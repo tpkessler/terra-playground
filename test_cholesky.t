@@ -1,6 +1,6 @@
 import "terratest/terratest"
 
-local lu = require("lu")
+local cho = require("cholesky")
 local alloc = require("alloc")
 local concept = require("concept")
 local random = require("random")
@@ -14,92 +14,87 @@ local float128 = nfloat.FixedFloat(128)
 local float1024 = nfloat.FixedFloat(1024)
 local tol = {["float"] = 1e-6,
              ["double"] = 1e-15,
-             [tostring(float128)] = `[float128]("1e-30"),
-             [tostring(float1024)] = `[float1024]("1e-300"),
+             [tostring(float128)] = `[float128](1e-30),
+             [tostring(float1024)] = `[float1024](1e-100),
             }
 
+local io = terralib.includec("stdio.h")
 for _, Ts in pairs({float, double, float128, float1024}) do
     for _, is_complex in pairs({false, true}) do
         local T = is_complex and complex.complex(Ts) or Ts
         local unit = is_complex and quote in T.unit() end or quote in 0 end
         local DMat = dmatrix.DynamicMatrix(T)
         local DVec = dvector.DynamicVector(T)
-        local PVec = dvector.DynamicVector(int32)
         local Alloc = alloc.DefaultAllocator(Ts)
         local Rand = random.Default(float)
-        local LUDense = lu.LUFactory(DMat, PVec)
+        local CholeskyDense = cho.CholeskyFactory(DMat)
 
-        testenv(T) "LU factorization for small matrix" do
+        testenv(T) "Cholesky factorization for small matrix" do
             terracode
                 var alloc: Alloc
-                var a = DMat.from(&alloc, {{1, 2}, {3, 4}})
-                var p = PVec.zeros(&alloc, a:rows())
+                var a = DMat.from(&alloc, {{2, -1}, {-1, 2}})
                 var tol: Ts = [ tol[tostring(Ts)] ]
-                var lu = LUDense.new(&a, &p, tol)
+                var cho = CholeskyDense.new(&a, tol)
                 var x = DVec.from(&alloc, 2, 1)
-                var xt = DVec.from(&alloc, 4, 2)
-                lu:factorize()
-                lu:solve(false, &x)
-                lu:solve(true, &xt)
+                var xt = DVec.from(&alloc, -1, 4)
+                cho:factorize()
+                cho:solve(false, &x)
+                cho:solve(true, &xt)
             end
 
-            if not concept.BLASNumber(T) then
                 testset "Factorize" do
-                    test mathfun.abs(a(0, 0) - [T](3)) < tol
-                    test mathfun.abs(a(0, 1) - [T](4)) < tol
-                    test mathfun.abs(a(1, 0) - [T](1) / 3) < tol
-                    test mathfun.abs(a(1, 1) - [T](2) / 3) < tol
-
-                    test p(0) == 1
-                    test p(1) == 0
+                    test mathfun.abs(a(0, 0) - mathfun.sqrt([Ts](2))) < 10 * tol
+                    test mathfun.abs(a(1, 1) - mathfun.sqrt([Ts](3) / 2)) < 10 * tol
+                    test mathfun.abs(a(1, 0) + mathfun.sqrt([Ts](1) / 2)) < 10 * tol
                 end
-            end
 
             testset "Solve" do
-                test mathfun.abs(x(0) - [T](-3)) < tol
-                test mathfun.abs(x(1) - [T](5) / 2) < tol
+                test mathfun.abs(x(0) - [T](5) / 3) < 10 * tol
+                test mathfun.abs(x(1) - [T](4) / 3) < 10 * tol
             end
 
             testset "Solve transposed" do
-                test mathfun.abs(xt(0) - [T](-5)) < tol
-                test mathfun.abs(xt(1) - [T](3)) < tol
+                test mathfun.abs(xt(0) - [T](2) / 3) < 10 * tol
+                test mathfun.abs(xt(1) - [T](7) / 3) < 10 * tol
             end
         end
 
         testenv(T) "LU factorization for random matrix" do
             local n = 41
+            local io = terralib.includec("stdio.h")
             terracode
                 var alloc: Alloc
                 var rand = Rand.from(2359586)
-                var a = DMat.new(&alloc, n, n)
+                var a = DMat.zeros(&alloc, n, n)
+                var b = DMat.like(&alloc, &a)
                 var x = DVec.new(&alloc, n)
                 var y = DVec.like(&alloc, &x)
                 var yt = DVec.like(&alloc, &x)
                 for i = 0, n do
                     x(i) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
                     for j = 0, n do
-                        a(i, j) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
+                        b(i, j) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
                     end
                 end
+                a:mul([T](0), [T](1), false, &b, true, &b)
                 a:apply(false, [T](1), &x, [T](0), &y)
                 a:apply(true, [T](1), &x, [T](0), &yt)
-                var p = PVec.new(&alloc, n)
                 var tol: Ts = [ tol[tostring(Ts)] ]
-                var lu = LUDense.new(&a, &p, tol)
-                lu:factorize()
-                lu:solve(false, &y)
-                lu:solve(true, &yt)
+                var cho = CholeskyDense.new(&a, tol)
+                cho:factorize()
+                cho:solve(false, &y)
+                cho:solve(true, &yt)
             end
 
             testset "Solve" do
                 for i = 0, n - 1 do
-                    test mathfun.abs(y(i) - x(i)) < 1000 * tol * mathfun.abs(x(i)) + tol
+                    test mathfun.abs(y(i) - x(i)) < 20000 * tol * mathfun.abs(x(i)) + tol
                 end
             end
 
             testset "Solve transposed" do
                 for i = 0, n - 1 do
-                    test mathfun.abs(yt(i) - x(i)) < 2000 * tol * mathfun.abs(x(i)) + tol
+                    test mathfun.abs(yt(i) - x(i)) < 20000 * tol * mathfun.abs(x(i)) + tol
                 end
             end
         end
