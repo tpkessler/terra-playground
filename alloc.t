@@ -138,6 +138,15 @@ local SmartBlock = terralib.memoize(function(T)
             terra block.methods.__dtor :: {&block} -> {}
 
             terra block.methods.__dtor(self : &block)
+                --insert metamethods.__dtor if defined, which is used to introduce
+                --side effects
+                escape
+                    if block.metamethods and block.metamethods.__dtor then
+                        emit quote
+                            [block.metamethods.__dtor](self)
+                        end
+                    end
+                end
                 if not self:isempty() then
                     --get a temporary handle 'tmp' to each of the managed fields 
                     --and add a deferred destructor call. this will destroy all 
@@ -146,12 +155,28 @@ local SmartBlock = terralib.memoize(function(T)
                     --simple loop
                     escape
                         local entries = T:getentries()
-                        for i,e in ipairs(entries) do
-                            if e.field and e.type:isstruct() and e.type.methods.__dtor then
-                                emit quote 
-                                    var tmp = self.ptr.[e.field] 
-                                    if tmp:isweak() then tmp.ptr = nil end
-                                    defer tmp:__dtor()
+                        for _,e in ipairs(entries) do
+                            if e.field and e.type:isstruct() then
+                                --add missing __dtor method if needed
+                                terralib.ext.addmissing.__dtor(e.type)
+                                --if managed variable, then call destructor
+                                if e.type.methods.__dtor then
+                                    --call destructor. additionally, if field isa block 
+                                    --then check for a weak pointer and and reset if needed.
+                                    --weak pointers occur e.g. in cycles
+                                    if e.type.isblock then
+                                        emit quote
+                                            var tmp = self.ptr.[e.field]
+                                            if tmp:isweak() then tmp.ptr = nil end
+                                            defer tmp:__dtor()
+                                        end
+                                    --otherwise just call destructor
+                                    else
+                                        emit quote
+                                            tmp = self.ptr.[e.field]
+                                            defer tmp:__dtor()
+                                        end
+                                    end
                                 end
                             end
                         end
