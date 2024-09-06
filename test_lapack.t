@@ -17,8 +17,8 @@ local types = {
 local unit = {
     ["s"] = `float(0),
     ["d"] = `double(0),
-    ["c"] = `complexFloat.I,
-    ["z"] = `complexDouble.I,
+    ["c"] = `complexFloat.I(),
+    ["z"] = `complexDouble.I(),
 }
 
 local tol = {
@@ -137,8 +137,8 @@ for prefix, T in pairs(types) do
 
         testset "Solver step" do
             terracode
-                info = lapack.systrs(lapack.ROW_MAJOR, n, 1, &a[0], ld,
-                                     &perm[0], &y[0], 1)
+                info = lapack.sytrs(lapack.ROW_MAJOR, @'L', n, 1, &a[0], ld,
+                                    &perm[0], &y[0], 1)
             end
 
             test info == 0
