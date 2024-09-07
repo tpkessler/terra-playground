@@ -10,4 +10,4 @@ terra foo(a : int)
 end
 
 test foo(1)==2
-test foo(2)==4
+test foo(2)==4 --false

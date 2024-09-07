@@ -57,6 +57,7 @@ for N=1,6 do
             
         end --N
 
+    testenv "Fixed N" do
         testset "from (N=2)" do
             local svec = SVector.StaticVector(T, 2)
             terracode
@@ -113,7 +114,6 @@ for N=1,6 do
             end
             test res == 35
         end
-
-    end --T
-
-end --testenv
+    end
+end
+end 
