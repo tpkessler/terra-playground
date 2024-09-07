@@ -75,11 +75,14 @@ local SmartBlock = terralib.memoize(function(T)
         block.methods.isempty = terra(self : &block)
             return self.ptr==nil and self.alloc == nil
         end
-
-        --akin to a weak pointer, which points to data but
-        --is not allocated on the heap.
-        block.methods.isweak = terra(self : &block)
+        
+        --resource is borrowed, there is no allocator
+        block.methods.borrows_resource = terra(self : &block)
             return self.ptr~=nil and self.alloc == nil
+        end
+
+        block.methods.owns_resource = terra(self : &block)
+            return self.ptr~=nil and self.alloc ~= nil
         end
 
         block.methods.bytes = terra(self : &block) : size_t
@@ -139,7 +142,7 @@ local SmartBlock = terralib.memoize(function(T)
 
             terra block.methods.__dtor(self : &block)
                 --insert metamethods.__dtor if defined, which is used to introduce
-                --side effects
+                --side effects (e.g. counting number of calls for the purpose of testing)
                 escape
                     if block.metamethods and block.metamethods.__dtor then
                         emit quote
@@ -147,44 +150,61 @@ local SmartBlock = terralib.memoize(function(T)
                         end
                     end
                 end
-                if not self:isempty() then
-                    --get a temporary handle 'tmp' to each of the managed fields 
-                    --and add a deferred destructor call. this will destroy all 
-                    --managed resources when 'tmp' runs out of scope, using tail 
-                    --recursion. the tail recursion should be optimized by LLVM to A
-                    --simple loop
-                    escape
-                        local entries = T:getentries()
-                        for _,e in ipairs(entries) do
-                            if e.field and e.type:isstruct() then
-                                --add missing __dtor method if needed
-                                terralib.ext.addmissing.__dtor(e.type)
-                                --if managed variable, then call destructor
-                                if e.type.methods.__dtor then
-                                    --call destructor. additionally, if field isa block 
-                                    --then check for a weak pointer and and reset if needed.
-                                    --weak pointers occur e.g. in cycles
-                                    if e.type.isblock then
-                                        emit quote
-                                            var tmp = self.ptr.[e.field]
-                                            if tmp:isweak() then tmp.ptr = nil end
-                                            defer tmp:__dtor()
+
+                --return if block is empty
+                if self:isempty() then
+                    return
+                end
+
+                --reset 'ptr' and return if block is weak
+                if self:borrows_resource() then
+                    self.ptr = nil
+                    return
+                end
+            
+                --first get temporary handles to all entries of 'self.ptr' to 
+                --free entry resources (1). Then free current block (2).
+
+                --(1) get a temporary handle 'tmp' to each of the managed fields 
+                --and add a deferred destructor call. this will destroy all 
+                --managed resources when 'tmp' runs out of scope, using tail 
+                --recursion (for sinple data structures). hopefully, llvm can 
+                --optimize this.
+                --ToDo: change recursion into a loop
+                escape
+                    local entries = T:getentries()
+                    for _,e in ipairs(entries) do
+                        if e.field and e.type:isstruct() then
+                            --add missing __dtor method if needed
+                            terralib.ext.addmissing.__dtor(e.type)
+                            --if managed variable, then call destructor
+                            if e.type.methods.__dtor then
+                                if e.type.methods.borrows_resource then
+                                    emit quote
+                                        var tmp = self.ptr.[e.field]
+                                        if tmp:borrows_resource() then
+                                            tmp.ptr = nil 
                                         end
-                                    --otherwise just call destructor
-                                    else
-                                        emit quote
-                                            tmp = self.ptr.[e.field]
-                                            defer tmp:__dtor()
+                                        if not tmp:isempty() then
+                                            defer tmp:__dtor() --deferred call will lead to tail recursion
+                                            --of struct entries
                                         end
+                                    end
+                                else
+                                    emit quote
+                                        var tmp = self.ptr.[e.field]
+                                        defer tmp:__dtor() --deferred call will lead to tail recursion
+                                        --of struct entries
                                     end
                                 end
                             end
                         end
                     end
-                    --free current resources
-                    var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
-                    free(self.alloc.handle, self, 0)
                 end
+
+                --(2) free current block resources
+                var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
+                free(self.alloc.handle, self, 0)
             end
         end
 
