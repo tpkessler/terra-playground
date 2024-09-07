@@ -12,13 +12,17 @@ local size_t = uint64
 local DynamicMatrix = terralib.memoize(function(T)
     local S = alloc.SmartBlock(T)
     
-    local struct M(base.AbstractBase){
+    local struct M{
         data: S
         rows: size_t
         cols: size_t
         ld: size_t
     }
     M.eltype = T
+    function M.metamethods.__typename(self)
+        return ("DynamicMatrix(%s)"):format(tostring(T))
+    end
+    base.AbstractBase(M)
 
     terra M:rows()
         return self.rows

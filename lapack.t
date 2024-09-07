@@ -88,7 +88,7 @@ local lapack = {
     -- Eigenproblem
     --
     -- Symmetric
-    {"sytrs", default_lapack(C, "syev", "heev")},
+    {"syev", default_lapack(C, "syev", "heev")},
     -- General
     {"geev", default_lapack(C, "geev")},
 

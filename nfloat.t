@@ -1,3 +1,5 @@
+require "terralibext"
+
 -- Wrap FLINT without inlines
 local flint = terralib.includec("flint/nfloat.h", {"-DNFLOAT_INLINES_C=1"})
 local gr = terralib.includec("flint/gr.h", {"-DGR_INLINES_C=1"})
@@ -124,14 +126,34 @@ local FixedFloat = terralib.memoize(function(N)
         end
     end
 
+    local function cmp(sign)
+        local terra impl(self: &ctype, other: &ctype, ctx: flint.gr_ctx_t)
+            var res = 0
+            flint.nfloat_cmp(&res, self, other, ctx)
+            return res == sign
+        end
+
+        return impl
+    end
+
     local boolean = {
-        __eq = flint.nfloat_equal
+        __eq = cmp(0),
+        __lt = cmp(-1),
+        __gt = cmp(1),
     }
 
     for key, method in pairs(boolean) do
         nfloat.metamethods[key] = terra(self: nfloat, other: nfloat)
             return [method](&self.data, &other.data, ctx)
         end
+    end
+
+    nfloat.metamethods.__le = terra(self: nfloat, other: nfloat)
+        return self < other or self == other
+    end
+
+    nfloat.metamethods.__ge = terra(self: nfloat, other: nfloat)
+        return self > other or self == other
     end
 
     local terra pi()
@@ -160,6 +182,14 @@ local FixedFloat = terralib.memoize(function(N)
         mathfun[func]:adddefinition(impl)
     end
 
+    mathfun.min:adddefinition(terra(x : nfloat, y : nfloat)
+                                  return terralib.select(x < y, x, y)
+                              end)
+    mathfun.max:adddefinition(terra(x : nfloat, y : nfloat)
+                                  return terralib.select(x > y, x, y)
+                              end)
+    mathfun.conj:adddefinition(terra(x: nfloat) return x end)
+
     do
         local terra impl(x: nfloat, y: nfloat, z: nfloat)
             return x * y + z
@@ -178,6 +208,7 @@ local FixedFloat = terralib.memoize(function(N)
     end
 
     concept.Real:addimplementations{nfloat}
+    concept.Float:addimplementations{nfloat}
     concept.Number:addimplementations{nfloat}
 
     return nfloat

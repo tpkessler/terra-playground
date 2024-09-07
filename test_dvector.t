@@ -2,14 +2,17 @@ import "terratest/terratest"
 
 local Alloc = require('alloc')
 local Complex = require('complex')
+local Nfloat = require("nfloat")
 local DVector = require('dvector')
 
 local Allocator = Alloc.Allocator
 local DefaultAllocator =  Alloc.DefaultAllocator()
+local float128 = Nfloat.FixedFloat(128)
+local float1024 = Nfloat.FixedFloat(1024)
 
 
 for _, is_complex in pairs({false, true}) do
-for _, S in pairs({int, uint, int64, uint64, float, double}) do
+for _, S in pairs({int, uint, int64, uint64, float, double, float128, float1024}) do
     local T
     if is_complex then
         T = Complex.complex(S)
