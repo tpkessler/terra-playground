@@ -95,3 +95,46 @@ testenv "Default allocator" do
 	end
 
 end
+
+
+local DefaultAllocator =  alloc.DefaultAllocator()
+local Allocator = alloc.Allocator
+
+local struct node
+local smrtnode = alloc.SmartBlock(node)
+
+struct node{
+    prev : smrtnode
+    next : smrtnode
+}
+node:complete()
+
+
+testenv "self-referential and cycle - doubly linked list" do
+
+    terracode
+        var A : DefaultAllocator
+    end
+
+    testset "" do
+        terracode
+            --head node
+            var mynode : node
+            do 
+                mynode.next = A:allocate(sizeof(node), 1)
+                mynode.prev = A:allocate(sizeof(node), 1)
+                --next node
+                mynode.next.ptr.next = mynode.prev
+                mynode.next.ptr.prev.ptr = &mynode
+                --prev node
+                mynode.prev.ptr.prev = mynode.next
+                mynode.prev.ptr.next.ptr = &mynode
+
+                
+            end
+
+        end
+    end
+
+
+end
