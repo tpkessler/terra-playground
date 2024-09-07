@@ -49,7 +49,7 @@ end
 
 import "terratest/terratest"
 
-testenv "doubly linked list - that is a cycle" do
+testenv "singly linked list - that is a cycle" do
 
     terracode
         var A : DefaultAllocator
