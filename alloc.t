@@ -172,7 +172,7 @@ local SmartBlock = terralib.memoize(function(T)
                 --optimize this.
                 --ToDo: change recursion into a loop
                 escape
-                    local entries = T:getentries()
+                    local entries = T:isstruct() and T:getentries() or {}
                     for _,e in ipairs(entries) do
                         if e.field and e.type:isstruct() then
                             --add missing __dtor method if needed

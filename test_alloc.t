@@ -97,11 +97,11 @@ testenv "Default allocator" do
 end
 
 
-local DefaultAllocator =  alloc.DefaultAllocator()
-local Allocator = alloc.Allocator
+local DefaultAllocator =  Alloc.DefaultAllocator()
+local Allocator = Alloc.Allocator
 
 local struct node
-local smrtnode = alloc.SmartBlock(node)
+local smrtnode = Alloc.SmartBlock(node)
 
 struct node{
     prev : smrtnode
