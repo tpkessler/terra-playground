@@ -17,7 +17,7 @@ local struct block{
 
 local struct allochandle{
     handle : &opaque
-	fhandle : {&opaque, &block, size_t, size_t}->{}
+    fhandle : {&opaque, &block, size_t, size_t}->{}
 }
 ```
 `allochandle` contains a handle to the concrete allocator instance and a function pointer `fhandle` that enables 'free', 'allocate' and 'reallocate' in one function. 
@@ -92,10 +92,10 @@ This is powerful, because an `owns` method like this makes it possible to constr
 An allocator implements the following interface:
 ```
 local Allocator = interface.Interface:new{
-	allocate = {size_t, size_t} -> {block},
+    allocate = {size_t, size_t} -> {block},
     reallocate = {&block, size_t, size_t} -> {},
-	deallocate = {&block} -> {},
-	owns = {&block} -> {bool}
+    deallocate = {&block} -> {},
+    owns = {&block} -> {bool}
 }
 ```
 Interfaces, such as the one here, are essentially opaque objects that are equiped with a vtable containing function pointers to the actual implementations at runtime. They can simply be passed by reference and do not require any template metaprogramming, since its based on runtime polymorphism.
