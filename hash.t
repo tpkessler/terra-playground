@@ -3,7 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local C = terralib.includec("hashmap.h")
+local C = terralib.includec("./hashmap/hashmap.h")
 local err = require("assert")
 local template = require("template")
 local concept = require("concept")

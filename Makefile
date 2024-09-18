@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+# SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+#
+# SPDX-License-Identifier: CC0-1.0
+
 uname_s := $(shell uname -s)
 ifeq ($(uname_s),Linux)
 	dyn := so
@@ -16,7 +21,7 @@ all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn)
 libhash.$(dyn): hashmap.o
 	$(CC) -fPIC -shared $^ -o $@
 
-hashmap.o: hashmap.c hashmap.h
+hashmap.o: hashmap/hashmap.c hashmap/hashmap.h
 	$(CC) $(CFLAGS) $< -c -o $@
 
 libexport.$(dyn): export.o

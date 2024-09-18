@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+# SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+version = 1
+
+[[annotations]]
+path = "pcg/*"
+precedence = "override"
+SPDX-FileCopyrightText = "2014-2019 Melissa O'Neill <oneill@pcg-random.org> and the PCG Project contributors"
+SPDX-License-Identifier = "Apache-2.0 OR MIT"
+
+[[annotations]]
+path = "hashmap/*"
+precedence = "override"
+SPDX-FileCopyrightText = "2020 Joshua J Baker"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "tinymt/*"
+precedence = "override"
+SPDX-FileCopyrightText = "2011, 2013 Mutsuo Saito, Makoto Matsumoto"
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "terratest/*"
+precedence = "override"
+SPDX-FileCopyrightText = "2024 René Hiemstra <rrhiemstar@gmail.com>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "serpent.lua"
+precendence = "override"
+SPDX-FileCopyrightText = "2012-2018 Paul Kulchenko"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "fun.lua"
+precendence = "override"
+SPDX-FileCopyrightText = "2013-2017 Roman Tsisyk <roman@tsisyk.com>"
+SPDX-License-Identifier = "MIT"
