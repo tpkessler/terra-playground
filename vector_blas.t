@@ -1,3 +1,8 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
 local blas = require("blas")
 local concept = require("concept")
 local veccont = require("vector_contiguous")

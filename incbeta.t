@@ -1,3 +1,8 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
 -- Regularized Incomplete Beta Function
 -- according to the C - implementaiton at https://github.com/codeplea/incbeta
 
