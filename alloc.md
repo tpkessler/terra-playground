@@ -3,7 +3,7 @@ I briefly outline the design of the allocator class in 'alloc.t'
 
 The overall design is based on the following key ideas:
 * A container's `new` method (or any other factory function that returns a certain container object) takes an allocator as an opaque object that implements the allocator interface. This way, the allocator type is not part of the container type, which means that no template parameter is needed to enable generic allocators in containers. This is a serious issue in the c++ standard library where the allocator template parameter needs to be passed along with any container method. For more information on this issue check out the [BDE allocator model](https://github.com/bloomberg/bde/wiki/BDE-Allocator-Model).
-* An abstraction of a memory block that has a notion of its allocator and a notion of its size. It can therefore 'free' its own resource when it runs out of scope or it can ask for additional resources when the current resource is too small. All is packed in an economical, single-function interface, ispired by 'lua_Alloc'. See also the [allocator API for C](https://nullprogram.com/blog/2023/12/17/).
+* An abstraction of a memory block that has a notion of its allocator and a notion of its size. It can therefore 'free' its own resource when it runs out of scope or it can ask for additional resources when the current resource is too small. It can also be checked when a resource is borrowed (reference to allocator is nil) or when a resource is owned (reference to allocator is not nil). All is packed in an economical, single-function interface, ispired by 'lua_Alloc'. See also the [allocator API for C](https://nullprogram.com/blog/2023/12/17/).
 * Every allocator has an 'owns' method, which enables composable allocators (see Andrei Alexandrescu's talk on [composable allocators in C++](https://www.youtube.com/watch?v=LIb3L4vKZ7U&t=21s)).
 
 
@@ -17,21 +17,52 @@ local struct block{
 
 local struct allochandle{
     handle : &opaque
-	fhandle : {&opaque, &block, size_t, size_t}->{}
+    fhandle : {&opaque, &block, size_t, size_t}->{}
 }
-
-block.methods.isempty = terra(self : &block)
-    return self.ptr==nil and self.alloc == nil
-end
 ```
 `allochandle` contains a handle to the concrete allocator instance and a function pointer `fhandle` that enables 'free', 'allocate' and 'reallocate' in one function. 
 
-This turns out to be very powerful. For example, by implementing `__dtor` from the new RAII pull request, the handle to the concrete allocator instance allows the block to be freed automatically when it runs out of scope
+This turns out to be very powerful. For example, by implementing `__dtor` from the new RAII pull request, the handle to the concrete allocator instance allows the block to be freed automatically when it runs out of scope. Note here the check for an empty block or a borrowed block and, additionally, the optional call to the metamethod `block.metamethods.__dtor` that is useful in testing debugging and introducing side effects in general.
 ```
+block.methods.isempty = terra(self : &block)
+    return self.ptr==nil and self.alloc == nil
+end
+
+block.methods.borrows_resource = terra(self : &block)
+    return self.ptr~=nil and self.alloc == nil
+end
+
+block.methods.owns_resource = terra(self : &block)
+    return self.ptr~=nil and self.alloc ~= nil
+end
+
 block.methods.__dtor = terra(self : &block)
-    if not self:isempty() then
-        self.alloc.fhandle(self.alloc.handle, self, 0, 0)
+
+    --insert metamethods.__dtor if defined, which is used to introduce
+    --side effects (e.g. counting number of calls for the purpose of testing)
+    escape
+        if block.metamethods and block.metamethods.__dtor then
+            emit quote
+                [block.metamethods.__dtor](self)
+            end
+        end
     end
+
+    if self:isempty() then return end
+
+    if self:borrows_resource() then 
+        self.ptr = nil 
+        return 
+    end
+
+    --run destructors of other smart-blocks that are referenced
+    --by block.ptr (allowing destruction of e.g. linked lists)
+    ...
+    ...
+    ...
+    
+    --when the resource is owned, free the resource
+    self.alloc.fhandle(self.alloc.handle, self, 0, 0)
 end
 ```
 Similarly, it can allocate (when block is empty) or reallocate itself with the same allocator when requested. I'll get back to the implementation of the function pointer `fhandle` shortly.
@@ -61,10 +92,10 @@ This is powerful, because an `owns` method like this makes it possible to constr
 An allocator implements the following interface:
 ```
 local Allocator = interface.Interface:new{
-	allocate = {size_t, size_t} -> {block},
+    allocate = {size_t, size_t} -> {block},
     reallocate = {&block, size_t, size_t} -> {},
-	deallocate = {&block} -> {},
-	owns = {&block} -> {bool}
+    deallocate = {&block} -> {},
+    owns = {&block} -> {bool}
 }
 ```
 Interfaces, such as the one here, are essentially opaque objects that are equiped with a vtable containing function pointers to the actual implementations at runtime. They can simply be passed by reference and do not require any template metaprogramming, since its based on runtime polymorphism.
@@ -86,7 +117,6 @@ the following (lowlevel) interface should be implemented:
 Finally, by calling the following base class the implementation is completed:
 ```
     AllocatorBase(myallocator)
-
 ```
 
 ## The allocator base class
@@ -206,8 +236,85 @@ terra main()
 end
 ```
 
+## recursive datastructures
+Recursive datastructures, such as linked lists can be implemented using specialized `__dtor`'s and keeping an array of nodes, or, directly, using smart blocks. The implementation of `block` supports automatic destruction of recursive datastructures, and even cycles. Here follows an example of a cyclical double linked list:
+
+```
+local alloc = require("alloc")
+
+local DefaultAllocator =  alloc.DefaultAllocator()
+local Allocator = alloc.Allocator
+
+local size_t = uint64
+
+--implementation of double-linked list
+local struct d_node
+local smrt_d_node = alloc.SmartBlock(d_node)
+
+--metamethod used here for testing - counting the number
+--of times the __dtor method is called
+local smrt_d_node_dtor_counter = global(int, 0)
+smrt_d_node.metamethods.__dtor = macro(function(self)
+    return quote
+        if self:owns_resource() then
+            smrt_d_node_dtor_counter  = smrt_d_node_dtor_counter + 1
+        end
+    end
+end)
+
+smrt_d_node.metamethods.__entrymissing = macro(function(entryname, self)
+    return `self.ptr.[entryname]
+end)
+
+smrt_d_node.metamethods.__methodmissing = macro(function(method, self, ...)
+    local args = terralib.newlist{...}
+    return `self.ptr:[method](args)
+end)
+
+struct d_node{
+    index : int
+    prev : smrt_d_node
+    next : smrt_d_node
+}
+d_node:complete()
+
+terra d_node:allocate_next(A : Allocator)
+    self.next = A:allocate(sizeof(d_node), 1)
+    self.next.index = self.index + 1
+    self.next.prev.ptr = self
+end
+
+terra d_node:set_next(next : &d_node)
+    self.next.ptr = next
+end
+
+terra d_node:set_prev(prev : &d_node)
+    self.prev.ptr = prev
+end
+
+terra main()
+    smrt_d_node_dtor_counter = 0
+    do
+        --define head node
+        var head : d_node
+        head.index = 0
+        --make allocations
+        head:allocate_next(&A)  --node 1
+        head.next:allocate_next(&A) --node 2
+        head.next.next:allocate_next(&A) --node 3
+        --close loop
+        head:set_prev(head.next.next.next.ptr)
+        head.next.next.next:set_next(&head) --node 3
+    end
+    return smrt_d_node_dtor_counter
+end
+--check that destructor is called three times
+assert(main() == 3) 
+```
+
 ## To do:
 The following things remain:
+* The current implementation of `block.methods.__dtor` relies on recursion. LLVM may not be able to fully optimize the recursion to a loop, which may seriously limit the size of such datastrutures due to limits in stack-space. In the near future I will rewrite the algorithm using a while loop.
 * Right now only a default allocator is implemented based on `malloc`, `realloc`, `calloc` and `aligned_alloc`. Other standard allocators need to be implemented, such as, a 'stack', 'arena', 'freelist' allocators, etc.
 * Functionality for composing allocators to build new ones.
 * A `SmartBlock(T)` can already be cast to a `SmartBlock(vector(T))` for primitive types `T`. By adding a `__for` metamethod it would become possible to iterate over a `SmartBlock(vector(T))` and enable 'SIMD' instructions in a range for loop.
