@@ -111,9 +111,17 @@ math.isapprox = terra(a : double, b : double, atol : double)
     return math.dist(a, b) < atol
 end
 
-math.conj = terralib.overloadedfunction("conj")
-for _, T in ipairs{int32, int64, float, double} do
-    math.conj:adddefinition(terra(x : T) return x end)
+for _, name in pairs({"real", "imag", "conj"}) do
+    math[name] = terralib.overloadedfunction(name)
+    for _, T in ipairs{int32, int64, float, double} do
+        local impl
+        if name == "imag" then
+            impl = terra(x: T) return [T](0) end
+        else
+            impl = terra(x: T) return x end
+        end
+        math[name]:adddefinition(impl)
+    end
 end
 
 return math

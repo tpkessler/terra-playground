@@ -54,10 +54,12 @@ local complex = terralib.memoize(function(T)
     terra complex:real()
         return self.re
     end
+    mathfun.real:adddefinition(terra(x: complex) return x:real() end)
 
     terra complex:imag()
         return self.im
     end
+    mathfun.imag:adddefinition(terra(x: complex) return x:imag() end)
 
     terra complex:conj()
         return complex {self.re, -self.im}
