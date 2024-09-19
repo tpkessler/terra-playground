@@ -194,6 +194,8 @@ local FixedFloat = terralib.memoize(function(N)
                                   return terralib.select(x > y, x, y)
                               end)
     mathfun.conj:adddefinition(terra(x: nfloat) return x end)
+    mathfun.real:adddefinition(terra(x: nfloat) return x end)
+    mathfun.imag:adddefinition(terra(x: nfloat) return [nfloat](0) end)
 
     do
         local terra impl(x: nfloat, y: nfloat, z: nfloat)
