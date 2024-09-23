@@ -9,10 +9,7 @@ local dmatrix = require("dmatrix")
 local dvector = require("dvector")
 local alloc = require("alloc")
 local complex = require("complex")
-<<<<<<< HEAD
 local nfloat = require("nfloat")
-=======
->>>>>>> 28ba734 (Complex conjugation for matrices)
 local concept = require("concept")
 
 local cfloat = complex.complex(float)

@@ -1,11 +1,8 @@
-<<<<<<< HEAD
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
-=======
->>>>>>> e5aba2a (Iterators and ranges library (#9))
 local interface = require("interface")
 local lambdas = require("lambdas")
 local err = require("assert")
