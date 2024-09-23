@@ -132,6 +132,7 @@ function AbstractInterface:new(name, ref_methods)
 	ref_methods = ref_methods or {}
 
 	local interface = Concept:new(name)
+	interface.superconcepts = {}
 
 	function interface:addmethod(methods)
 		local function prepend_self(ptr)
