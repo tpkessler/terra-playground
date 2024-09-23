@@ -60,13 +60,12 @@ local SmartBlock = terralib.memoize(function(T)
 
     --only add setters and getters to the memory if the type
 	--is known (so when its not an opaque type)
-	
-    function block.metamethods.__staticinitialize(self)
+	--type traits
+    block.isblock = true
+    block.type = block
+    block.eltype = T
 
-        --type traits
-        block.isblock = true
-        block.type = block
-        block.eltype = T
+    function block.metamethods.__staticinitialize(self)
 
         -- sizeof(T) if T is a concrete type
         block.methods.elsize = macro(function()
