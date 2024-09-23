@@ -32,10 +32,11 @@ local Stacker = terralib.memoize(
 --that satsifies the 'Stacker(T)' interface
 --ToDo - maybe its possible to use (mutating) terra functions 
 --rather than macros.
-local RangeBase = function(Range, T)
+local RangeBase = function(Range, state_t, T)
 
-    --set the element type of the range
-    Range.eltype = T
+    --set the value type and state type of the range
+    Range.state_t = state_t
+    Range.value_t = T
 
     --overloading '>>' operator
     Range.metamethods.__rshift = macro(function(self, adapter)
@@ -59,11 +60,11 @@ local RangeBase = function(Range, T)
         return quote
             var iter = self
             var state, value = iter:getfirst()
-            if not iter:islast(state, value) then
+            if not iter:islast(&state, &value) then
                 repeat
                     [body(value)]
-                    value = iter:getnext(state)
-                until iter:islast(state, value)
+                    value = iter:getnext(&state)
+                until iter:islast(&state, &value)
             end
         end
     end
@@ -79,12 +80,22 @@ local RangeBase = function(Range, T)
 end
 
 --convenience macro that yields the next value that satisfies the predicate
-local __getnextvalue_that_satisfies_predicate = macro(function(self, state, value, condition)
+local __getnextvalue_that_satisfies_predicate = macro(function(range, state, value, predicate, condition)
     local condition = condition or false
-    return quote
-        while self.predicate(value)==condition do
-            if self.range:islast(state, value) then break end
-            value = self.range:getnext(state)
+    local predicate_t = predicate.tree.type
+    if predicate_t.byreference then
+        return quote
+            while predicate(value)==condition do
+                if range:islast(state, value) then break end
+                @value = range:getnext(state)
+            end
+        end
+    else
+        return quote
+            while predicate(@value)==condition do
+                if range:islast(state, value) then break end
+                @value = range:getnext(state)
+            end
         end
     end
 end)
@@ -117,32 +128,21 @@ local Unitrange = function(T)
         return self.b - self.a
     end
 
-    range.methods.getfirst = macro(function(self)
-        return quote 
-        in
-            0, self.a
-        end
-    end)
+    terra range:getfirst()
+        return self.a, self.a
+    end
 
-    range.methods.getnext = macro(function(self, state)
-        return quote 
-            state = state + 1
-            var value = self.a + state
-        in
-            value
-        end
-    end)
+    terra range:getnext(state : &T)
+        @state = @state + 1
+        return @state
+    end
 
-    range.methods.islast = macro(function(self, state, value)
-        return quote 
-            var terminate = (state == self:size())
-        in
-            terminate
-        end
-    end)
+    terra range:islast(state : &T, value : &T)
+        return @state == self.b
+    end
 
     --add metamethods
-    RangeBase(range, T)
+    RangeBase(range, T, T)
 
     range.metamethods.__apply = terra(self : &range, i : size_t)
         err.assert(i < self:size())
@@ -182,32 +182,21 @@ local Steprange = function(T)
         return (self.b-self.a) / self.step
     end
 
-    range.methods.getfirst = macro(function(self)
-        return quote 
-        in
-            self.a, self.a
-        end
-    end)
+    terra range:getfirst()
+        return self.a, self.a
+    end
 
-    range.methods.getnext = macro(function(self, state)
-        return quote 
-            state = state + self.step
-            var value = state
-        in
-            value
-        end
-    end)
+    terra range:getnext(state : &T)
+        @state = @state + self.step
+        return @state
+    end
 
-    range.methods.islast = macro(function(self, state, value)
-        return quote 
-            var terminate = (value == self.b)
-        in
-            terminate
-        end
-    end)
+    terra range:islast(state : &T, value : &T)
+        return @state == self.b
+    end
 
     --add metamethods
-    RangeBase(range, T)
+    RangeBase(range, T, T)
 
     range.metamethods.__apply = terra(self : &range, i : size_t)
         err.assert(i < self:size())
@@ -221,41 +210,34 @@ local FilteredRange = function(Range, Function)
 
     --check that function is a predicate
     assert(Function.returntype == bool)
+    Function.byreference = Function.parameters[1]:ispointer()
 
     local struct adapter{
         range : Range
         predicate : Function
     }
 
-    adapter.methods.getfirst = macro(function(self)
-        return quote
-            var state, value = self.range:getfirst()
-            __getnextvalue_that_satisfies_predicate(self, state, value)
-        in
-            state, value
-        end
-    end)
+    local S = Range.state_t
+    local T = Range.value_t
 
-    adapter.methods.getnext = macro(function(self, state)
-        return quote
-            var value = self.range:getnext(state)
-            __getnextvalue_that_satisfies_predicate(self, state, value)
-        in
-            value
-        end
-    end)
+    terra adapter:getfirst()
+        var state, value = self.range:getfirst()
+        __getnextvalue_that_satisfies_predicate(self.range, &state, &value, self.predicate)
+        return state, value
+    end
 
-    adapter.methods.islast = macro(function(self, state, value)
-        return quote 
-            var terminate = self.range:islast(state)
-        in
-            terminate
-        end
-    end)
+    terra adapter:getnext(state : &S)
+        var value = self.range:getnext(state)
+        __getnextvalue_that_satisfies_predicate(self.range, state, &value, self.predicate)
+        return value
+    end
+
+    terra adapter:islast(state : &S, value : &T)
+        return self.range:islast(state, value)
+    end
 
     --add metamethods
-    local T = Range.eltype
-    RangeBase(adapter, T)
+    RangeBase(adapter, S, T)
 
     return adapter
 end
@@ -267,35 +249,38 @@ local TransformedRange = function(Range, Function)
         f : Function
     }
 
-    adapter.methods.getfirst = macro(function(self)
-        return quote
-            var state, value = self.range:getfirst()
-            var newvalue = self.f(value)
-        in
-            state, newvalue
-        end
-    end)
+    local S = Range.state_t
+    local T = Function.returntype
+    Function.byreference = Function.parameters[1]:ispointer()
 
-    adapter.methods.getnext = macro(function(self, state)
-        return quote
-            var value = self.range:getnext(state)
-            var newvalue = self.f(value)
-        in
-            newvalue
+    terra adapter:getfirst()
+        var state, value = self.range:getfirst()
+        escape
+            if Function.byreference then
+                emit quote return state, self.f(&value) end
+            else
+                emit quote return state, self.f(value) end
+            end
         end
-    end)
+    end
 
-    adapter.methods.islast = macro(function(self, state, value)
-        return quote 
-            var terminate = self.range:islast(state)
-        in
-            terminate
+    terra adapter:getnext(state : &S)
+        var value = self.range:getnext(state)
+        escape
+            if Function.byreference then
+                emit quote return self.f(&value) end
+            else
+                emit quote return self.f(value) end
+            end
         end
-    end)
+    end
+
+    terra adapter:islast(state : &S, value : &T)
+        return self.range:islast(state, value)
+    end
 
     --add metamethods
-    local T = Function.returntype
-    RangeBase(adapter, T)
+    RangeBase(adapter, S, T)
 
     return adapter
 end
@@ -306,31 +291,24 @@ local TakeRange = function(Range)
         range : Range
         take : int64
     }
+    local S = Range.state_t
+    local T = Range.value_t
 
-    adapter.methods.getfirst = macro(function(self)
-        return `self.range:getfirst()
-    end)
+    terra adapter:getfirst()
+        return self.range:getfirst()
+    end
 
-    adapter.methods.getnext = macro(function(self, state)
-        return quote
-            var value = self.range:getnext(state)
-            self.take = self.take - 1
-        in
-            value
-        end
-    end)
+    terra adapter:getnext(state : &S)
+        self.take = self.take - 1
+        return self.range:getnext(state)
+    end
 
-    adapter.methods.islast = macro(function(self, state, value)
-        return quote 
-            var terminate = (self.take == 0) or self.range:islast(state)
-        in
-            terminate
-        end
-    end)
+    terra adapter:islast(state : &S, value : &T)
+        return (self.take == 0) or self.range:islast(state, value)
+    end
 
     --add metamethods
-    local T = Range.eltype
-    RangeBase(adapter, T)
+    RangeBase(adapter, S, T)
 
     return adapter
 end
@@ -341,39 +319,29 @@ local DropRange = function(Range)
         range : Range
         drop : int64
     }
+    local S = Range.state_t
+    local T = Range.value_t
 
-    adapter.methods.getfirst = macro(function(self)
-        return quote
-            var state, value = self.range:getfirst()
-            var drop = self.drop
-            for k = 0, drop do
-                value = self.range:getnext(state)
-                self.drop = self.drop - 1
-            end
-        in
-            state, value
+    terra adapter:getfirst()
+        var state, value = self.range:getfirst()
+        var drop = self.drop
+        for k = 0, drop do
+            value = self.range:getnext(&state)
+            self.drop = self.drop - 1
         end
-    end)
+        return state, value
+    end
 
-    adapter.methods.getnext = macro(function(self, state)
-        return quote 
-            var value = self.range:getnext(state)
-        in
-            value
-        end
-    end)
+    terra adapter:getnext(state : &S)
+        return self.range:getnext(state)
+    end
 
-    adapter.methods.islast = macro(function(self, state, value)
-        return quote 
-            var terminate = self.range:islast(state)
-        in
-            terminate
-        end
-    end)
+    terra adapter:islast(state : &S, value : &T)
+        return self.range:islast(state, value)
+    end
 
     --add metamethods
-    local T = Range.eltype
-    RangeBase(adapter, T)
+    RangeBase(adapter, S, T)
 
     return adapter
 end
@@ -388,26 +356,23 @@ local TakeWhileRange = function(Range, Function)
         range : Range
         predicate : Function
     }
+    local S = Range.state_t
+    local T = Range.value_t
 
-    adapter.methods.getfirst = macro(function(self)
-        return `self.range:getfirst()
-    end)
+    terra adapter:getfirst()
+        return self.range:getfirst()
+    end
 
-    adapter.methods.getnext = macro(function(self, state)
-        return `self.range:getnext(state)
-    end)
+    terra adapter:getnext(state : &S)
+        return self.range:getnext(state)
+    end
 
-    adapter.methods.islast = macro(function(self, state, value)
-        return quote 
-            var terminate = self.predicate(value)==false
-        in
-            terminate
-        end
-    end)
+    terra adapter:islast(state : &S, value : &T)
+        return self.predicate(@value)==false
+    end
 
     --add metamethods
-    local T = Range.eltype
-    RangeBase(adapter, T)
+    RangeBase(adapter, S, T)
 
     return adapter
 end
@@ -418,31 +383,26 @@ local DropWhileRange = function(Range, Function)
         range : Range
         predicate : Function
     }
+    local S = Range.state_t
+    local T = Range.value_t
+    Function.byreference = Function.parameters[1]:ispointer()
 
-    adapter.methods.getfirst = macro(function(self)
-        return quote
-            var state, value = self.range:getfirst()
-            __getnextvalue_that_satisfies_predicate(self, state, value, true)
-        in
-            state, value
-        end
-    end)
+    terra adapter:getfirst()
+        var state, value = self.range:getfirst()
+        __getnextvalue_that_satisfies_predicate(self.range, &state, &value, self.predicate, true)
+        return state, value
+    end
 
-    adapter.methods.getnext = macro(function(self, state)
-        return `self.range:getnext(state)
-    end)
+    terra adapter:getnext(state : &S)
+        return self.range:getnext(state)
+    end
 
-    adapter.methods.islast = macro(function(self, state, value)
-        return quote 
-            var terminate = self.range:islast(state)
-        in
-            terminate
-        end
-    end)
+    terra adapter:islast(state : &S, value : &T)
+        return self.range:islast(state, value)
+    end
 
     --add metamethods
-    local T = Range.eltype
-    RangeBase(adapter, T)
+    RangeBase(adapter, S, T)
 
     return adapter
 end
@@ -535,8 +495,9 @@ local newcombiner = function(Ranges, name)
     local combiner = terralib.types.newstruct(name)
     --add entries
     for i,Range in ipairs(Ranges) do
-		combiner.entries:insert({field = tostring("_"..tostring(i-1)), type = Range})
+		combiner.entries:insert({field = "_"..tostring(i-1), type = Range})
 	end
+    combiner:setconvertible("tuple")
     --complete struct type
 	combiner:complete()
 
@@ -571,22 +532,65 @@ end
 local JoinRange = function(Ranges)
 
     local combirange = newcombiner(Ranges, "joiner")
+    local D = #Ranges
 
-    combirange.metamethods.__for = function(range,body)
-        local D = #Ranges
-        local stmts = terralib.newlist{}
-        for k = 0, D-1 do
-            local field = "_"..tostring(k)
-            stmts:insert(quote
-                for v in range.[field] do
-                    [body(v)]
+    --get range types
+    local T = Ranges[1].value_t
+    local S = Ranges[1].state_t
+    for i,rn in ipairs(Ranges) do
+        assert(rn.value_t == T and rn.state_t==S)
+    end
+
+    local struct istate{
+        state : S
+        index : uint8
+    }
+
+    terra combirange:getfirst()
+        var state, value = self._0:getfirst()
+        return istate{state, 0}, value
+    end
+
+    terra combirange:getnext(state : &istate)
+        escape
+            for k=0,D-1 do
+                local s = "_"..tostring(k)
+                emit quote
+                    if state.index==[k] then
+                        return self.[s]:getnext(&state.state)
+                    end
                 end
-            end)
-        end
-        return quote
-            [stmts]
+            end
         end
     end
+
+    terra combirange:islast(state : &istate, value : &T)
+        escape
+            for k=0,D-2 do
+                local s1 = "_"..tostring(k)
+                local s2 = "_"..tostring(k+1)
+                emit quote
+                    if state.index==[k] then
+                        if self.[s1]:islast(&state.state, value) then
+                            state.index = state.index+1
+                            state.state, @value = self.[s2]:getfirst()
+                            
+                        end
+                        return false
+                    end
+                end
+            end
+            local s = "_"..tostring(D-1)
+            emit quote
+                if state.index==[D-1] then
+                    return self.[s]:islast(&state.state, value)
+                end
+            end
+        end
+    end
+
+    --add metamethods
+    RangeBase(combirange, istate, T)
 
     return combirange
 end
@@ -594,44 +598,79 @@ end
 local ProductRange = function(Ranges)
   
     local combirange = newcombiner(Ranges, "product")
+    local D = #Ranges
 
-    --I've used explicit for loops, rather than recursion.
-    --Recursion requires definition of the loop variables in
-    --terms of symbols, which require a type. Maybe add as 
-    --a type-trait?
-    combirange.metamethods.__for = function(range,body)
-        local D = #Ranges
-        if D > 3 then
-            error("Product range is only implemented for D=1,2,3.") 
-            -- right now only implemented for D=1,2,3
-            --ToDo: eventially implement using 'getfirst', 'getnext', 'islast'?
-        end
-        if D==1 then
-            return quote
-                for u in range._0 do
-                    [body(u)]
-                end
-            end
-        elseif D==2 then
-            return quote
-                for u_1 in range._1 do
-                    for u_0 in range._0 do
-                        [body(u_0, u_1)]
-                    end
-                end
-            end
-        elseif D==3 then
-            return quote
-                for u_2 in range._2 do
-                    for u_1 in range._1 do
-                        for u_0 in range._0 do
-                            [body(u_0, u_1, u_2)]
-                        end
-                    end
-                end
-            end
+    local value_t = terralib.newlist{}
+    local state_t = terralib.newlist{}
+    for i,rn in ipairs(Ranges) do
+        value_t:insert(rn.value_t)
+        state_t:insert(rn.state_t)
+    end
+    local S = tuple(unpack(state_t))
+    local T = tuple(unpack(value_t))
+
+    local struct istate{
+        state : S
+        value : &T
+    }
+    istate:complete()
+
+    local getfirst = function(self, state, value, k) 
+        local s = "_"..tostring(k)
+        return quote
+            state.[s], value.[s] = self.[s]:getfirst()
         end
     end
+
+    local getnext = function(self, state, value, k) 
+        local s = "_"..tostring(k)
+        return quote
+            value.[s] = self.[s]:getnext(&state.[s])
+        end
+    end
+
+    local islast = function(self, state, value, k)
+        local s = "_"..tostring(k)
+        return `self.[s]:islast(&state.[s], &value.[s])
+    end
+
+    terra combirange:getfirst()
+        var state : istate
+        var value : T
+        state.value = &value
+        escape
+            for k=0, D-1 do
+                emit quote [getfirst(`self, `state.state, `value, k)] end
+            end
+        end
+        return state, value
+    end
+
+    terra combirange:getnext(state : &istate)
+        [getnext(`self, `state.state, `@state.value, 0)]
+        return @state.value
+    end
+
+    terra combirange:islast(state : &istate, value : &T)
+        state.value = value
+        escape
+            --loop over each of the D ranges
+            for k=0, D-2 do
+                emit quote
+                    if [islast(`self, `state.state, `@value, k)] then
+                        [getfirst(`self, `state.state, `@value, k)]
+                        [getnext(`self, `state.state, `@value, k+1)]     --increment range k+1
+                    else
+                        return false
+                    end
+                end
+            end
+        end
+        return [islast(`self, `state.state, `@value, D-1)]
+    end
+
+    --add metamethods
+    RangeBase(combirange, istate, T)
 
     return combirange
 end
@@ -639,51 +678,74 @@ end
 local ZipRange = function(Ranges)
   
     local combirange = newcombiner(Ranges, "zip")
+    local D = #Ranges
 
-    --I've used explicit for loops, rather than recursion.
-    --Recursion requires definition of the loop variables in
-    --terms of symbols, which require a type. Maybe add as 
-    --a type-trait?
-    combirange.metamethods.__for = function(self,body)
-        local D = #Ranges
-        if D > 3 then
-            error("Zip range is only implemented for D=1,2,3.") 
-            -- right now only implemented for D=1,2,3
-            --ToDo: eventially implement using 'getfirst', 'getnext', 'islast'?
-        end
-        if D==1 then
-            return quote
-                var iter = self
-                for u in iter._0 do
-                    [body(u)]
-                end
-            end
-        elseif D==2 then
-            return quote
-                var iter = self
-                var state_0, value_0 = iter._0:getfirst()
-                var state_1, value_1 = iter._1:getfirst()
-                while not (iter._0:islast(state_0, value_0) or iter._1:islast(state_1, value_1)) do
-                    [body(value_0, value_1)]
-                    value_0 = iter._0:getnext(state_0)
-                    value_1 = iter._1:getnext(state_1)
-                end
-            end
-        elseif D==3 then
-            return quote
-                var iter = self
-                var state_0, value_0 = iter._0:getfirst()
-                var state_1, value_1 = iter._1:getfirst()
-                var state_2, value_2 = iter._2:getfirst()
-                while not (iter._0:islast(state_0, value_0) or iter._1:islast(state_1, value_1) or iter._2:islast(state_2, value_2)) do
-                    [body(value_0, value_1, value_2)]
-                    value_0 = iter._0:getnext(state_0)
-                    value_1 = iter._1:getnext(state_1)
-                    value_2 = iter._2:getnext(state_2)
-                end
-            end
+    --get range types
+    local value_t = terralib.newlist{}
+    local state_t = terralib.newlist{}
+    for i,rn in ipairs(Ranges) do
+        value_t:insert(rn.value_t)
+        state_t:insert(rn.state_t)
+    end
+    local S = tuple(unpack(state_t))
+    local T = tuple(unpack(value_t))
+
+    local getfirst = function(self, state, value, k) 
+        local s = "_"..tostring(k)
+        return quote
+            state.[s], value.[s] = self.[s]:getfirst()
         end
     end
+
+    local getnext = function(self, state, value, k) 
+        local s = "_"..tostring(k)
+        return quote
+            value.[s] = self.[s]:getnext(&state.[s])
+        end
+    end
+
+    local islast = function(self, state, value, k)
+        local s = "_"..tostring(k)
+        return `self.[s]:islast(&state.[s], &value.[s])
+    end
+
+    terra combirange:getfirst()
+        var state : S
+        var value : T
+        escape
+            for k=0, D-1 do
+                emit quote [getfirst(`self, `state, `value, k)] end
+            end
+        end
+        return state, value
+    end
+
+    terra combirange:getnext(state : &S)
+        var value : T
+        escape
+            for k=0, D-1 do
+                emit quote [getnext(`self, `@state, `value, k)] end
+            end
+        end
+        return value
+    end
+
+    terra combirange:islast(state : &S, value : &T)
+        escape
+            --loop over each of the D ranges
+            for k=0, D-1 do
+                emit quote
+                    if [islast(`self, `@state, `@value, k)] then
+                        return true
+                    end
+                end
+            end
+        end
+        return false
+    end
+    
+    --add metamethods
+    RangeBase(combirange, S, T)
 
     return combirange
 end

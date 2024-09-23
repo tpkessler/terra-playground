@@ -63,31 +63,20 @@ local DynamicStack = terralib.memoize(function(T)
         self.data:set(i, v)
     end
 
-    stack.methods.getfirst = macro(function(self)
-        return quote
-        in
-            0, self:get(0)
-        end
-    end)
+    stack.methods.getfirst = terra(self : &stack)
+        return size_t(0), self:get(0)
+    end
 
-    stack.methods.getnext = macro(function(self, state)
-        return quote 
-            state = state + 1
-            var value = self:get(state)
-        in
-            value
-        end
-    end)
+    stack.methods.getnext = terra(self : &stack, state : &size_t)
+        @state = @state + 1
+        return self:get(@state)
+    end
 
-    stack.methods.islast = macro(function(self, state)
-        return quote 
-            var terminate = (state == self:size())
-        in
-            terminate
-        end
-    end)
+    stack.methods.islast = terra(self : &stack, state : &size_t, value : &T)
+        return @state == self:size()
+    end
     
-    range.Base(stack, T)
+    range.Base(stack, size_t, T)
 
     return stack
 end)
