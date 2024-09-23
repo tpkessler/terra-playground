@@ -32,7 +32,6 @@ function Concept:new(name, custom_check)
 	end
 
 	function mt:addfrom(C)
-		self.superconcepts[C] = true
 		self:addimplementations(fun.map(function(T, v) return T end,
 								C:getimplementations()
 							   ):totable())
