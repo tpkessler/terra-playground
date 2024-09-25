@@ -12,7 +12,7 @@ local Stack = require("example_stack_heap")
 
 local DefaultAllocator =  Alloc.DefaultAllocator()
 
---for _, T in ipairs{int, double} do
+for _, T in ipairs{int, double} do
     local T = int
     local stack = Stack.DynamicStack(T)
     local unitrange = rn.Unitrange(T)
@@ -131,7 +131,6 @@ local DefaultAllocator =  Alloc.DefaultAllocator()
             test r(2)==-3
         end
 
-
     end
 
     testenv(T) "linear ranges - including last element" do
@@ -232,7 +231,7 @@ local DefaultAllocator =  Alloc.DefaultAllocator()
         end
 
     end
-
+end -- for _, T in ipairs{int, double} do
 
 local stack = Stack.DynamicStack(int)
 local unitrange = rn.Unitrange(int)
@@ -315,4 +314,201 @@ testenv "range adapters" do
         test s:get(1)==8
         test s:get(2)==9
     end
+end
+
+testenv "range composition" do
+
+    terracode
+        var alloc : DefaultAllocator
+        var s = stack.new(&alloc, 10)
+    end
+
+    testset "compose transform and filter - lvalues" do
+        terracode
+            var r = unitrange{0, 5}
+            var x = 0
+            var y = 3
+            var g = rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
+            var h = rn.transform([terra(i : int, y : int) return y * i end], y)
+            var range = r >> g >> h
+            range:collect(&s)
+        end
+        test s:size()==3
+        test s:get(0)==0
+        test s:get(1)==6
+        test s:get(2)==12
+    end
+
+    testset "compose transform and filter - rvalues" do
+        terracode
+            var x = 0
+            var y = 3
+            for v in unitrange{0, 5} >> 
+                        rn.filter([terra(i : int, x : int) return i % 2 == x end], x) >>
+                            rn.transform([terra(i : int, y : int) return y * i end], y) do
+                s:push(v)
+            end
+        end
+        test s:size()==3
+        test s:get(0)==0
+        test s:get(1)==6
+        test s:get(2)==12
+    end
+
+end
+
+testenv "range combiners" do
+
+    terracode
+        var alloc : DefaultAllocator
+        var j = stack.new(&alloc, 10)
+        var s = stack.new(&alloc, 10)
+    end
+
+    testset "join - 1" do
+        terracode
+            var range = rn.join(unitrange{1, 4})
+            for v in range do
+                s:push(v)
+            end
+        end
+        test s:size()==3
+        for i = 1, 3 do
+            test s:get([i-1]) == i
+        end
+    end
+
+    testset "join - 2" do
+        terracode
+            var range = rn.join(unitrange{1, 3}, unitrange{3, 5})
+            for v in range do
+                s:push(v)
+            end
+        end
+        test s:size()==4
+        for i = 1, 4 do
+            test s:get([i-1]) == i
+        end
+    end
+
+    testset "join - 3" do
+        terracode
+            var range = rn.join(unitrange{1, 3}, unitrange{3, 5}, unitrange{5, 7})
+            for v in range do
+                s:push(v)
+            end
+        end
+        test s:size()==6
+        for i = 1, 6 do
+            test s:get([i-1]) == i
+        end
+    end
+
+    testset "enumerate" do
+        terracode
+            for i,v in rn.enumerate(unitrange{1, 4}) do
+                j:push(i)
+                s:push(v)
+            end
+        end
+        test j:size()==3 and s:size()==3
+        test j:get(0)==0 and s:get(0)==1
+        test j:get(1)==1 and s:get(1)==2
+        test j:get(2)==2 and s:get(2)==3
+    end
+
+
+    testset "zip - 1" do
+        terracode
+            var U = stack.new(&alloc, 10)
+            for u in rn.zip(unitrange{1, 4}) do
+                U:push(u._0)
+            end
+        end
+        test U:size()==3
+        test U:get(0)==1
+        test U:get(1)==2
+        test U:get(2)==3
+    end
+
+    testset "zip - 2" do
+        terracode
+            var U = stack.new(&alloc, 10)
+            var V = stack.new(&alloc, 10)
+            for t in rn.zip(unitrange{1, 4}, unitrange{2, 6}) do
+                U:push(t._0)
+                V:push(t._1)
+            end
+        end
+        test U:size()==3 and V:size()==3
+        test U:get(0)==1 and V:get(0)==2
+        test U:get(1)==2 and V:get(1)==3
+        test U:get(2)==3 and V:get(2)==4
+    end
+
+    testset "zip - 3" do
+        terracode
+            var U = stack.new(&alloc, 10)
+            var V = stack.new(&alloc, 10)
+            var W = stack.new(&alloc, 10)
+            for t in rn.zip(unitrange{1, 4}, unitrange{2, 6}, unitrange{3, 7}) do
+                U:push(t._0)
+                V:push(t._1)
+                W:push(t._2)
+            end
+        end
+        test U:size()==3 and V:size()==3 and W:size()==3
+        test U:get(0)==1 and V:get(0)==2 and W:get(0)==3
+        test U:get(1)==2 and V:get(1)==3 and W:get(1)==4
+        test U:get(2)==3 and V:get(2)==4 and W:get(2)==5
+    end
+
+    testset "product - 1" do
+        terracode
+            var U = stack.new(&alloc, 10)
+            for u in rn.product(unitrange{1, 4}) do
+                U:push(u._0)
+            end
+        end
+        test U:size()==3
+        test U:get(0)==1
+        test U:get(1)==2
+        test U:get(2)==3
+    end
+
+
+    testset "product - 2" do
+        terracode
+            var U = stack.new(&alloc, 10)
+            var V = stack.new(&alloc, 10)
+            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}) do
+                U:push(t._0)
+                V:push(t._1)
+            end
+        end
+        test U:size()==6 and V:size()==6
+        test U:get(0)==1 and V:get(0)==2
+        test U:get(1)==2 and V:get(1)==2
+        test U:get(2)==3 and V:get(2)==2
+        test U:get(3)==1 and V:get(3)==3
+        test U:get(4)==2 and V:get(4)==3
+        test U:get(5)==3 and V:get(5)==3
+    end
+
+    testset "product - 3" do
+        terracode
+            var U = stack.new(&alloc, 16)
+            var V = stack.new(&alloc, 16)
+            var W = stack.new(&alloc, 16)
+            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3, 5}) do
+                U:push(t._0)
+                V:push(t._1)
+                W:push(t._2)
+            end
+        end
+        test U:size()==12
+        test U:get(0)==1 and V:get(0)==2 and W:get(0)==3
+        test U:get(11)==3 and V:get(11)==3 and W:get(11)==4
+    end
+
 end

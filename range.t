@@ -584,7 +584,6 @@ local Enumerator = function(Ranges)
     return enumerator
 end
 
-
 local JoinRange = function(Ranges)
 
     local combirange = newcombiner(Ranges, "joiner")
@@ -597,56 +596,158 @@ local JoinRange = function(Ranges)
         assert(rn.value_t == T and rn.state_t==S)
     end
 
-    local struct istate{
+    local struct iterator{
         state : S
         index : uint8
     }
 
     terra combirange:getfirst()
-        var state, value = self._0:getfirst()
-        return istate{state, 0}, value
+        return iterator{self._0:getfirst(), 0}
     end
 
-    terra combirange:getnext(state : &istate)
+    terra combirange:getvalue(iter : &iterator)
         escape
             for k=0,D-1 do
                 local s = "_"..tostring(k)
                 emit quote
-                    if state.index==[k] then
-                        return self.[s]:getnext(&state.state)
+                    if iter.index==[k] then
+                        return self.[s]:getvalue(&iter.state)
                     end
                 end
             end
         end
     end
 
-    terra combirange:isvalid(state : &istate, value : &T)
+    terra combirange:next(iter : &iterator)
+        escape
+            for k=0,D-1 do
+                local s = "_"..tostring(k)
+                emit quote
+                    if iter.index==[k] then
+                        return self.[s]:next(&iter.state)
+                    end
+                end
+            end
+        end
+    end
+
+    terra combirange:isvalid(iter : &iterator)
         escape
             for k=0,D-2 do
                 local s1 = "_"..tostring(k)
                 local s2 = "_"..tostring(k+1)
                 emit quote
-                    if state.index==[k] then
-                        if self.[s1]:isvalid(&state.state, value) then
-                            state.index = state.index+1
-                            state.state, @value = self.[s2]:getfirst()
-                            
+                    if iter.index==[k] then
+                        if not self.[s1]:isvalid(&iter.state) then
+                            iter.index = iter.index+1
+                            iter.state = self.[s2]:getfirst()
                         end
-                        return false
+                        return true
                     end
                 end
             end
             local s = "_"..tostring(D-1)
             emit quote
-                if state.index==[D-1] then
-                    return self.[s]:isvalid(&state.state, value)
+                if iter.index==[D-1] then
+                    return self.[s]:isvalid(&iter.state)
                 end
             end
         end
     end
 
     --add metamethods
-    RangeBase(combirange, istate, T)
+    RangeBase(combirange, iterator, T)
+
+    return combirange
+end
+
+
+local ZipRange = function(Ranges)
+  
+    local combirange = newcombiner(Ranges, "zip")
+    local D = #Ranges
+
+    --get range types
+    local value_t = terralib.newlist{}
+    local state_t = terralib.newlist{}
+    for i,rn in ipairs(Ranges) do
+        value_t:insert(rn.value_t)
+        state_t:insert(rn.state_t)
+    end
+    local S = tuple(unpack(state_t))
+    local T = tuple(unpack(value_t))
+
+    local getfirst = function(self, iter, k) 
+        local s = "_"..tostring(k)
+        return quote
+            iter.[s] = self.[s]:getfirst()
+        end
+    end
+
+    local getvalue = function(self, iter, value, k)
+        local s = "_"..tostring(k)
+        return quote
+            value.[s] = self.[s]:getvalue(&iter.[s])
+        end
+    end
+
+    local next = function(self, iter, k) 
+        local s = "_"..tostring(k)
+        return quote
+            self.[s]:next(&iter.[s])
+        end
+    end
+
+    local isvalid = function(self, iter, k)
+        local s = "_"..tostring(k)
+        return `self.[s]:isvalid(&iter.[s])
+    end
+
+    terra combirange:getfirst()
+        var iter : S
+        escape
+            for k=0, D-1 do
+                emit quote [getfirst(`self, `iter, k)] end
+            end
+        end
+        return iter
+    end
+
+    terra combirange:getvalue(iter : &S)
+        var value : T
+        escape
+            for k=0, D-1 do
+                emit quote [getvalue(`self, `@iter, `value, k)] end
+            end
+        end
+        return value
+    end
+
+    terra combirange:next(iter : &S)
+        escape
+            for k=0, D-1 do
+                emit quote [next(`self, `@iter, k)] end
+            end
+        end
+    end
+
+    terra combirange:isvalid(iter : &S)
+        escape
+            --loop over each of the D ranges
+            for k=0, D-1 do
+                emit quote
+                    if not [isvalid(`self, `@iter, k)] then
+                        return false
+                    end
+                end
+            end
+            emit quote return true end
+        end
+        return false
+    end
+    
+    --add metamethods
+    RangeBase(combirange, S, T)
 
     return combirange
 end
@@ -665,143 +766,82 @@ local ProductRange = function(Ranges)
     local S = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
 
-    local struct istate{
+    local struct iterator{
         state : S
-        value : &T
+        value : T
     }
-    istate:complete()
+    iterator:complete()
 
-    local getfirst = function(self, state, value, k) 
+    local getfirst = function(self, iter, k) 
         local s = "_"..tostring(k)
         return quote
-            state.[s], value.[s] = self.[s]:getfirst()
+            iter.[s] = self.[s]:getfirst()
         end
     end
 
-    local getnext = function(self, state, value, k) 
+    local getvalue = function(self, iter, value, k) 
         local s = "_"..tostring(k)
         return quote
-            value.[s] = self.[s]:getnext(&state.[s])
+            value.[s] = self.[s]:getvalue(&iter.[s])
         end
     end
 
-    local isvalid = function(self, state, value, k)
+    local next = function(self, iter, k)
         local s = "_"..tostring(k)
-        return `self.[s]:isvalid(&state.[s], &value.[s])
+        return quote
+            self.[s]:next(&iter.[s])
+        end
+    end
+
+    local isvalid = function(self, iter, k)
+        local s = "_"..tostring(k)
+        return `self.[s]:isvalid(&iter.[s])
     end
 
     terra combirange:getfirst()
-        var state : istate
-        var value : T
-        state.value = &value
+        var iter : iterator
         escape
             for k=0, D-1 do
-                emit quote [getfirst(`self, `state.state, `value, k)] end
+                emit quote [getfirst(`self, `iter.state, k)] end
+                emit quote [getvalue(`self, `iter.state, `iter.value, k)] end
             end
         end
-        return state, value
+        return iter
     end
 
-    terra combirange:getnext(state : &istate)
-        [getnext(`self, `state.state, `@state.value, 0)]
-        return @state.value
+    terra combirange:getvalue(iter : &iterator)
+        return iter.value
     end
 
-    terra combirange:isvalid(state : &istate, value : &T)
-        state.value = value
+    terra combirange:next(iter : &iterator)
         escape
-            --loop over each of the D ranges
             for k=0, D-2 do
                 emit quote
-                    if [isvalid(`self, `state.state, `@value, k)] then
-                        [getfirst(`self, `state.state, `@value, k)]
-                        [getnext(`self, `state.state, `@value, k+1)]     --increment range k+1
-                    else
-                        return false
+                    --increase k
+                    [next(`self, `iter.state, k)]
+                    if [isvalid(`self, `iter.state, k)] then
+                        [getvalue(`self, `iter.state, `iter.value, k)]
+                        return
                     end
+                    --reset k
+                    [getfirst(`self, `iter.state, k)]
+                    [getvalue(`self, `iter.state, `iter.value, k)]
                 end
             end
         end
-        return [isvalid(`self, `state.state, `@value, D-1)]
+        --increase D-1
+        [next(`self, `iter.state, D-1)]
+        if [isvalid(`self, `iter.state, D-1)] then
+            [getvalue(`self, `iter.state, `iter.value, D-1)]
+        end
+    end
+
+    terra combirange:isvalid(iter : &iterator)
+        return [isvalid(`self, `iter.state, D-1)]
     end
 
     --add metamethods
-    RangeBase(combirange, istate, T)
-
-    return combirange
-end
-
-local ZipRange = function(Ranges)
-  
-    local combirange = newcombiner(Ranges, "zip")
-    local D = #Ranges
-
-    --get range types
-    local value_t = terralib.newlist{}
-    local state_t = terralib.newlist{}
-    for i,rn in ipairs(Ranges) do
-        value_t:insert(rn.value_t)
-        state_t:insert(rn.state_t)
-    end
-    local S = tuple(unpack(state_t))
-    local T = tuple(unpack(value_t))
-
-    local getfirst = function(self, state, value, k) 
-        local s = "_"..tostring(k)
-        return quote
-            state.[s], value.[s] = self.[s]:getfirst()
-        end
-    end
-
-    local getnext = function(self, state, value, k) 
-        local s = "_"..tostring(k)
-        return quote
-            value.[s] = self.[s]:getnext(&state.[s])
-        end
-    end
-
-    local isvalid = function(self, state, value, k)
-        local s = "_"..tostring(k)
-        return `self.[s]:isvalid(&state.[s], &value.[s])
-    end
-
-    terra combirange:getfirst()
-        var state : S
-        var value : T
-        escape
-            for k=0, D-1 do
-                emit quote [getfirst(`self, `state, `value, k)] end
-            end
-        end
-        return state, value
-    end
-
-    terra combirange:getnext(state : &S)
-        var value : T
-        escape
-            for k=0, D-1 do
-                emit quote [getnext(`self, `@state, `value, k)] end
-            end
-        end
-        return value
-    end
-
-    terra combirange:isvalid(state : &S, value : &T)
-        escape
-            --loop over each of the D ranges
-            for k=0, D-1 do
-                emit quote
-                    if [isvalid(`self, `@state, `@value, k)] then
-                        return true
-                    end
-                end
-            end
-        end
-        return false
-    end
-    
-    --add metamethods
-    RangeBase(combirange, S, T)
+    RangeBase(combirange, iterator, T)
 
     return combirange
 end
