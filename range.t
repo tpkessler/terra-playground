@@ -25,17 +25,17 @@ local Stacker = terralib.memoize(
 --an iterator implements the following macros:
 --  methods.getfirst :: (self) -> (state, value)
 --  methods.getnext :: (self, state) -> (value)
---  methods.islast :: (self, state, value) -> (true/false)
+--  methods.isvalid :: (self, state, value) -> (true/false)
 --the following base class then overloads the '>>' operator
 --and adds the '__for' metamethod, and adds a 'collect' 
 --method that collects all elements in the range in a container
 --that satsifies the 'Stacker(T)' interface
 --ToDo - maybe its possible to use (mutating) terra functions 
 --rather than macros.
-local RangeBase = function(Range, state_t, T)
+local RangeBase = function(Range, Iter_t, T)
 
-    --set the value type and state type of the range
-    Range.state_t = state_t
+    --set the value type and iterator type of the range
+    Range.state_t = Iter_t
     Range.value_t = T
 
     --overloading '>>' operator
@@ -55,16 +55,24 @@ local RangeBase = function(Range, state_t, T)
         end
     end)
 
+    --always extract a value type into the body of the loop
+    local extract = function(value) 
+        if value.type:ispointer() then
+            return `@value
+        else
+            return `value
+        end
+    end
+
     --__for is generated for iterators
     Range.metamethods.__for = function(self,body)
         return quote
-            var iter = self
-            var state, value = iter:getfirst()
-            if not iter:islast(&state, &value) then
-                repeat
-                    [body(value)]
-                    value = iter:getnext(&state)
-                until iter:islast(&state, &value)
+            var range = self
+            var iter = range:getfirst()
+            while range:isvalid(&iter) do
+                var value = range:getvalue(&iter)
+                [body(extract(value))] --run body of loop
+                range:next(&iter) --increment state
             end
         end
     end
@@ -78,27 +86,6 @@ local RangeBase = function(Range, state_t, T)
     end
 
 end
-
---convenience macro that yields the next value that satisfies the predicate
-local __getnextvalue_that_satisfies_predicate = macro(function(range, state, value, predicate, condition)
-    local condition = condition or false
-    local predicate_t = predicate.tree.type
-    if predicate_t.byreference then
-        return quote
-            while predicate(value)==condition do
-                if range:islast(state, value) then break end
-                @value = range:getnext(state)
-            end
-        end
-    else
-        return quote
-            while predicate(@value)==condition do
-                if range:islast(state, value) then break end
-                @value = range:getnext(state)
-            end
-        end
-    end
-end)
 
 local Unitrange = function(T)
 
@@ -129,16 +116,19 @@ local Unitrange = function(T)
     end
 
     terra range:getfirst()
-        return self.a, self.a
+        return self.a
     end
 
-    terra range:getnext(state : &T)
-        @state = @state + 1
-        return @state
+    terra range:getvalue(iter : &T)
+        return @iter
     end
 
-    terra range:islast(state : &T, value : &T)
-        return @state == self.b
+    terra range:next(iter : &T)
+        @iter = @iter + 1
+    end
+
+    terra range:isvalid(iter : &T)
+        return @iter < self.b
     end
 
     --add metamethods
@@ -183,16 +173,19 @@ local Steprange = function(T)
     end
 
     terra range:getfirst()
-        return self.a, self.a
+        return self.a
     end
 
-    terra range:getnext(state : &T)
-        @state = @state + self.step
-        return @state
+    terra range:getvalue(iter : &T)
+        return @iter
     end
 
-    terra range:islast(state : &T, value : &T)
-        return @state == self.b
+    terra range:next(iter : &T)
+        @iter = @iter + self.step
+    end
+
+    terra range:isvalid(iter : &T)
+        return terralib.select(self.step>0, @iter < self.b, @iter > self.b)
     end
 
     --add metamethods
@@ -210,30 +203,48 @@ local FilteredRange = function(Range, Function)
 
     --check that function is a predicate
     assert(Function.returntype == bool)
-    Function.byreference = Function.parameters[1]:ispointer()
 
     local struct adapter{
         range : Range
         predicate : Function
     }
 
-    local S = Range.state_t
+    --select by value or by reference
+    Function.byreference = Function.parameters[1]:ispointer()
+    --evaluate predicate
+    local pred = macro(function(self, value)
+        if Function.byreference then
+            return `self.predicate(&value)
+        else
+            return `self.predicate(value)
+        end
+    end)
+
+    local S = Range.state_t --iterator type (a pointer or a struct holding a pointer)
     local T = Range.value_t
 
     terra adapter:getfirst()
-        var state, value = self.range:getfirst()
-        __getnextvalue_that_satisfies_predicate(self.range, &state, &value, self.predicate)
-        return state, value
+        var state = self.range:getfirst()
+        var v = self.range:getvalue(&state)
+        if pred(self,v)==false then
+            self:next(&state)
+        end
+        return state
     end
 
-    terra adapter:getnext(state : &S)
-        var value = self.range:getnext(state)
-        __getnextvalue_that_satisfies_predicate(self.range, state, &value, self.predicate)
-        return value
+    terra adapter:getvalue(state : &S)
+        return self.range:getvalue(state)
     end
 
-    terra adapter:islast(state : &S, value : &T)
-        return self.range:islast(state, value)
+    terra adapter:next(state : &S)
+        self.range:next(state)
+        while (self.range:isvalid(state) and pred(self,self.range:getvalue(state))==false) do
+            self.range:next(state)
+        end
+    end
+
+    terra adapter:isvalid(state : &S)
+        return self.range:isvalid(state)
     end
 
     --add metamethods
@@ -248,35 +259,38 @@ local TransformedRange = function(Range, Function)
         range : Range
         f : Function
     }
-
     local S = Range.state_t
     local T = Function.returntype
+
+    --select by value or by reference
     Function.byreference = Function.parameters[1]:ispointer()
+    --valuate transform
+    local transform = macro(function(self, value)
+        if Function.byreference then
+            return `self.f(&value)
+        else
+            return `self.f(value)
+        end
+    end)
+
+    local struct iter{
+        state : S
+    }
 
     terra adapter:getfirst()
-        var state, value = self.range:getfirst()
-        escape
-            if Function.byreference then
-                emit quote return state, self.f(&value) end
-            else
-                emit quote return state, self.f(value) end
-            end
-        end
+        return iter{self.range:getfirst()}
     end
 
-    terra adapter:getnext(state : &S)
-        var value = self.range:getnext(state)
-        escape
-            if Function.byreference then
-                emit quote return self.f(&value) end
-            else
-                emit quote return self.f(value) end
-            end
-        end
+    terra adapter:getvalue(state : &iter)
+        return transform(self, self.range:getvalue(&state.state))
     end
 
-    terra adapter:islast(state : &S, value : &T)
-        return self.range:islast(state, value)
+    terra adapter:next(state : &iter)
+        self.range:next(&state.state)
+    end
+
+    terra adapter:isvalid(state : &iter)
+        return self.range:isvalid(&state.state)
     end
 
     --add metamethods
@@ -298,13 +312,17 @@ local TakeRange = function(Range)
         return self.range:getfirst()
     end
 
-    terra adapter:getnext(state : &S)
-        self.take = self.take - 1
-        return self.range:getnext(state)
+    terra adapter:getvalue(state : &S)
+        return self.range:getvalue(state)
     end
 
-    terra adapter:islast(state : &S, value : &T)
-        return (self.take == 0) or self.range:islast(state, value)
+    terra adapter:next(state : &S)
+        self.take = self.take - 1
+        self.range:next(state)
+    end
+
+    terra adapter:isvalid(state : &S)
+        return (self.take > 0) and self.range:isvalid(state)
     end
 
     --add metamethods
@@ -323,21 +341,26 @@ local DropRange = function(Range)
     local T = Range.value_t
 
     terra adapter:getfirst()
-        var state, value = self.range:getfirst()
-        var drop = self.drop
-        for k = 0, drop do
-            value = self.range:getnext(&state)
-            self.drop = self.drop - 1
+        var state = self.range:getfirst()
+        for k = 0, self.drop do
+            self.range:next(&state)
+            if not self.range:isvalid(&state) then
+                break
+            end
         end
-        return state, value
+        return state
     end
 
-    terra adapter:getnext(state : &S)
-        return self.range:getnext(state)
+    terra adapter:getvalue(state : &S)
+        return self.range:getvalue(state)
     end
 
-    terra adapter:islast(state : &S, value : &T)
-        return self.range:islast(state, value)
+    terra adapter:next(state : &S)
+        self.range:next(state)
+    end
+
+    terra adapter:isvalid(state : &S)
+        return self.range:isvalid(state)
     end
 
     --add metamethods
@@ -345,7 +368,6 @@ local DropRange = function(Range)
 
     return adapter
 end
-
 
 local TakeWhileRange = function(Range, Function)
 
@@ -356,19 +378,35 @@ local TakeWhileRange = function(Range, Function)
         range : Range
         predicate : Function
     }
-    local S = Range.state_t
+
+    --select by value or by reference
+    Function.byreference = Function.parameters[1]:ispointer()
+    --evaluate predicate
+    local pred = macro(function(self, value)
+        if Function.byreference then
+            return `self.predicate(&value)
+        else
+            return `self.predicate(value)
+        end
+    end)
+
+    local S = Range.state_t --iterator type (a pointer or a struct holding a pointer)
     local T = Range.value_t
 
     terra adapter:getfirst()
         return self.range:getfirst()
     end
 
-    terra adapter:getnext(state : &S)
-        return self.range:getnext(state)
+    terra adapter:getvalue(state : &S)
+        return self.range:getvalue(state)
     end
 
-    terra adapter:islast(state : &S, value : &T)
-        return self.predicate(@value)==false
+    terra adapter:next(state : &S)
+        self.range:next(state)
+    end
+
+    terra adapter:isvalid(state : &S)
+        return self.range:isvalid(state) and pred(self,self.range:getvalue(state))==true
     end
 
     --add metamethods
@@ -383,22 +421,39 @@ local DropWhileRange = function(Range, Function)
         range : Range
         predicate : Function
     }
+
+    --select by value or by reference
+    Function.byreference = Function.parameters[1]:ispointer()
+    --evaluate predicate
+    local pred = macro(function(self, value)
+        if Function.byreference then
+            return `self.predicate(&value)
+        else
+            return `self.predicate(value)
+        end
+    end)
+
     local S = Range.state_t
     local T = Range.value_t
-    Function.byreference = Function.parameters[1]:ispointer()
 
     terra adapter:getfirst()
-        var state, value = self.range:getfirst()
-        __getnextvalue_that_satisfies_predicate(self.range, &state, &value, self.predicate, true)
-        return state, value
+        var state = self.range:getfirst()
+        while (self.range:isvalid(&state) and pred(self,self.range:getvalue(&state))==true) do
+            self.range:next(&state)
+        end
+        return state
     end
 
-    terra adapter:getnext(state : &S)
-        return self.range:getnext(state)
+    terra adapter:getvalue(state : &S)
+        return self.range:getvalue(state)
     end
 
-    terra adapter:islast(state : &S, value : &T)
-        return self.range:islast(state, value)
+    terra adapter:next(state : &S)
+        return self.range:next(state)
+    end
+
+    terra adapter:isvalid(state : &S)
+        return self.range:isvalid(state)
     end
 
     --add metamethods
@@ -529,6 +584,7 @@ local Enumerator = function(Ranges)
     return enumerator
 end
 
+
 local JoinRange = function(Ranges)
 
     local combirange = newcombiner(Ranges, "joiner")
@@ -564,14 +620,14 @@ local JoinRange = function(Ranges)
         end
     end
 
-    terra combirange:islast(state : &istate, value : &T)
+    terra combirange:isvalid(state : &istate, value : &T)
         escape
             for k=0,D-2 do
                 local s1 = "_"..tostring(k)
                 local s2 = "_"..tostring(k+1)
                 emit quote
                     if state.index==[k] then
-                        if self.[s1]:islast(&state.state, value) then
+                        if self.[s1]:isvalid(&state.state, value) then
                             state.index = state.index+1
                             state.state, @value = self.[s2]:getfirst()
                             
@@ -583,7 +639,7 @@ local JoinRange = function(Ranges)
             local s = "_"..tostring(D-1)
             emit quote
                 if state.index==[D-1] then
-                    return self.[s]:islast(&state.state, value)
+                    return self.[s]:isvalid(&state.state, value)
                 end
             end
         end
@@ -629,9 +685,9 @@ local ProductRange = function(Ranges)
         end
     end
 
-    local islast = function(self, state, value, k)
+    local isvalid = function(self, state, value, k)
         local s = "_"..tostring(k)
-        return `self.[s]:islast(&state.[s], &value.[s])
+        return `self.[s]:isvalid(&state.[s], &value.[s])
     end
 
     terra combirange:getfirst()
@@ -651,13 +707,13 @@ local ProductRange = function(Ranges)
         return @state.value
     end
 
-    terra combirange:islast(state : &istate, value : &T)
+    terra combirange:isvalid(state : &istate, value : &T)
         state.value = value
         escape
             --loop over each of the D ranges
             for k=0, D-2 do
                 emit quote
-                    if [islast(`self, `state.state, `@value, k)] then
+                    if [isvalid(`self, `state.state, `@value, k)] then
                         [getfirst(`self, `state.state, `@value, k)]
                         [getnext(`self, `state.state, `@value, k+1)]     --increment range k+1
                     else
@@ -666,7 +722,7 @@ local ProductRange = function(Ranges)
                 end
             end
         end
-        return [islast(`self, `state.state, `@value, D-1)]
+        return [isvalid(`self, `state.state, `@value, D-1)]
     end
 
     --add metamethods
@@ -704,9 +760,9 @@ local ZipRange = function(Ranges)
         end
     end
 
-    local islast = function(self, state, value, k)
+    local isvalid = function(self, state, value, k)
         local s = "_"..tostring(k)
-        return `self.[s]:islast(&state.[s], &value.[s])
+        return `self.[s]:isvalid(&state.[s], &value.[s])
     end
 
     terra combirange:getfirst()
@@ -730,12 +786,12 @@ local ZipRange = function(Ranges)
         return value
     end
 
-    terra combirange:islast(state : &S, value : &T)
+    terra combirange:isvalid(state : &S, value : &T)
         escape
             --loop over each of the D ranges
             for k=0, D-1 do
                 emit quote
-                    if [islast(`self, `@state, `@value, k)] then
+                    if [isvalid(`self, `@state, `@value, k)] then
                         return true
                     end
                 end
