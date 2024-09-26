@@ -23,6 +23,26 @@ local Sequence = concept.AbstractInterface:new("Sequence")
 Sequence:inheritfrom(Stacker)
 Sequence:inheritfrom(Setter)
 
+--get the terra-type of a pointer or type
+local gettype = function(t)
+    assert(terralib.types.istype(t) and "Not a terra type")
+    if t:ispointer() then
+        return t.type
+    else
+        return t
+    end
+end
+
+--given a terra value or reference to a value, get its value
+local byvalue = function(t)
+    local typ = t.type or t.tree.type or error("Not a terra type.")
+    if typ:ispointer() then
+        return `@t
+    else
+        return `t
+    end
+end
+
 --an iterator implements the following macros:
 --  methods.getfirst :: (self) -> (state, value)
 --  methods.getnext :: (self, state) -> (value)
@@ -56,15 +76,6 @@ local RangeBase = function(Range, Iter_t, T)
         end
     end)
 
-    --always extract a value type into the body of the loop
-    local extract = function(value) 
-        if value.type:ispointer() then
-            return `@value
-        else
-            return `value
-        end
-    end
-
     --__for is generated for iterators
     Range.metamethods.__for = function(self,body)
         return quote
@@ -72,7 +83,7 @@ local RangeBase = function(Range, Iter_t, T)
             var iter = range:getfirst()
             while range:isvalid(&iter) do
                 var value = range:getvalue(&iter)
-                [body(extract(value))] --run body of loop
+                [body(byvalue(value))] --run body of loop
                 range:next(&iter) --increment state
             end
         end
@@ -298,28 +309,29 @@ local TransformedRange = function(Range, Function)
         end
     end)
 
-    local struct iter{
+    local struct iterator{
         state : S
     }
 
     terra adapter:getfirst()
-        return iter{self.range:getfirst()}
+        return iterator{self.range:getfirst()}
     end
 
-    terra adapter:getvalue(state : &iter)
-        return transform(self, self.range:getvalue(&state.state))
+    terra adapter:getvalue(state : &iterator)
+        var value = self.range:getvalue(&state.state)
+        return transform(self, value)
     end
 
-    terra adapter:next(state : &iter)
+    terra adapter:next(state : &iterator)
         self.range:next(&state.state)
     end
 
-    terra adapter:isvalid(state : &iter)
+    terra adapter:isvalid(state : &iterator)
         return self.range:isvalid(&state.state)
     end
 
     --add metamethods
-    RangeBase(adapter, S, T)
+    RangeBase(adapter, iterator, T)
 
     return adapter
 end
@@ -603,7 +615,10 @@ local Enumerator = function(Ranges)
     --check that a range-for is implemented
     assert(#Ranges==1)
     local Range = Ranges[1]
-    assert(Range.metamethods.__for)
+    local byreference = Range:ispointer()
+    if not (byreference and Range.type.metamethods.__for or Range.metamethods.__for) then
+        error("Terra type does not implement the range interface.")
+    end
 
     local struct enumerator{
         range : Range
@@ -613,7 +628,7 @@ local Enumerator = function(Ranges)
         return quote
             var iter = self
             var i = 0
-            for v in iter.range do
+            for v in [byvalue(`iter.range)] do
                 [body(i,v)]
                 i = i + 1
             end
@@ -630,12 +645,11 @@ local JoinRange = function(Ranges)
     --allowing concept-based function overloading at compile-time
     base.AbstractBase(combirange)
     local D = #Ranges
-
     --get range types
-    local T = Ranges[1].value_t
-    local S = Ranges[1].state_t
+    local T = gettype(Ranges[1]).value_t
+    local S = gettype(Ranges[1]).state_t
     for i,rn in ipairs(Ranges) do
-        assert(rn.value_t == T and rn.state_t==S)
+        assert(gettype(rn).value_t == T and gettype(rn).state_t==S)
     end
 
     local struct iterator{
@@ -717,8 +731,8 @@ local ZipRange = function(Ranges)
     local value_t = terralib.newlist{}
     local state_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        value_t:insert(rn.value_t)
-        state_t:insert(rn.state_t)
+        value_t:insert(gettype(rn).value_t)
+        state_t:insert(gettype(rn).state_t)
     end
     local S = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
@@ -787,9 +801,8 @@ local ZipRange = function(Ranges)
                     end
                 end
             end
-            emit quote return true end
         end
-        return false
+        return true
     end
     
     --add metamethods
@@ -809,8 +822,8 @@ local ProductRange = function(Ranges)
     local value_t = terralib.newlist{}
     local state_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        value_t:insert(rn.value_t)
-        state_t:insert(rn.state_t)
+        value_t:insert(gettype(rn).value_t)
+        state_t:insert(gettype(rn).state_t)
     end
     local S = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
