@@ -3,10 +3,22 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local C = terralib.includecstring[[
-    #include <openblas/cblas.h>
-]]
-terralib.linklibrary("libcblas.so")
+local uname = io.popen("uname", "r"):read("*a")
+
+local C
+if uname == "Darwin\n" then
+    C = terralib.includecstring([[
+        #include <cblas.h>
+    ]])
+    terralib.linklibrary("libcblas.dylib")
+elseif uname == "Linux\n" then
+    C = terralib.includecstring[[
+        #include <openblas/cblas.h>
+    ]]
+    terralib.linklibrary("libcblas.so")
+else
+    error("Not implemented for this OS.")
+end
 
 local complex = require("complex")
 
