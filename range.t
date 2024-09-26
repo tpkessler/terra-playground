@@ -3,24 +3,25 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local interface = require("interface")
+local base = require("base")
+local concept = require("concept")
+local template = require("template")
 local lambdas = require("lambdas")
 local err = require("assert")
-local io = terralib.includec("stdio.h")
 
 local size_t = uint64
 
---the following interface is used to collect elements in
---a range
-local Stacker = terralib.memoize(
-    function(T)
-        return interface.Interface:new{
-            size = {} -> uint64,
-            push = {T} -> {},
-            pop = {} -> {T}
-        }
-    end
-)
+--collect requires a stacker interface or a setter interface
+--stacker interface
+local Stacker = concept.AbstractInterface:new("Stacker")
+Stacker:addmethod{push = {concept.Any} -> {}}
+--setter interface
+local Setter = concept.AbstractInterface:new("Setter")
+Setter:addmethod{set = {concept.Integral, concept.Any} -> {}}
+--arraylike implements both the setter and the stacker interface
+local Sequence = concept.AbstractInterface:new("Sequence")
+Sequence:inheritfrom(Stacker)
+Sequence:inheritfrom(Setter)
 
 --an iterator implements the following macros:
 --  methods.getfirst :: (self) -> (state, value)
@@ -77,11 +78,34 @@ local RangeBase = function(Range, Iter_t, T)
         end
     end
 
-    --collect requires only the 'Stacker' interface
-    local S = Stacker(T)
-    terra Range:collect(container : S)
-        for v in self do
-            container:push(v)
+    --definition of collect template
+    Range.templates.collect = template.Template:new("collect")
+    --containers implementing the stacker interface only
+    Range.templates.collect[{&Range.Self, &Stacker} -> {}] = function(Self, Container)
+        return terra(self : Self, container : Container)
+            for v in self do
+                container:push(v)
+            end
+        end
+    end
+    --containers that only implement the setter interface arte using 'set'. Sufficient
+    --space needs to be allocated before
+    Range.templates.collect[{&Range.Self, &Setter} -> {}] = function(Self, Container)
+        return terra(self : Self, container : Container)
+            var i = 0
+            for v in self do
+                container:set(i, v)
+                i = i + 1
+            end
+        end
+    end
+    --containers implementing the stacker and setter interface will only use
+    --the stacker interface
+    Range.templates.collect[{&Range.Self, &Sequence} -> {}] = function(Self, Container)
+        return terra(self : Self, container : Container)
+            for v in self do
+                container:push(v)
+            end
         end
     end
 
@@ -93,12 +117,9 @@ local Unitrange = function(T)
         a : T
         b : T
     }
-
-    range.staticmethods = {}
-
-    range.metamethods.__getmethod = function(self, methodname)
-        return self.methods[methodname] or range.staticmethods[methodname]
-    end
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(range)
 
     local new = terra(a : T, b : T, include_last : bool)
         err.assert((b-a) > 0)
@@ -149,12 +170,9 @@ local Steprange = function(T)
         b : T
         step : T
     }
-
-    range.staticmethods = {}
-
-    range.metamethods.__getmethod = function(self, methodname)
-        return self.methods[methodname] or range.staticmethods[methodname]
-    end
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(range)
 
     local new = terra(a : T, b : T, step : T, include_last : bool)
         err.assert(((b-a) >= 0 and step > 0) or ((b-a) <= 0 and step < 0))
@@ -208,6 +226,9 @@ local FilteredRange = function(Range, Function)
         range : Range
         predicate : Function
     }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(adapter)
 
     --select by value or by reference
     Function.byreference = Function.parameters[1]:ispointer()
@@ -259,6 +280,10 @@ local TransformedRange = function(Range, Function)
         range : Range
         f : Function
     }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(adapter)
+
     local S = Range.state_t
     local T = Function.returntype
 
@@ -305,6 +330,10 @@ local TakeRange = function(Range)
         range : Range
         take : int64
     }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(adapter)
+
     local S = Range.state_t
     local T = Range.value_t
 
@@ -337,6 +366,10 @@ local DropRange = function(Range)
         range : Range
         drop : int64
     }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(adapter)
+
     local S = Range.state_t
     local T = Range.value_t
 
@@ -378,6 +411,9 @@ local TakeWhileRange = function(Range, Function)
         range : Range
         predicate : Function
     }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(adapter)
 
     --select by value or by reference
     Function.byreference = Function.parameters[1]:ispointer()
@@ -421,6 +457,9 @@ local DropWhileRange = function(Range, Function)
         range : Range
         predicate : Function
     }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(adapter)
 
     --select by value or by reference
     Function.byreference = Function.parameters[1]:ispointer()
@@ -587,6 +626,9 @@ end
 local JoinRange = function(Ranges)
 
     local combirange = newcombiner(Ranges, "joiner")
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(combirange)
     local D = #Ranges
 
     --get range types
@@ -600,6 +642,7 @@ local JoinRange = function(Ranges)
         state : S
         index : uint8
     }
+    
 
     terra combirange:getfirst()
         return iterator{self._0:getfirst(), 0}
@@ -665,6 +708,9 @@ end
 local ZipRange = function(Ranges)
   
     local combirange = newcombiner(Ranges, "zip")
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(combirange)
     local D = #Ranges
 
     --get range types
@@ -755,6 +801,9 @@ end
 local ProductRange = function(Ranges)
   
     local combirange = newcombiner(Ranges, "product")
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(combirange)
     local D = #Ranges
 
     local value_t = terralib.newlist{}

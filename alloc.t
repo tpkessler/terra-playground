@@ -6,6 +6,8 @@
 --load 'terralibext' to enable raii
 require "terralibext"
 local interface = require("interface")
+local base = require("base")
+local range = require("range")
 local err = require("assert")
 
 local C = terralib.includecstring[[
@@ -58,8 +60,10 @@ local SmartBlock = terralib.memoize(function(T)
     	alloc : &allochandle    --Handle to opaque allocator object
     }
 
-    --only add setters and getters to the memory if the type
-	--is known (so when its not an opaque type)
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(block)
+
 	--type traits
     block.isblock = true
     block.type = block
@@ -103,6 +107,8 @@ local SmartBlock = terralib.memoize(function(T)
         end
         block.methods.size:setinlined(true)
 
+        --only add setters and getters to the memory if the type
+        --is known (so when its not an opaque type)
         if T~=opaque then
 
             block.methods.get = terra(self : &block, i : size_t)
@@ -124,6 +130,33 @@ local SmartBlock = terralib.memoize(function(T)
                     self.ptr[i]
                 end
             end)
+            
+            --iterator - behaves like a pointer and can be passed
+            --around like a value, convenient for use in ranges.
+            local struct iter{
+                ptr : &T
+            }
+
+            terra block:getfirst()
+                return iter{self.ptr}
+            end
+
+            terra block:getvalue(iter : &iter)
+                return @iter.ptr
+            end
+
+            terra block:next(iter : &iter)
+                iter.ptr = iter.ptr + 1
+            end
+
+            terra block:isvalid(iter : &iter)
+                if not self:isempty() then
+                    return iter.ptr < [&T](self.alloc)
+                end
+                return false
+            end
+            
+            range.Base(block, iter, T)
         end
 
         block.methods.__init = terra(self : &block)
