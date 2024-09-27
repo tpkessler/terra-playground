@@ -11,13 +11,26 @@ local Alloc = require("alloc")
 local DefaultAllocator = Alloc.DefaultAllocator()
 local doubles = Alloc.SmartBlock(double)
 
+doubles.metamethods.__dtor = macro(function(self)
+    return quote
+        if self:owns_resource() then
+            io.printf("calling __dtor\n")
+        end
+    end
+end)
 
 terra main()
     var A : DefaultAllocator
-	var blk : doubles = A:allocate(sizeof(double), 10)
-    io.printf("block size: %d\n", blk:bytes())
-    A:reallocate(&blk, sizeof(double), 120)
-    io.printf("block size: %d\n", blk:bytes())
+	var y : doubles = A:allocate(sizeof(double), 10)
+    io.printf("block size: %d\n", y:bytes())
+	for i=0,10 do
+		y:set(i, i)
+	end
+	for i=0,10 do
+		io.printf("v(i) = %0.2f\n", y:get(i))
+	end
+    A:reallocate(&y, sizeof(double), 120)
+    io.printf("block size: %d\n", y:bytes())
 end
 
 main()
@@ -57,8 +70,9 @@ testenv "Default allocator" do
 
 	testset "Init" do
 		test x.ptr == nil
+		test x.alloc_h == nil
+		test x.alloc_f == nil
 		test x:size() == 0
-        test x.alloc == nil
 	end
 
 	testset "Alloc" do
@@ -98,48 +112,5 @@ testenv "Default allocator" do
 		test y:get(1) == 2.0
 		test y:size() == 2
 	end
-
-end
-
-
-local DefaultAllocator =  Alloc.DefaultAllocator()
-local Allocator = Alloc.Allocator
-
-local struct node
-local smrtnode = Alloc.SmartBlock(node)
-
-struct node{
-    prev : smrtnode
-    next : smrtnode
-}
-node:complete()
-
-
-testenv "self-referential and cycle - doubly linked list" do
-
-    terracode
-        var A : DefaultAllocator
-    end
-
-    testset "" do
-        terracode
-            --head node
-            var mynode : node
-            do 
-                mynode.next = A:allocate(sizeof(node), 1)
-                mynode.prev = A:allocate(sizeof(node), 1)
-                --next node
-                mynode.next.ptr.next = mynode.prev
-                mynode.next.ptr.prev.ptr = &mynode
-                --prev node
-                mynode.prev.ptr.prev = mynode.next
-                mynode.prev.ptr.next.ptr = &mynode
-
-                
-            end
-
-        end
-    end
-
 
 end

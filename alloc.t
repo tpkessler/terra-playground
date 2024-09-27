@@ -34,13 +34,6 @@ local u16 = uint16
 local u32 = uint32
 local u64 = uint64
 
---opaque allocator object with a handle to the concrete 
---allocator instance. 
-local struct allochandle{
-    handle : &opaque        --handle to the allocator instance
-	fhandle : &opaque    	--pointer to its '__allocators_best_friend' method
-}
-
 --abstraction of a memory block. 
 --'Allocators' are factories of 'SmartBlock(opaque)'.
 --'metamethods.__cast' casts 'SmartBlock(opaque)' automatically to 'SmartBlock(T)'.
@@ -51,11 +44,10 @@ local SmartBlock = terralib.memoize(function(T)
     local T = T or opaque
 
     --abstraction of memory block
-    --if T is a primitive type or a terra vector then we may use alignfac to
-    --control the alignment of the memory block using 'alignment = sizeof(T) * alignfac' 
 	local struct block{
     	ptr : &T                --Pointer to the actual data
-    	alloc : &allochandle    --Handle to opaque allocator object
+    	alloc_h : &&opaque      --Handle to opaque allocator object
+        alloc_f : &&opaque      --Funtion handle to allocator's best friend deallocation function
     }
 
     --only add setters and getters to the memory if the type
@@ -76,22 +68,24 @@ local SmartBlock = terralib.memoize(function(T)
             end
         end)
 
+        --block is empty, no resource and no allocator
         block.methods.isempty = terra(self : &block)
-            return self.ptr==nil and self.alloc == nil
+            return self.ptr==nil and self.alloc_h==nil and self.alloc_f==nil
         end
         
         --resource is borrowed, there is no allocator
         block.methods.borrows_resource = terra(self : &block)
-            return self.ptr~=nil and self.alloc == nil
+            return self.ptr~=nil and self.alloc_h~=nil and self.alloc_f==nil
         end
 
+        --resource is owned, there is an allocator
         block.methods.owns_resource = terra(self : &block)
-            return self.ptr~=nil and self.alloc ~= nil
+            return self.ptr~=nil and self.alloc_h~=nil and self.alloc_f~=nil
         end
 
         block.methods.bytes = terra(self : &block) : size_t
             if not self:isempty() then
-                return ([&u8](self.alloc) - [&u8](self.ptr))
+                return ([&u8](self.alloc_h) - [&u8](self.ptr))
             end
             return 0
         end
@@ -103,7 +97,21 @@ local SmartBlock = terralib.memoize(function(T)
         end
         block.methods.size:setinlined(true)
 
-        if T~=opaque then
+        if T==opaque then
+            block.methods.size = terra(self : &block) : size_t
+                return self:bytes()
+            end
+            block.methods.size:setinlined(true)
+        
+        --Add setter and getter if T is a real value, not an opaque type  
+        else
+            block.methods.size = terra(self : &block) : size_t
+                if not self:isempty() then
+                    return ([&T](self.alloc_h) - [&T](self.ptr))
+                end
+                return 0
+            end
+            block.methods.size:setinlined(true)
 
             block.methods.get = terra(self : &block, i : size_t)
                 err.assert(i < self:size())
@@ -126,18 +134,29 @@ local SmartBlock = terralib.memoize(function(T)
             end)
         end
 
+        --initialize to empty block
         block.methods.__init = terra(self : &block)
             self.ptr = nil
-            self.alloc = nil
+            self.alloc_h = nil
+            self.alloc_f = nil
         end
 
         if T==opaque then
             terra block.methods.__dtor(self : &block)
+                --return if block is empty
+                if self:isempty() then
+                    return
+                end
+                --initialize block and return if block borrows a resource
+                if self:borrows_resource() then
+                    self:__init()
+                    return
+                end
                 --using 'self.alloc.fhandle' function pointer to 
                 --deallocate 'self'
-                if not self:isempty() then
-                    var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
-                    free(self.alloc.handle, self, 0)
+                if self:owns_resource() then
+                    var free = [{&opaque, &block, size_t, size_t}->{}](@self.alloc_f)
+                    free(@self.alloc_h, self, 0, 0)
                 end
             end
         else
@@ -154,21 +173,18 @@ local SmartBlock = terralib.memoize(function(T)
                         end
                     end
                 end
-
                 --return if block is empty
                 if self:isempty() then
                     return
                 end
-
-                --reset 'ptr' and return if block is weak
+                --initialize block and return if block borrows a resource
                 if self:borrows_resource() then
-                    self.ptr = nil
+                    self:__init()
                     return
                 end
-            
                 --first get temporary handles to all entries of 'self.ptr' to 
                 --free entry resources (1). Then free current block (2).
-
+                --
                 --(1) get a temporary handle 'tmp' to each of the managed fields 
                 --and add a deferred destructor call. this will destroy all 
                 --managed resources when 'tmp' runs out of scope, using tail 
@@ -187,9 +203,8 @@ local SmartBlock = terralib.memoize(function(T)
                                     emit quote
                                         var tmp = self.ptr.[e.field]
                                         if tmp:borrows_resource() then
-                                            tmp.ptr = nil 
-                                        end
-                                        if not tmp:isempty() then
+                                            tmp:__init()
+                                        elseif tmp:owns_resource() then
                                             defer tmp:__dtor() --deferred call will lead to tail recursion
                                             --of struct entries
                                         end
@@ -205,10 +220,9 @@ local SmartBlock = terralib.memoize(function(T)
                         end
                     end
                 end
-
                 --(2) free current block resources
-                var free = [{&opaque, &block, size_t}->{}](self.alloc.fhandle)
-                free(self.alloc.handle, self, 0)
+                var free = [{&opaque, &block, size_t, size_t}->{}](@self.alloc_f)
+                free(@self.alloc_h, self, 0, 0)
             end
         end
 
@@ -231,7 +245,7 @@ local SmartBlock = terralib.memoize(function(T)
                         --remainder zero after integer division
                         err.assert(blk:bytes() % Size2  == 0)
                     in
-                        B {[&T2](blk.ptr), blk.alloc}
+                        B {[&T2](blk.ptr), blk.alloc_h, blk.alloc_f}
                     end
                 else
                     --passing by reference
@@ -275,14 +289,14 @@ local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
     return  ((size + alignment - 1) / alignment) * alignment
 end
 
-local terra set_allochandle(ptr : &opaque, handle : &opaque, fhandle : &opaque, size : size_t) : &allochandle
-    var sentinal : &allochandle = nil
-    if ptr~=nil then
-        sentinal = [&allochandle]([&byte](ptr) + size)
-        sentinal.handle = handle
-        sentinal.fhandle = fhandle
-    end
-    return sentinal
+local terra set_allochandle(ptr : &opaque, handle : &opaque, fhandle : &opaque, size : size_t)
+    err.assert(ptr ~= nil)
+    --initialize allocator handle
+    var alloc_h = [&&opaque]([&u8](ptr) + size) --initialize address
+    @alloc_h = handle                           --initialize value
+    var alloc_f = alloc_h + 1                   --initialize address
+    @alloc_f = fhandle                          --initialize value
+    return alloc_h, alloc_f
 end
 
 local terra abort_on_error(ptr : &opaque, size : size_t)
@@ -297,7 +311,7 @@ local function AllocatorBase(A, Imp)
 
     terra A:owns(blk : &block) : bool
         if not blk:isempty() then
-            return self == [&A](blk.alloc.handle)
+            return self == [&A](@blk.alloc_h)
         end
         return false
     end
@@ -343,8 +357,8 @@ local function AllocatorBase(A, Imp)
         --these form a sentinal to the memory data, which means they are placed
         --right after the 'size * count' bytes of data, to define memory block 'size'
         if not blk:isempty() then
-            blk.alloc.handle = [&opaque](self)
-            blk.alloc.fhandle = [&opaque](allocators_best_friend)
+            @blk.alloc_h = [&opaque](self)
+            @blk.alloc_f = [&opaque](allocators_best_friend)
         end
         return blk
     end
@@ -378,22 +392,22 @@ local DefaultAllocator = function(options)
     terra Imp.__allocate :: {size_t, size_t} -> {block}
     terra Imp.__reallocate :: {&block, size_t, size_t} -> {}
     terra Imp.__deallocate :: {&block} -> {}
-
+    
     if Alignment == 0 then --use natural alignment
         if not Initialize then
             terra Imp.__allocate(size : size_t, counter : size_t)
                 var ptr = C.malloc(size * counter + 16)
                 __abortonerror(ptr, size * counter)
-                var sen = set_allochandle(ptr, nil, nil, size * counter)
-                return block{ptr, sen}
+                var alloc_h, alloc_f = set_allochandle(ptr, nil, nil, size * counter)
+                return block{ptr, alloc_h, alloc_f}
             end
         else --initialize to zero using 'calloc'
             terra Imp.__allocate(size : size_t, counter : size_t)
                 var newcounter = round_to_aligned(size * counter + 16, size) / size
                 var ptr = C.calloc(newcounter, size)
                 __abortonerror(ptr, size * counter)
-                var sen = set_allochandle(ptr, nil, nil, size * counter)
-                return block{ptr, sen}
+                var alloc_h, alloc_f = set_allochandle(ptr, nil, nil, size * counter)
+                return block{ptr, alloc_h, alloc_f}
             end
         end
     else --use user defined alignment (multiple of 8 bytes)
@@ -401,8 +415,8 @@ local DefaultAllocator = function(options)
             terra Imp.__allocate(size : size_t, counter : size_t)
                 var ptr = C.aligned_alloc(Alignment, round_to_aligned(size * counter + 16, Alignment))
                 __abortonerror(ptr, size * counter)
-                var sen = set_allochandle(ptr, nil, nil, size * counter)
-                return block{ptr, sen}
+                var alloc_h, alloc_f = set_allochandle(ptr, nil, nil, size * counter)
+                return block{ptr, alloc_h, alloc_f}
             end
         else --initialize to zero using 'memset'
             terra Imp.__allocate(size : size_t, counter : size_t)
@@ -410,29 +424,29 @@ local DefaultAllocator = function(options)
                 var ptr = C.aligned_alloc(Alignment, len)
                 __abortonerror(ptr, size * counter)
                 C.memset(ptr, 0, len)
-                var sen = set_allochandle(ptr, nil, nil, size * counter)
-                return block{ptr, sen}
+                var alloc_h, alloc_f = set_allochandle(ptr, nil, nil, size * counter)
+                return block{ptr, alloc_h, alloc_f}
             end
         end
     end
+
 
     if Alignment == 0 then 
         --use natural alignment provided by malloc/calloc/realloc
         --reallocation is done using realloc
         terra Imp.__reallocate(blk : &block, size : size_t, newcounter : size_t)
             err.assert(blk:bytes() % size == 0) --sanity check
-            var newsize = size * newcounter
-            if not blk:isempty() and (blk:bytes() < newsize)  then
-                var handle = blk.alloc.handle
-                var fhandle = blk.alloc.fhandle
-                blk.ptr = C.realloc(blk.ptr, newsize + 16)
-                __abortonerror(blk.ptr, newsize)
-                blk.alloc = set_allochandle(blk.ptr, handle, fhandle, newsize)
+            var newsizebytes = size * newcounter
+            if blk:owns_resource() and (blk:bytes() < newsizebytes)  then
+                var  handle, fhandle = @blk.alloc_h, @blk.alloc_f
+                blk.ptr = C.realloc(blk.ptr, newsizebytes + 16)
+                __abortonerror(blk.ptr, newsizebytes)
+                blk.alloc_h, blk.alloc_f = set_allochandle(blk.ptr, handle, fhandle, newsizebytes)
             end
         end
     else 
         --use user defined alignment (multiple of 8 bytes)
-        --we just use __allocate to get correcly aligned memory
+        --we just use __allocate to get correctly aligned memory
         --and then memcpy
         terra Imp.__reallocate(blk : &block, size : size_t, newcounter : size_t)
             err.assert(blk:bytes() % size == 0) --sanity check
@@ -446,20 +460,20 @@ local DefaultAllocator = function(options)
                     C.memcpy(tmpblk.ptr, blk.ptr, blk:bytes())
                 end
                 --reset allocator handle and function handle
-                tmpblk.alloc = set_allochandle(tmpblk.ptr, blk.alloc.handle, blk.alloc.fhandle, newsize)
+                tmpblk.alloc_h, tmpblk.alloc_f = set_allochandle(blk.ptr, @handle, @fhandle, newsize)
                 --free old resources
                 blk:__dtor()
-                --reset blk.ptr and blk.alloc
-                blk.ptr = tmpblk.ptr; tmpblk.ptr = nil
-                blk.alloc = tmpblk.alloc; tmpblk.alloc = nil
+                --move resources
+                blk.ptr, blk.alloc_h, blk.alloc_f = tmpblk.ptr, tmpblk.alloc_h, tmpblk.alloc_f
+                tmpblk:__init()
             end
         end
     end
 
+    
     terra Imp.__deallocate(blk : &block)
         C.free(blk.ptr)
-        blk.ptr = nil
-        blk.alloc = nil
+        blk:__init()
     end
 
     --local base class
