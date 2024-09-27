@@ -8,93 +8,107 @@ I briefly outline the design of the allocator class in 'alloc.t'
 
 The overall design is based on the following key ideas:
 * A container's `new` method (or any other factory function that returns a certain container object) takes an allocator as an opaque object that implements the allocator interface. This way, the allocator type is not part of the container type, which means that no template parameter is needed to enable generic allocators in containers. This is a serious issue in the c++ standard library where the allocator template parameter needs to be passed along with any container method. For more information on this issue check out the [BDE allocator model](https://github.com/bloomberg/bde/wiki/BDE-Allocator-Model).
-* An abstraction of a memory block that has a notion of its allocator and a notion of its size. It can therefore 'free' its own resource when it runs out of scope or it can ask for additional resources when the current resource is too small. It can also be checked when a resource is borrowed (reference to allocator is nil) or when a resource is owned (reference to allocator is not nil). All is packed in an economical, single-function interface, ispired by 'lua_Alloc'. See also the [allocator API for C](https://nullprogram.com/blog/2023/12/17/).
+* An abstraction of a memory block that has a notion of its allocator and a notion of its size. It can therefore 'free' its own resource when it runs out of scope or it can ask for additional resources when the current resource is too small. It can also be checked when a resource is borrowed (reference to allocator function handle is nil) or when a resource is owned (reference to allocator function handle is not nil). All is packed in an economical, single-function interface, ispired by 'lua_Alloc'. See also the [allocator API for C](https://nullprogram.com/blog/2023/12/17/).
 * Every allocator has an 'owns' method, which enables composable allocators (see Andrei Alexandrescu's talk on [composable allocators in C++](https://www.youtube.com/watch?v=LIb3L4vKZ7U&t=21s)).
 
 
 ## Abstraction of a memory block
-The proposed allocator API is centered around the abstraction of a memory `block`. Rather than only storing a pointer to the data it stores a handle to its allocator as follows.
+The proposed allocator API is centered around the abstraction of a memory `block`. Rather than only storing a pointer to the data it stores a handle to its allocator and allocator/deallocator/reallocator function as follows.
 ```
 local struct block{
     ptr : &T                --Pointer to the actual data
-    alloc : &allochandle    --Handle to opaque allocator object
-}
-
-local struct allochandle{
-    handle : &opaque
-    fhandle : {&opaque, &block, size_t, size_t}->{}
+    alloc_h : &&opaque      --Handle to opaque allocator object
+    alloc_f : &&opaque      --Handle to opaque allocator function pointer
 }
 ```
-`allochandle` contains a handle to the concrete allocator instance and a function pointer `fhandle` that enables 'free', 'allocate' and 'reallocate' in one function. 
+`alloc_h` contains a handle to the concrete allocator instance and  `alloc_f` contains a function pointer that enables 'free', 'allocate' and 'reallocate' in one function.
 
-This turns out to be very powerful. For example, by implementing `__dtor` from the new RAII pull request, the handle to the concrete allocator instance allows the block to be freed automatically when it runs out of scope. Note here the check for an empty block or a borrowed block and, additionally, the optional call to the metamethod `block.metamethods.__dtor` that is useful in testing debugging and introducing side effects in general.
+This turns out to be very powerful. I'll cover the core advantages of this design.
+
+### Ownership
+We can make a distiction between blocks that are empty, ones that borrow a resource and ones that own a resource:
 ```
 block.methods.isempty = terra(self : &block)
-    return self.ptr==nil and self.alloc == nil
+    return self.ptr==nil and self.alloc_h==nil and self.alloc_f==nil
 end
 
 block.methods.borrows_resource = terra(self : &block)
-    return self.ptr~=nil and self.alloc == nil
+    return self.ptr~=nil and self.alloc_h~=nil and self.alloc_f==nil
 end
 
 block.methods.owns_resource = terra(self : &block)
-    return self.ptr~=nil and self.alloc ~= nil
-end
-
-block.methods.__dtor = terra(self : &block)
-
-    --insert metamethods.__dtor if defined, which is used to introduce
-    --side effects (e.g. counting number of calls for the purpose of testing)
-    escape
-        if block.metamethods and block.metamethods.__dtor then
-            emit quote
-                [block.metamethods.__dtor](self)
-            end
-        end
-    end
-
-    if self:isempty() then return end
-
-    if self:borrows_resource() then 
-        self.ptr = nil 
-        return 
-    end
-
-    --run destructors of other smart-blocks that are referenced
-    --by block.ptr (allowing destruction of e.g. linked lists)
-    ...
-    ...
-    ...
-    
-    --when the resource is owned, free the resource
-    self.alloc.fhandle(self.alloc.handle, self, 0, 0)
+    return self.ptr~=nil and self.alloc_h~=nil and self.alloc_f~=nil
 end
 ```
-Similarly, it can allocate (when block is empty) or reallocate itself with the same allocator when requested. I'll get back to the implementation of the function pointer `fhandle` shortly.
-
-The `alloc` pointer serves another purpose. By using the `alloc` pointer as a sentinal to the actual (heap) memory, the size in bytes can be computed simply as the pointer difference of `alloc` and `ptr`:
+Having access to the concrete allocator instance makes it easy to check for an allocator if it 'owns' a memory block. Given an allocator `A` the check is simply
 ```
-block.methods.size_in_bytes = terra(self : &block) : size_t
-    if not self:isempty() then
-        return ([&uint8](self.alloc) - [&uint8](self.ptr))
-    end
-    return 0
-end
-```
-
-Finally, having access to the concrete allocator instance makes it easy to check for an allocator if it 'owns' a memory block. Given an allocator `A` the check is simply
-```
-terra A:owns(blk : block) : bool
+terra A:owns(blk : &block) : bool
     if not blk:isempty() then
-        return self == [&A](blk.alloc.handle)
+        return self == [&A](@blk.alloc_h)
     end
     return false
 end
 ```
 This is powerful, because an `owns` method like this makes it possible to construct allocators that are compositions of others (see the talk of Andrei Alexandrescu on [composable allocators in C++](https://www.youtube.com/watch?v=LIb3L4vKZ7U&t=21s)).
 
-## The allocator interface
-An allocator implements the following interface:
+
+### Deallocation
+By implementing `__dtor` from the new RAII pull request, the handle to the concrete allocator instance allows the block to be freed automatically when it runs out of scope:
+```
+block.methods.__dtor = terra(self : &block)
+
+    if self:isempty() then return end
+    
+    if self:borrows_resource() then
+        self:__init()
+        return
+    end
+
+    --run destructors of other smart-blocks that are referenced
+    --by block.ptr (allowing destruction of e.g. linked lists)
+    --even with cycles.
+    ...
+    ...
+    ...
+    
+    --when the resource is owned, free the resource
+    [{&opaque, &block, size_t, size_t}->{}](@self.alloc_f)(@self.alloc_h, self, 0, 0)
+end
+```
+Similarly, it can allocate (when block is empty) or reallocate itself with the same allocator when requested. I'll get back to the implementation of the function pointer `@self.alloc_f` shortly.
+
+### Copy construction / assignment
+A specialized copy assignment is implemented (from the new RAII pull request) that returns a non-owning view of the data
+```
+block.methods.__copy = terra(from : &block, to : &block)
+    to.ptr = from.ptr
+    to.alloc_h = from.alloc_h
+    to.alloc_f = nil --no allocation function handle, 
+end
+```
+This means that a resource is only owned by a single object, resulting in safe resource management (no double free's, etc).
+
+### Notion of size
+The `alloc_h` pointer serves another purpose. By using the `alloc_h` pointer as a sentinal to the actual (heap) memory, the size in bytes can be computed simply as the pointer difference of `alloc` and `ptr`:
+```
+block.methods.size_in_bytes = terra(self : &block) : size_t
+    if not self:isempty() then
+        return ([&uint8](self.alloc_h) - [&uint8](self.ptr))
+    end
+    return 0
+end
+```
+
+### Typed blocks
+Actually, `block` is generated by a call to the following Lua function:
+```
+local block = SmartBlock(opaque) 
+```
+A `__cast` metamethod is implemented that can cast `block` to any `SmartBlock(T)`, thereby reinterpreting the memory. Such a typed block can be used in containers.
+
+
+## Design of allocators
+Allocators follow a simple design: an allocator implements the following interface:
 ```
 local Allocator = interface.Interface:new{
     allocate = {size_t, size_t} -> {block},
@@ -107,52 +121,54 @@ Interfaces, such as the one here, are essentially opaque objects that are equipe
 
 The interface implementation will be provided as part of this library.
 
-## Implementing a new allocator
+### Implementing a new allocator
 Implementing a new allocator is easy. Given a struct
 ```
-    local myallocator = terralib.newstruct("myallocator")
+local myallocator = terralib.newstruct("myallocator")
 ```
 the following (lowlevel) interface should be implemented:
 ```
-    myallocator.methods.__allocate = {&block, size_t, size_t} -> {}   
-    myallocator.methods.__deallocate = {&block} -> {}
-    myallocator.methods.__reallocate = {&block, size_t, size_t} -> {}
+myallocator.methods.__allocate :: {&block, size_t, size_t, size_t} -> {}   
+myallocator.methods.__deallocate :: {&block} -> {}
+myallocator.methods.__reallocate :: {&block, size_t, size_t, size_t} -> {}
 
 ```
 Finally, by calling the following base class the implementation is completed:
 ```
-    AllocatorBase(myallocator)
+AllocatorBase(myallocator)
 ```
+For an example, please have a look at the corresponding implementation of the `DefaultAllocator` that uses malloc/free.
 
-## The allocator base class
+### The allocator base class
 The allocator base class generates and completes the implementation of `myallocator`. It implements the following basic interfaces
 ```
 function AllocatorBase(A)
 
-    A.methods.owns = {blk : &block} -> bool
+    A.methods.owns :: {&A, blk : &block} -> bool
     
-    A.methods.__fhandle = {&block, size_t, size_t} -> {}
-    local fhandle = constant(A.methods.__fhandle:getpointer())
+    A.methods.__allocators_best_friend :: {&A, &block, size_t, size_t} -> {}
+    
+    local allocators_best_friend = constant(A.methods.__allocators_best_friend:getpointer())
 
-    A.methods.allocate = {size_t, size_t} -> {block}
-    A.methods.deallocate = {&block} -> {}
-    A.methods.reallocate = {&block, size_t, size_t} -> {}
+    A.methods.allocate :: {&A, &block, size_t, size_t} -> {block}
+    A.methods.deallocate :: {&A, &block} -> {}
+    A.methods.reallocate :: {&A, &block, size_t, size_t} -> {}
 
 end
 ```
-We already covered the implementation of `owns`. The implementation of `__fhandle` is also straightforward. It looks like this:
+We already covered the implementation of `owns`. The implementation of `__allocators_best_friend` is also straightforward. It looks like this:
 ```
-terra A:__fhandle(blk : &block, size : size_t, counter : size_t)
+terra A:__allocators_best_friend(blk : &block, size : size_t, counter : size_t)
     var requested_bytes = size * counter
     if blk:isempty() and requested_bytes > 0 then
-        self:__allocate(blk, size, counter)
+        self:allocate(blk, size, counter)
     else
         if requested_bytes == 0 then
             --free memory
-            self:__deallocate(blk)
+            self:deallocate(blk)
         elseif requested_bytes > blk:size_in_bytes() then
             --reallocate memory
-            self:__reallocate(blk, size, counter)
+            self:reallocate(blk, size, counter)
         end
     end
 end
@@ -161,24 +177,19 @@ The idea of wrapping the three key allocator functions in one function is inspir
 
 The variable `fhandle` stores a pointer to this function and can now be used in the implementation of `allocate`, `reallocate` or `free`. Let's look at the `allocate` method:
 ```
-terra A:allocate(size : size_t, count : size_t)    
-    var blk = block{}
-    A:__allocate(&blk, size, count)
-    if not blk:isempty() then
-        blk.alloc.handle = [&opaque](self)
-        blk.alloc.fhandle = [&opaque](allocators_best_friend)
+
+terra A:allocate(blk : &block, size : size_t, counter : size_t)    
+    if blk:isempty() then
+        A:__allocate(&blk, size, counter, 16)
+        blk.alloc_h = [&&opaque]([&u8](blk.ptr) + size * counter)
+        @blk.alloc_h = [&opaque](self)
+        blk.alloc_f = blk.alloc_h + 1
+        @blk.alloc_f = [&opaque](allocators_best_friend)
     end
     return blk
 end
 ```
 The implementation of `__allocate` is specific to each allocator. However, it is required that `__allocate` creates the required buffer of memory for the data ('size * count' bytes) followed by storage of two pointers (2*8 bytes) for the allocator handle and its function pointer. Since the two pointers are placed right after the 'size * count' bytes of data, the memory block 'size' is implicitly defined by a pointer address difference.
-
-## Typed blocks
-Actually, `block` is generated by a call to the following Lua function:
-```
-local block = SmartBlock(opaque) 
-```
-A `__cast` metamethod is implemented that can cast `block` to any `SmartBlock(T)`, thereby reinterpreting the memory. Such a typed block can be used in containers.
 
 ## Use in containers
 Here follows an example of a simple `DynamicStack` class. A couple of interesting things are the following:
@@ -241,16 +252,14 @@ terra main()
 end
 ```
 
-## recursive datastructures
+## Recursive datastructures
 Recursive datastructures, such as linked lists can be implemented using specialized `__dtor`'s and keeping an array of nodes, or, directly, using smart blocks. The implementation of `block` supports automatic destruction of recursive datastructures, and even cycles. Here follows an example of a cyclical double linked list:
 
 ```
 local alloc = require("alloc")
 
-local DefaultAllocator =  alloc.DefaultAllocator()
+local DefaultAllocator = alloc.DefaultAllocator()
 local Allocator = alloc.Allocator
-
-local size_t = uint64
 
 --implementation of double-linked list
 local struct d_node
@@ -283,38 +292,46 @@ struct d_node{
 }
 d_node:complete()
 
-terra d_node:allocate_next(A : Allocator)
+
+smrt_d_node.metamethods.__eq = terra(self : &smrt_d_node, other : &smrt_d_node)
+    if not self:isempty() and not other:isempty() then
+        return self.ptr == other.ptr
+    end
+    return false
+end
+
+terra smrt_d_node:allocate_next(A : Allocator)
     self.next = A:allocate(sizeof(d_node), 1)
     self.next.index = self.index + 1
-    self.next.prev.ptr = self
+    self.next.prev = self --create a view
 end
 
-terra d_node:set_next(next : &d_node)
-    self.next.ptr = next
+terra smrt_d_node:set_next(next : &smrt_d_node)
+    self.next = next  --create a view
 end
 
-terra d_node:set_prev(prev : &d_node)
-    self.prev.ptr = prev
+terra smrt_d_node:set_prev(prev : &smrt_d_node)
+    self.prev = prev  --create a view
 end
 
 terra main()
     smrt_d_node_dtor_counter = 0
     do
         --define head node
-        var head : d_node
+        var head : smrt_d_node = A:allocate(sizeof(d_node), 1)
         head.index = 0
         --make allocations
         head:allocate_next(&A)  --node 1
         head.next:allocate_next(&A) --node 2
         head.next.next:allocate_next(&A) --node 3
         --close loop
-        head:set_prev(head.next.next.next.ptr)
+        head:set_prev(&head.next.next.next)
         head.next.next.next:set_next(&head) --node 3
     end
     return smrt_d_node_dtor_counter
 end
---check that destructor is called three times
-assert(main() == 3) 
+--check that destructor is called four times
+assert(main() == 4) 
 ```
 
 ## To do:
