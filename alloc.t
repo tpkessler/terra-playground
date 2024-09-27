@@ -34,11 +34,19 @@ local u16 = uint16
 local u32 = uint32
 local u64 = uint64
 
---abstraction of a memory block. 
---'Allocators' are factories of 'SmartBlock(opaque)'.
---'metamethods.__cast' casts 'SmartBlock(opaque)' automatically to 'SmartBlock(T)'.
---'SmartBlock(T)' for a concrete type 'T' can be used as a smart pointer in containers.
---'methods.__init' and 'methods.__dtor' enable RAII
+--SmartBlock(T) is an abstraction of a memory block with smart pointer behavior.
+--it implements __init, __copy, and __dtor enabling RAII
+--
+--Allocators are factories for objects of type SmartBlock(opaque). 
+--SmartBlock(T) objects for a concrete type 'T' are obtained via a cast from
+--SmartBlock(opaque) and can be used as a smart pointer in containers.
+--
+--__init initializes all pointers to nil
+--__copy returns a non-owning view
+--__dtor frees owned resources if present
+--__dtor for SmartBlock(T) of concrete type 'T' recursively frees resources of 
+--of all variables pointed to in the resource. This enables implementation of 
+--tree data structures, and even cycles.
 local SmartBlock = terralib.memoize(function(T)
 
     local T = T or opaque
@@ -50,8 +58,6 @@ local SmartBlock = terralib.memoize(function(T)
         alloc_f : &&opaque      --Funtion handle to allocator's best friend deallocation function
     }
 
-    --only add setters and getters to the memory if the type
-	--is known (so when its not an opaque type)
 	--type traits
     block.isblock = true
     block.type = block
@@ -74,6 +80,7 @@ local SmartBlock = terralib.memoize(function(T)
         end
         
         --resource is borrowed, there is no allocator
+        --this represents a view of the data
         block.methods.borrows_resource = terra(self : &block)
             return self.ptr~=nil and self.alloc_h~=nil and self.alloc_f==nil
         end
@@ -153,24 +160,13 @@ local SmartBlock = terralib.memoize(function(T)
             return block{self.ptr, self.alloc_h, self.alloc_f}
         end
 
-        --exact clone of the block
+        --pass further as an rvalue
         block.methods.move = terra(self : &block)
             return self
         end
 
-
         if T==opaque then
             terra block.methods.__dtor(self : &block)
-                --insert metamethods.__dtor if defined, which is used to introduce
-                --side effects (e.g. counting number of calls for the purpose of testing)
-                C.printf("calling __dtor for block\n")
-                escape
-                    if block.metamethods and block.metamethods.__dtor then
-                        emit quote
-                            [block.metamethods.__dtor](self)
-                        end
-                    end
-                end
                 --return if block is empty
                 if self:isempty() then
                     return
@@ -334,7 +330,7 @@ local terra abort_on_error(ptr : &opaque, size : size_t)
     end
 end
 
-
+--Base class to facilitate implementation of allocators.
 local function AllocatorBase(A, Imp)
 
     terra A:owns(blk : &block) : bool
@@ -346,9 +342,9 @@ local function AllocatorBase(A, Imp)
 
     --single method that can free and reallocate memory
     --this method is similar to the 'lua_Alloc' function,
-    --although we don't allow allocation here. 
+    --although we don't allow allocation here (yet). 
     --see also 'https://nullprogram.com/blog/2023/12/17/'
-    --a pointer to this method is set to block.alloc.fhandle
+    --a pointer to this method is set to block.alloc_f
     terra A:__allocators_best_friend(blk : &block, size : size_t, counter : size_t)
         var requested_bytes = size * counter
         if not blk:isempty() then
@@ -393,8 +389,7 @@ local function AllocatorBase(A, Imp)
 
 end
 
-
-
+--implementation of the default allocator using malloc and free.
 local DefaultAllocator = function(options)
 
     --get input options
