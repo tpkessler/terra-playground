@@ -45,18 +45,24 @@ local function Base(block, T)
         return self.ptr~=nil and self.alloc.data~=nil
     end
 
-    block.methods.size = terra(self : &block) : size_t
-        return self.size
+    block.methods.size_in_bytes = terra(self : &block) : size_t
+        return self.nbytes
     end
 
-    block.methods.size_in_bytes = terra(self : &block) : size_t
-        return self.size * [block.elsize]
+    if T==opaque then
+        block.methods.size = terra(self : &block) : size_t
+            return self.nbytes
+        end
+    else
+        block.methods.size = terra(self : &block) : size_t
+            return self.nbytes / [block.elsize]
+        end
     end
 
     --initialize to empty block
     block.methods.__init = terra(self : &block)
         self.ptr = nil
-        self.size = 0
+        self.nbytes = 0
         self.alloc.data = nil
         self.alloc.tab = nil
     end
@@ -64,7 +70,7 @@ local function Base(block, T)
     --specialized copy-assignment, returning a non-owning view of the data
     block.methods.__copy = terra(from : &block, to : &block)
         to.ptr = from.ptr
-        to.size = from.size
+        to.nbytes = from.nbytes
         --no allocator
         to.alloc.data = nil
         to.alloc.tab = nil
@@ -72,7 +78,7 @@ local function Base(block, T)
 
     --exact clone of the block
     block.methods.clone = terra(self : &block)
-        return block{self.ptr, self.size, self.alloc}
+        return block{self.ptr, self.nbytes, self.alloc}
     end
 
 end
@@ -86,7 +92,7 @@ local __Allocator = interface.Interface:new{
 
 struct block{
     ptr : &opaque
-    size : size_t
+    nbytes : size_t
     alloc : __Allocator
 }
 
@@ -112,7 +118,7 @@ local SmartBlock = terralib.memoize(function(T)
 
     local struct block{
         ptr : &T
-        size : size_t
+        nbytes : size_t
         alloc : __Allocator
     }
 
@@ -151,7 +157,7 @@ local SmartBlock = terralib.memoize(function(T)
                         ptr = ptr + 1
                     end
                 in
-                    [to.type]{[&to.eltype](tmp.ptr), size, tmp.alloc}
+                    [to.type]{[&to.eltype](tmp.ptr), tmp.nbytes, tmp.alloc}
                 end
             --simple case when to.eltype is not managed
             else
@@ -160,9 +166,8 @@ local SmartBlock = terralib.memoize(function(T)
                     --debug check if sizes are compatible, that is, is the
                     --remainder zero after integer division
                     err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
-                    var size = tmp:size_in_bytes() / [to.elsize]
                 in
-                    [to.type]{[&to.eltype](tmp.ptr), size, tmp.alloc}
+                    [to.type]{[&to.eltype](tmp.ptr), tmp.nbytes, tmp.alloc}
                 end
             end
         else
@@ -173,7 +178,6 @@ local SmartBlock = terralib.memoize(function(T)
                 --that __copy is not called
                 var blk = exp:__forward()
                 err.assert(blk:size_in_bytes() % [to.elsize]  == 0)
-                blk.size = blk:size_in_bytes() / [to.elsize]
             in
                 [&to.type](blk)
             end
@@ -232,7 +236,7 @@ local SmartBlock = terralib.memoize(function(T)
                 if ismanaged{type=T,method="__dtor"} then
                     emit quote
                         var ptr = self.ptr
-                        for i = 0, self.size do
+                        for i = 0, self:size() do
                             ptr:__dtor()
                             ptr = ptr + 1
                         end

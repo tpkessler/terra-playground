@@ -149,8 +149,8 @@ local DefaultAllocator = function(options)
                 var size = elsize * counter
                 var newcounter = round_to_aligned(size, elsize) / elsize
                 var ptr = C.calloc(newcounter, elsize)
-                __abortonerror(ptr, elsize)
-                return block{ptr, elsize}
+                __abortonerror(ptr, size)
+                return block{ptr, size}
             end
         end
     else --use user defined alignment (multiple of 8 size_in_bytes)
@@ -181,7 +181,7 @@ local DefaultAllocator = function(options)
             var newsize = elsize * newcounter
             if blk:owns_resource() and (blk:size_in_bytes() < newsize)  then
                 blk.ptr = C.realloc(blk.ptr, newsize)
-                blk.size = newcounter
+                blk.nbytes = newsize
                 __abortonerror(blk.ptr, newsize)
             end
         end
@@ -204,7 +204,7 @@ local DefaultAllocator = function(options)
                 blk:__dtor()
                 --move resources
                 blk.ptr = tmpblk.ptr
-                blk.size = newcounter
+                blk.nbytes = newsize
                 blk.alloc = tmpblk.alloc
                 tmpblk:__init()
             end

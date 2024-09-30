@@ -45,7 +45,7 @@ testenv "Block - Default allocator" do
 			var x : alloc.block
 		end
 		test x.ptr == nil
-		test x.size == 0
+		test x.nbytes == 0
 		test x.alloc.data == nil
         test x.alloc.tab == nil
 		test x:size() == 0
