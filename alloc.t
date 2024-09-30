@@ -34,25 +34,6 @@ local u16 = uint16
 local u32 = uint32
 local u64 = uint64
 
---[[
-
---generate managed operations for managed types S
-local function ismanaged(S)
-    if not S:isstruct() then
-        return false
-    end
-    local ismanaged = false
-    terralib.ext.addmissing.__init(S)
-    terralib.ext.addmissing.__dtor(S)
-    terralib.ext.addmissing.__copy(S)
-    if S.methods.__init or S.methods.__dtor or S.methods.__copy then
-        ismanaged = true
-    end
-    return ismanaged
-end
-
---]]
-
 local function ismanaged(args)
     local T, method = args.type, args.method
     if not T:isstruct() then
@@ -523,7 +504,6 @@ local DefaultAllocator = function(options)
             end
         end
     end
-
     
     terra Imp.__deallocate(blk : &block)
         C.free(blk.ptr)
