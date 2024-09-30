@@ -35,25 +35,6 @@ local u32 = uint32
 local u64 = uint64
 
 --[[
---generate managed operations for managed types S
-local function ismanaged(S)
-    if not S:isstruct() then
-        return false
-    end
-    local ismanaged = false
-    for _,e in ipairs(S:getentries()) do
-        if e.field and e.type:isstruct() then
-            terralib.ext.addmissing.__init(e.type)
-            terralib.ext.addmissing.__dtor(e.type)
-            terralib.ext.addmissing.__copy(e.type)
-            if e.type.methods.__init then
-                ismanaged = true
-            end
-        end
-    end
-    return ismanaged
-end
---]]
 
 --generate managed operations for managed types S
 local function ismanaged(S)
@@ -68,6 +49,20 @@ local function ismanaged(S)
         ismanaged = true
     end
     return ismanaged
+end
+
+--]]
+
+local function ismanaged(args)
+    local T, method = args.type, args.method
+    if not T:isstruct() then
+        return false
+    end
+    terralib.ext.addmissing[method](T)
+    if T.methods[method] then
+        return true
+    end
+    return false
 end
 
 --SmartBlock(T) is an abstraction of a memory block with smart pointer behavior.
@@ -248,7 +243,7 @@ local SmartBlock = terralib.memoize(function(T)
                 --optimize this.
                 --ToDo: change recursion into a loop
                 escape
-                    if ismanaged(T) then
+                    if ismanaged{type=T,method="__dtor"} then
                         emit quote
                             var ptr = self.ptr --ToDo implement a forward
                             repeat
@@ -286,7 +281,7 @@ local SmartBlock = terralib.memoize(function(T)
             --perform cast
             if byvalue then
                 --case when to.eltype is a managed type
-                if ismanaged(to.eltype) then
+                if ismanaged{type=to.eltype, method="__init"} then
                     return quote
                         var tmp = exp
                         --debug check if sizes are compatible, that is, is the
@@ -314,8 +309,9 @@ local SmartBlock = terralib.memoize(function(T)
                 end
             else
                 --passing by reference
+                terralib.ext.addmissing.__forward(from.type)
                 return quote
-                    var blk = exp:move() --var blk = exp invokes __copy, so we turn exp into an rvalue
+                    var blk = exp:__forward() --var blk = exp invokes __copy, so we turn exp into an rvalue
                     err.assert(blk:size_in_bytes() % [to.elsize]  == 0)
                 in
                     [&to.type](blk)
