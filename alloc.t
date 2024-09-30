@@ -34,6 +34,7 @@ local u16 = uint16
 local u32 = uint32
 local u64 = uint64
 
+--[[
 --generate managed operations for managed types S
 local function ismanaged(S)
     if not S:isstruct() then
@@ -49,6 +50,22 @@ local function ismanaged(S)
                 ismanaged = true
             end
         end
+    end
+    return ismanaged
+end
+--]]
+
+--generate managed operations for managed types S
+local function ismanaged(S)
+    if not S:isstruct() then
+        return false
+    end
+    local ismanaged = false
+    terralib.ext.addmissing.__init(S)
+    terralib.ext.addmissing.__dtor(S)
+    terralib.ext.addmissing.__copy(S)
+    if S.methods.__init or S.methods.__dtor or S.methods.__copy then
+        ismanaged = true
     end
     return ismanaged
 end
@@ -179,9 +196,6 @@ local SmartBlock = terralib.memoize(function(T)
             return self
         end
 
-        --if T is managed then generate __init, __copy, __dtor
-        block.ismanaged = ismanaged(T)
-
         if T==opaque then
             terra block.methods.__dtor(self : &block)
                 --return if block is empty
@@ -201,10 +215,11 @@ local SmartBlock = terralib.memoize(function(T)
             end
         else
 
-            --declaring terra function for use in recursion
+            --declaring __dtor for use in implementation below
             terra block.methods.__dtor :: {&block} -> {}
-
-            terra block.methods.__dtor(self : &block)
+            
+            --implementation __dtor
+            local terra __dtor(self : &block)
                 --insert metamethods.__dtor if defined, which is used to introduce
                 --side effects (e.g. counting number of calls for the purpose of testing)
                 escape
@@ -233,35 +248,23 @@ local SmartBlock = terralib.memoize(function(T)
                 --optimize this.
                 --ToDo: change recursion into a loop
                 escape
-                    if block.ismanaged then
-                        for _,e in ipairs(T:getentries()) do
-                            if e.field and e.type:isstruct() then
-                                --if managed variable, then call destructor
-                                if e.type.methods.__dtor then
-                                    if e.type.methods.borrows_resource and e.type.methods.owns_resource then
-                                        emit quote
-                                            var tmp = self.ptr.[e.field]:move()
-                                            if tmp:borrows_resource() then
-                                                tmp:__init()
-                                            elseif tmp:owns_resource() then
-                                                defer tmp:__dtor() --deferred call will lead to tail recursion
-                                                --of struct entries
-                                            end
-                                        end
-                                    else
-                                        emit quote
-                                            var tmp = self.ptr.[e.field]:move()
-                                            defer tmp:__dtor() --deferred call will lead to tail recursion
-                                            --of struct entries
-                                        end
-                                    end
-                                end
-                            end
+                    if ismanaged(T) then
+                        emit quote
+                            var ptr = self.ptr --ToDo implement a forward
+                            repeat
+                                ptr:__dtor()
+                                ptr = ptr + 1
+                            until [&&opaque](ptr)==self.alloc_h
                         end
                     end
                 end
                 --(2) free current block resources
                 [fhandle_signature](@self.alloc_f)(@self.alloc_h, self, 0, 0)
+            end
+
+            --call implementation
+            terra block.methods.__dtor(self : &block)
+                __dtor(self)
             end
         end
 
@@ -283,7 +286,7 @@ local SmartBlock = terralib.memoize(function(T)
             --perform cast
             if byvalue then
                 --case when to.eltype is a managed type
-                if to.ismanaged then
+                if ismanaged(to.eltype) then
                     return quote
                         var tmp = exp
                         --debug check if sizes are compatible, that is, is the
@@ -292,16 +295,7 @@ local SmartBlock = terralib.memoize(function(T)
                         --loop over all elements of blk and initialize their entries 
                         var ptr = [&to.eltype](tmp.ptr)
                         repeat
-                            escape
-                                for _,e in ipairs(to.eltype:getentries()) do
-                                    if e.field and e.type:isstruct() then
-                                        if e.type.methods.__init then
-                                            emit quote ptr.[e.field]:__init() end
-                                        end
-                                    end
-                                end
-                            end
-                            --next
+                            ptr:__init()
                             ptr = ptr + 1
                         until [&&opaque](ptr)==tmp.alloc_h
                     in
