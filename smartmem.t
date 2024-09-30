@@ -111,6 +111,7 @@ terra block.methods.__dtor(self : &block)
         self.alloc:__allocators_best_friend(self, 0, 0)
     end
 end
+block:complete()
 
 
 --abstraction of a memory block with type information.
