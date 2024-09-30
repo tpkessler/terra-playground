@@ -3,6 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
+local io = terralib.includec("stdio.h")
 import "terratest/terratest"
 
 local alloc = require("alloc")
@@ -44,8 +45,9 @@ testenv "Block - Default allocator" do
 			var x : alloc.block
 		end
 		test x.ptr == nil
-		test x.alloc_h == nil
-		test x.alloc_f == nil
+		test x.size == 0
+		test x.alloc.data == nil
+        test x.alloc.tab == nil
 		test x:size() == 0
 		test x:isempty()
 	end
@@ -56,8 +58,8 @@ testenv "Block - Default allocator" do
 			var y = x
 		end
 		test y.ptr == x.ptr
-		test y.alloc_h == x.alloc_h
-		test y.alloc_f == nil
+		test y.alloc.data == nil
+        test y.alloc.tab == nil
 		test y:size_in_bytes() == 16
 		test x:owns_resource() and y:borrows_resource()
 	end
@@ -68,8 +70,8 @@ testenv "Block - Default allocator" do
 			x:__dtor()
 		end
 		test x.ptr == nil
-		test x.alloc_h == nil
-		test x.alloc_f == nil
+		test x.alloc.data == nil
+		test x.alloc.tab == nil
 		test x:size() == 0
 		test x:isempty()
 	end
@@ -109,8 +111,8 @@ testenv "Block - Default allocator" do
 			A:deallocate(&x)
 		end
 		test x.ptr == nil
-		test x.alloc_h == nil
-		test x.alloc_f == nil
+		test x.alloc.data == nil
+		test x.alloc.tab == nil
 		test x:size() == 0
 		test x:isempty()
 	end
@@ -122,6 +124,7 @@ testenv "Block - Default allocator" do
 				y:set(i, i)
 			end
 			A:reallocate(&y, sizeof(double), 5)
+            io.printf("size y: %d\n", y:size())
 		end
 		test y:size() == 5
 		for i=0,2 do
