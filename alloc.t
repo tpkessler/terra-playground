@@ -25,14 +25,14 @@ if rawget(C, "stdout") == nil and rawget(C, "__stdoutp") ~= nil then
 end 
 
 local interface = require("interface")
-local block = require("block")
+local smartmem = require("smartmem")
 local err = require("assert")
 
 local size_t = uint64
 
 --abstraction of opaque memory block used by allocators.
 --allocators are factories for block
-local block = block.block
+local block = smartmem.block
 
 --allocator interface:
 --'allocate' or 'deallocate' a memory block
@@ -229,10 +229,9 @@ local DefaultAllocator = function(options)
     return default
 end
 
-
 return {
-    block = block.block,
-    SmartBlock = block.SmartBlock,
+    block = smartmem.block,
+    SmartBlock = smartmem.SmartBlock,
     Allocator = Allocator,
     AllocatorBase = AllocatorBase,
     DefaultAllocator = DefaultAllocator
