@@ -34,6 +34,25 @@ local u16 = uint16
 local u32 = uint32
 local u64 = uint64
 
+--generate managed operations for managed types S
+local function ismanaged(S)
+    if not S:isstruct() then
+        return false
+    end
+    local ismanaged = false
+    for _,e in ipairs(S:getentries()) do
+        if e.field and e.type:isstruct() then
+            terralib.ext.addmissing.__init(e.type)
+            terralib.ext.addmissing.__dtor(e.type)
+            terralib.ext.addmissing.__copy(e.type)
+            if e.type.methods.__init then
+                ismanaged = true
+            end
+        end
+    end
+    return ismanaged
+end
+
 --SmartBlock(T) is an abstraction of a memory block with smart pointer behavior.
 --it implements __init, __copy, and __dtor enabling RAII
 --
@@ -62,19 +81,12 @@ local SmartBlock = terralib.memoize(function(T)
     block.isblock = true
     block.type = block
     block.eltype = T
-
+                    
     local fhandle_signature = {&opaque, &block, size_t, size_t}->{}
 
     function block.metamethods.__staticinitialize(self)
 
-        -- sizeof(T) if T is a concrete type
-        block.methods.elsize = macro(function()
-            if T==opaque then
-                return `1
-            else
-                return `sizeof(T)
-            end
-        end)
+        block.elsize = T==opaque and 1 or sizeof(T)
 
         --block is empty, no resource and no allocator
         block.methods.isempty = terra(self : &block)
@@ -101,8 +113,8 @@ local SmartBlock = terralib.memoize(function(T)
         block.methods.size_in_bytes:setinlined(true)
 
         block.methods.size = terra(self : &block) : size_t
-            err.assert(self:size_in_bytes() % self:elsize() == 0) 
-            return self:size_in_bytes() / self:elsize()
+            err.assert(self:size_in_bytes() % [block.elsize] == 0) 
+            return self:size_in_bytes() / [block.elsize]
         end
         block.methods.size:setinlined(true)
 
@@ -167,6 +179,9 @@ local SmartBlock = terralib.memoize(function(T)
             return self
         end
 
+        --if T is managed then generate __init, __copy, __dtor
+        block.ismanaged = ismanaged(T)
+
         if T==opaque then
             terra block.methods.__dtor(self : &block)
                 --return if block is empty
@@ -185,6 +200,7 @@ local SmartBlock = terralib.memoize(function(T)
                 end
             end
         else
+
             --declaring terra function for use in recursion
             terra block.methods.__dtor :: {&block} -> {}
 
@@ -217,28 +233,27 @@ local SmartBlock = terralib.memoize(function(T)
                 --optimize this.
                 --ToDo: change recursion into a loop
                 escape
-                    local entries = T:isstruct() and T:getentries() or {}
-                    for _,e in ipairs(entries) do
-                        if e.field and e.type:isstruct() then
-                            --add missing __dtor method if needed
-                            terralib.ext.addmissing.__dtor(e.type)
-                            --if managed variable, then call destructor
-                            if e.type.methods.__dtor then
-                                if e.type.methods.borrows_resource and e.type.methods.owns_resource then
-                                    emit quote
-                                        var tmp = self.ptr.[e.field]:move()
-                                        if tmp:borrows_resource() then
-                                            tmp:__init()
-                                        elseif tmp:owns_resource() then
+                    if block.ismanaged then
+                        for _,e in ipairs(T:getentries()) do
+                            if e.field and e.type:isstruct() then
+                                --if managed variable, then call destructor
+                                if e.type.methods.__dtor then
+                                    if e.type.methods.borrows_resource and e.type.methods.owns_resource then
+                                        emit quote
+                                            var tmp = self.ptr.[e.field]:move()
+                                            if tmp:borrows_resource() then
+                                                tmp:__init()
+                                            elseif tmp:owns_resource() then
+                                                defer tmp:__dtor() --deferred call will lead to tail recursion
+                                                --of struct entries
+                                            end
+                                        end
+                                    else
+                                        emit quote
+                                            var tmp = self.ptr.[e.field]:move()
                                             defer tmp:__dtor() --deferred call will lead to tail recursion
                                             --of struct entries
                                         end
-                                    end
-                                else
-                                    emit quote
-                                        var tmp = self.ptr.[e.field]:move()
-                                        defer tmp:__dtor() --deferred call will lead to tail recursion
-                                        --of struct entries
                                     end
                                 end
                             end
@@ -252,35 +267,67 @@ local SmartBlock = terralib.memoize(function(T)
 
         -- Cast block of one type to another
         function block.metamethods.__cast(from, to, exp)
-            local pass_by_value = true
-            if from:ispointertostruct() and to:ispointertostruct() then
-                to, from = to.type, from.type
-                pass_by_value = false
-            end 
-            if to.isblock and from.isblock then
-                local B = to.type
-                local T2 = to.eltype
-                local Size2 = T2==opaque and 1 or sizeof(T2)
-                if pass_by_value then
-                    --passing by value
+            local function passbyvalue(to, from)
+                if from:ispointertostruct() and to:ispointertostruct() then
+                    return false, to.type, from.type
+                end
+                return true, to, from
+            end
+            --process types
+            local byvalue, to, from = passbyvalue(to, from)        
+            --exit early if types do not match
+            if not to.isblock or not from.isblock then
+                error("Arguments to cast need to be of generic type SmartBlock")
+            end
+            
+            --perform cast
+            if byvalue then
+                --case when to.eltype is a managed type
+                if to.ismanaged then
                     return quote
-                        var blk = exp
+                        var tmp = exp
                         --debug check if sizes are compatible, that is, is the
                         --remainder zero after integer division
-                        err.assert(blk:size_in_bytes() % Size2  == 0)
+                        err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
+                        --loop over all elements of blk and initialize their entries 
+                        var ptr = [&to.eltype](tmp.ptr)
+                        repeat
+                            escape
+                                for _,e in ipairs(to.eltype:getentries()) do
+                                    if e.field and e.type:isstruct() then
+                                        if e.type.methods.__init then
+                                            emit quote ptr.[e.field]:__init() end
+                                        end
+                                    end
+                                end
+                            end
+                            --next
+                            ptr = ptr + 1
+                        until [&&opaque](ptr)==tmp.alloc_h
                     in
-                        B {[&T2](blk.ptr), blk.alloc_h, blk.alloc_f}
+                        [to.type]{[&to.eltype](tmp.ptr), tmp.alloc_h, tmp.alloc_f}
                     end
+                --simple case when to.eltype is not managed
                 else
-                    --passing by reference
                     return quote
-                        var blk = exp:move() --var blk = exp invokes __copy, so we turn exp into an rvalue
-                        err.assert(blk:size_in_bytes() % Size2  == 0)
+                        var tmp = exp
+                        --debug check if sizes are compatible, that is, is the
+                        --remainder zero after integer division
+                        err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
                     in
-                        [&B](blk)
+                        [to.type]{[&to.eltype](tmp.ptr), tmp.alloc_h, tmp.alloc_f}
                     end
                 end
+            else
+                --passing by reference
+                return quote
+                    var blk = exp:move() --var blk = exp invokes __copy, so we turn exp into an rvalue
+                    err.assert(blk:size_in_bytes() % [to.elsize]  == 0)
+                in
+                    [&to.type](blk)
+                end
             end
+        
         end
 
     end
