@@ -16,6 +16,7 @@ local size_t = uint64
 local DynamicStack = terralib.memoize(function(T)
 
     local S = alloc.SmartBlock(T) --typed memory block
+    S:complete() --always complete the implementation of SmartBlock
 
     local struct stack{
         data : S
