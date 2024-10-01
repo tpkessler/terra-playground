@@ -4,10 +4,13 @@
 -- SPDX-License-Identifier: MIT
 
 require "terralibext"
+local base = require("base")
 local interface = require("interface")
+local range = require("range")
 local err = require("assert")
 
 local size_t = uint64
+local u8 = uint8
 
 local function ismanaged(args)
     local T, method = args.type, args.method
@@ -188,6 +191,10 @@ local SmartBlock = terralib.memoize(function(T)
 
     function block.metamethods.__staticinitialize(self)
 
+        --add methods, staticmethods and templates tablet and template fallback mechanism 
+        --allowing concept-based function overloading at compile-time
+        base.AbstractBase(block)
+
         --add base functionality
         Base(block, T)
 
@@ -209,6 +216,31 @@ local SmartBlock = terralib.memoize(function(T)
                 self.ptr[i]
             end
         end)
+
+        --iterator - behaves like a pointer and can be passed
+        --around like a value, convenient for use in ranges.
+        local struct iter{
+            ptr : &T
+        }
+
+        terra block:getfirst()
+            return iter{self.ptr}
+        end
+
+        terra block:getvalue(iter : &iter)
+            return @iter.ptr
+        end
+
+        terra block:next(iter : &iter)
+            iter.ptr = iter.ptr + 1
+        end
+
+        terra block:isvalid(iter : &iter)
+            return (iter.ptr - self.ptr) * [block.elsize] < self.nbytes
+        end
+        
+        range.Base(block, iter, T)
+
 
         --declaring __dtor for use in implementation below
         terra block.methods.__dtor :: {&block} -> {}

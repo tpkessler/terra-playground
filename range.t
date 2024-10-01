@@ -108,7 +108,7 @@ local RangeBase = function(Range, Iter_t, T)
             end
         end
     end
-    --containers that only implement the setter interface arte using 'set'. Sufficient
+    --containers that only implement the setter interface are using 'set'. Sufficient
     --space needs to be allocated before
     Range.templates.collect[{&Range.Self, &Setter} -> {}] = function(Self, Container)
         return terra(self : Self, container : Container)
