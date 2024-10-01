@@ -186,7 +186,6 @@ local SmartBlock = terralib.memoize(function(T)
         print("trying cast")
     end --__cast
 
-
     function block.metamethods.__staticinitialize(self)
 
         --add base functionality
@@ -204,7 +203,11 @@ local SmartBlock = terralib.memoize(function(T)
         end
 
         block.metamethods.__apply = macro(function(self, i)
-            return `self:get(i)
+            return quote
+                err.assert(i < self:size())
+            in
+                self.ptr[i]
+            end
         end)
 
         --declaring __dtor for use in implementation below
