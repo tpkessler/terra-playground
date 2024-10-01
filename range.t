@@ -76,6 +76,15 @@ local RangeBase = function(Range, Iter_t, T)
         end
     end)
 
+    --always extract a value type into the body of the loop
+    local extract = function(value) 
+        if value.type:ispointer() then
+            return `@value
+        else
+            return `value
+        end
+    end
+
     --__for is generated for iterators
     Range.metamethods.__for = function(self,body)
         return quote
