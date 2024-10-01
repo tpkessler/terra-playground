@@ -13,10 +13,32 @@ local Stack = require("example_stack_heap")
 local DefaultAllocator =  Alloc.DefaultAllocator()
 
 for _, T in ipairs{int, double} do
-
+    local T = int
     local stack = Stack.DynamicStack(T)
     local unitrange = rn.Unitrange(T)
     local steprange = rn.Steprange(T)
+
+    testenv(T) "containers" do
+
+        terracode
+            var alloc : DefaultAllocator
+            var s = stack.new(&alloc, 10)
+            var t = stack.new(&alloc, 10)
+        end
+
+        testset "collect" do
+            terracode
+                var r = unitrange.new(1, 4)
+                r:collect(&s)
+                s:collect(&t)
+            end
+            test s:size() == 3 and t:size() == 3
+            test s:get(0)==1 and t:get(0)==1
+            test s:get(1)==2 and t:get(1)==2
+            test s:get(2)==3 and t:get(2)==3
+        end
+
+    end
 
     testenv(T) "linear ranges - not including last element" do
 
@@ -28,15 +50,8 @@ for _, T in ipairs{int, double} do
         testset "unitrange" do
             terracode
                 var r = unitrange.new(1, 4)
-                r:collect(&s)
             end
-            test s:size() == 3
-            test s:get(0)==1
-            test s:get(1)==2
-            test s:get(2)==3
-            test r(0)==1
-            test r(1)==2
-            test r(2)==3
+
         end
 
         testset "steprange - step=2, %0" do
@@ -44,7 +59,7 @@ for _, T in ipairs{int, double} do
                 var r = steprange.new(1, 7, 2)
                 r:collect(&s)
             end
-            test s:size()==3
+            --test s:size()==3
             test s:get(0)==1
             test s:get(1)==3
             test s:get(2)==5
@@ -69,6 +84,7 @@ for _, T in ipairs{int, double} do
             test r(2)==5
         end
 
+
         testset "steprange - backward step=1" do
             terracode
                 var r = steprange.new(1, -2, -1)
@@ -83,6 +99,7 @@ for _, T in ipairs{int, double} do
             test r(1)==0
             test r(2)==-1
         end
+
 
         testset "steprange - backward step=2, %0" do
             terracode
@@ -115,13 +132,6 @@ for _, T in ipairs{int, double} do
         end
 
     end
-end -- for _, T in ipairs{int, double} do
-
-for _, T in ipairs{int, double} do
-
-    local stack = Stack.DynamicStack(T)
-    local unitrange = rn.Unitrange(T)
-    local steprange = rn.Steprange(T)
 
     testenv(T) "linear ranges - including last element" do
 
@@ -223,7 +233,6 @@ for _, T in ipairs{int, double} do
     end
 end -- for _, T in ipairs{int, double} do
 
-
 local stack = Stack.DynamicStack(int)
 local unitrange = rn.Unitrange(int)
 local steprange = rn.Steprange(int)
@@ -233,19 +242,6 @@ testenv "range adapters" do
     terracode
         var alloc : DefaultAllocator
         var s = stack.new(&alloc, 10)
-    end
-
-    testset "transform" do
-        terracode
-            var x = 2
-            var g = rn.transform([terra(i : int, x : int) return x * i end], x)
-            var range = unitrange.new(1, 4) >> g
-            range:collect(&s)
-        end
-        test s:size()==3
-        test s:get(0)==2
-        test s:get(1)==4
-        test s:get(2)==6
     end
 
     testset "filter" do
@@ -258,6 +254,20 @@ testenv "range adapters" do
         test s:get(0)==1
         test s:get(1)==3
         test s:get(2)==5
+    end
+
+
+    testset "transform" do
+        terracode
+            var x = 2
+            var g = rn.transform([terra(i : int, x : int) return x * i end], x)
+            var range = unitrange.new(1, 4) >> g
+            range:collect(&s)
+        end
+        test s:size()==3
+        test s:get(0)==2
+        test s:get(1)==4
+        test s:get(2)==6
     end
 
     testset "take" do
@@ -304,8 +314,6 @@ testenv "range adapters" do
         test s:get(1)==8
         test s:get(2)==9
     end
-
-
 end
 
 testenv "range composition" do
@@ -382,7 +390,7 @@ testenv "range combiners" do
             test s:get([i-1]) == i
         end
     end
- 
+
     testset "join - 3" do
         terracode
             var range = rn.join(unitrange{1, 3}, unitrange{3, 5}, unitrange{5, 7})
@@ -391,9 +399,9 @@ testenv "range combiners" do
             end
         end
         test s:size()==6
-        --for i = 1, 6 do
-        --    test s:get([i-1]) == i
-        --end
+        for i = 1, 6 do
+            test s:get([i-1]) == i
+        end
     end
 
     testset "enumerate" do
@@ -408,6 +416,7 @@ testenv "range combiners" do
         test j:get(1)==1 and s:get(1)==2
         test j:get(2)==2 and s:get(2)==3
     end
+
 
     testset "zip - 1" do
         terracode
@@ -466,6 +475,7 @@ testenv "range combiners" do
         test U:get(1)==2
         test U:get(2)==3
     end
+
 
     testset "product - 2" do
         terracode

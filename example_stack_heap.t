@@ -7,6 +7,7 @@ require("terralibext")
 local alloc = require("alloc")
 local err = require("assert")
 local range = require("range")
+local io = terralib.includec("stdio.h")
 
 local Allocator = alloc.Allocator
 
@@ -15,6 +16,7 @@ local size_t = uint64
 local DynamicStack = terralib.memoize(function(T)
 
     local S = alloc.SmartBlock(T) --typed memory block
+    S:complete() --always complete the implementation of SmartBlock
 
     local struct stack{
         data : S
@@ -63,20 +65,29 @@ local DynamicStack = terralib.memoize(function(T)
         self.data:set(i, v)
     end
 
-    stack.methods.getfirst = terra(self : &stack)
-        return size_t(0), self:get(0)
+    --iterator - behaves like a pointer and can be passed
+    --around like a value, convenient for use in ranges.
+    local struct iter{
+        ptr : &T
+    }
+
+    terra stack:getfirst()
+        return iter{self.data.ptr}
     end
 
-    stack.methods.getnext = terra(self : &stack, state : &size_t)
-        @state = @state + 1
-        return self:get(@state)
+    terra stack:getvalue(iter : &iter)
+        return @iter.ptr
     end
 
-    stack.methods.islast = terra(self : &stack, state : &size_t, value : &T)
-        return @state == self:size()
+    terra stack:next(iter : &iter)
+        iter.ptr = iter.ptr + 1
+    end
+
+    terra stack:isvalid(iter : &iter)
+        return iter.ptr < [&T](self.data.ptr+self.size)
     end
     
-    range.Base(stack, size_t, T)
+    range.Base(stack, iter, T)
 
     return stack
 end)

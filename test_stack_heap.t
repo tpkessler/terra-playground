@@ -14,8 +14,8 @@ local DefaultAllocator =  Alloc.DefaultAllocator()
 terra main()
     var alloc : DefaultAllocator
     var x = stack.new(&alloc, 2)
-    x:set(0, 1.0)
-    x:set(1, 2.0)
+    x:push(1.0)
+    x:push(2.0)
     io.printf("value of x[0] is: %f\n", x:get(0))
     io.printf("value of x[1] is: %f\n", x:get(1))
 end
