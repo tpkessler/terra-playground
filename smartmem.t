@@ -219,28 +219,29 @@ local SmartBlock = terralib.memoize(function(T)
 
         --iterator - behaves like a pointer and can be passed
         --around like a value, convenient for use in ranges.
-        local struct iter{
+        local struct iterator{
+            parent : &block
             ptr : &T
         }
 
-        terra block:getfirst()
-            return iter{self.ptr}
+        terra block:getiterator()
+            return iterator{self, self.ptr}
         end
 
-        terra block:getvalue(iter : &iter)
-            return @iter.ptr
+        terra iterator:getvalue()
+            return @self.ptr
         end
 
-        terra block:next(iter : &iter)
-            iter.ptr = iter.ptr + 1
+        terra iterator:next()
+            self.ptr = self.ptr + 1
         end
 
-        terra block:isvalid(iter : &iter)
-            return (iter.ptr - self.ptr) * [block.elsize] < self.nbytes
+        terra iterator:isvalid()
+            return (self.ptr - self.parent.ptr) * [block.elsize] < self.parent.nbytes
         end
         
-        range.Base(block, iter, T)
-
+        block.iterator = iterator
+        range.Base(block, iterator, T)
 
         --declaring __dtor for use in implementation below
         terra block.methods.__dtor :: {&block} -> {}

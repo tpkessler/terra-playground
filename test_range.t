@@ -262,19 +262,6 @@ testenv "range adapters" do
         var s = stack.new(&alloc, 10)
     end
 
-    testset "filter" do
-        terracode
-            var x = 1
-            var range = unitrange{1, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
-            range:collect(&s)
-        end
-        test s:size()==3
-        test s:get(0)==1
-        test s:get(1)==3
-        test s:get(2)==5
-    end
-
-
     testset "transform" do
         terracode
             var x = 2
@@ -286,6 +273,18 @@ testenv "range adapters" do
         test s:get(0)==2
         test s:get(1)==4
         test s:get(2)==6
+    end
+
+    testset "filter" do
+        terracode
+            var x = 1
+            var range = unitrange{1, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
+            range:collect(&s)
+        end
+        test s:size()==3
+        test s:get(0)==1
+        test s:get(1)==3
+        test s:get(2)==5
     end
 
     testset "take" do
