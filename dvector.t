@@ -17,6 +17,7 @@ local size_t = uint64
 
 local DynamicVector = terralib.memoize(function(T)
     local S = alloc.SmartBlock(T)
+    S:complete()
 
     local struct V{
         data: S
@@ -115,32 +116,11 @@ local DynamicVector = terralib.memoize(function(T)
         vecblas.VectorBLASBase(V)
     end
 
-    --iterator - behaves like a pointer and can be passed
-    --around like a value, convenient for use in ranges.
-    local struct iter{
-        ptr : &T
-    }
-
-    terra V:getfirst()
-        return iter{self.data.ptr}
-    end
-
-    terra V:getvalue(iter : &iter)
-        return @iter.ptr
-    end
-
-    terra V:next(iter : &iter)
-        iter.ptr = iter.ptr + 1
-    end
-
-    terra V:isvalid(iter : &iter)
-        if not self.data:isempty() then
-            return iter.ptr < [&T](self.data.alloc)
-        end
-        return false
+    terra V:getiterator()
+        return self.data:getiterator()
     end
     
-    range.Base(V, iter, T)
+    range.Base(V, S.iterator_t, T)
 
     return V
 end)

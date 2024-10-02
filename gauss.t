@@ -473,7 +473,10 @@ end
 
 --conditional selection of the algorithms based on wheter
 --we run the testsuite
-local jacobi = runalltests and jacobi_main_test or jacobi_main
+local function runalltests()
+    return _G["runalltests"]
+end
+local jacobi = pcall(runalltests) and jacobi_main_test or jacobi_main
 
 return {
     legendre = legendre,
