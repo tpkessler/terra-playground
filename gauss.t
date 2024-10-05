@@ -295,7 +295,7 @@ local legendre = terra(alloc : Allocator, n : size_t)
     end
 end
 
-local terra gausschebyshevt(alloc : Allocator, n : size_t)
+local terra chebyshev_t(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
     for i = 0, n do
         var k = n - i
@@ -305,7 +305,7 @@ local terra gausschebyshevt(alloc : Allocator, n : size_t)
     return x, w
 end
 
-local terra gausschebyshevu(alloc : Allocator, n : size_t)
+local terra chebyshev_u(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
     for i = 0, n do
         var k = n - i
@@ -315,7 +315,7 @@ local terra gausschebyshevu(alloc : Allocator, n : size_t)
     return x, w
 end
 
-local terra gausschebyshevv(alloc : Allocator, n : size_t)
+local terra chebyshev_v(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
     for i = 0, n do
         var k = n - i
@@ -325,7 +325,7 @@ local terra gausschebyshevv(alloc : Allocator, n : size_t)
     return x, w
 end
 
-local terra gausschebyshevw(alloc : Allocator, n : size_t)
+local terra chebyshev_w(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
     for i = 0, n do
         var k = n - i
@@ -441,13 +441,13 @@ local jacobi_main = terra(alloc : Allocator, n : size_t, alpha : double, beta : 
     if alpha == 0. and beta == 0. then
         return legendre(&alloc, n)
     elseif alpha == -0.5 and beta == -0.5 then
-        return gausschebyshevt(&alloc, n)
+        return chebyshev_t(&alloc, n)
     elseif alpha == 0.5 and beta == 0.5 then
-        return gausschebyshevu(&alloc, n)
+        return chebyshev_u(&alloc, n)
     elseif alpha == -0.5 and beta == 0.5 then
-        return gausschebyshevv(&alloc, n)
+        return chebyshev_v(&alloc, n)
     elseif alpha == 0.5 and beta == -0.5 then
-        return gausschebyshevw(&alloc, n)
+        return chebyshev_w(&alloc, n)
     elseif n==1 then
         var x, w = dvec.new(&alloc, 1), dvec.new(&alloc, 1) 
         x(0) = (beta - alpha) / (alpha + beta + 2.)
@@ -478,11 +478,53 @@ local function runalltests()
 end
 local jacobi = pcall(runalltests) and jacobi_main_test or jacobi_main
 
-return {
+--affine scaling of quadrature rule
+local terra affinescaling(x : &dvec, w : &dvec, a : double, b : double)
+    var sb, sa, fac = b / 2., a / 2., (b-a)/2.0
+    for i = 0, x:size() do
+        x(i) = (x(i) + 1) * sb + (1 - x(i)) * sa
+        w(i) = w(i) * fac
+    end
+end
+
+local gauss = {
     legendre = legendre,
-    chebyshev_t = gausschebyshevt,
-    chebyshev_u = gausschebyshevu,
-    chebyshev_v = gausschebyshevv,
-    chebyshev_w = gausschebyshevw,
+    chebyshev_t = chebyshev_t,
+    chebyshev_u = chebyshev_u,
+    chebyshev_v = chebyshev_v,
+    chebyshev_w = chebyshev_w,
     jacobi = jacobi
 }
+
+--check of something has the interface of an interval
+local function isinterval(I)
+    local function getentryfield(type, k)
+        return type.cachedentries and type.cachedentries[k].field or nil
+    end
+    if getentryfield(I.tree.type, 1)=="a" and getentryfield(I.tree.type, 2)=="b" then
+        return true
+    end
+    return false
+end
+
+--convenience wrapper 
+gauss.rule = macro(function(method, firstarg, ...)
+    assert(method.tree.type==&int8 and "method needs to be a rawstring.")
+    local I, args, fac
+    if isinterval(firstarg) then
+        I = firstarg
+        args = terralib.newlist{...}
+    else
+        I = {a=0.0,b=1.0}
+        args = terralib.newlist{firstarg,...}
+    end       
+    local rule = gauss[method.tree.value]
+    return quote
+        var x, w = [rule](args)
+        affinescaling(&x, &w, I.a, I.b)   
+    in
+        x, w
+    end
+end)
+
+return gauss

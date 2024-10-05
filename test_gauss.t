@@ -6,14 +6,15 @@
 import "terratest/terratest"
 local io = terralib.includec('stdio.h')
 local Alloc = require('alloc')
-local Gauss = require("gauss")
+local gauss = require("gauss")
 local math = require("mathfuns")
-local Vector = require("dvector")
-local Poly = require("poly")
+local vector = require("dvector")
+local poly = require("poly")
+local rn = require("range")
 
 local Allocator = Alloc.Allocator
 local DefaultAllocator =  Alloc.DefaultAllocator()
-local dvec = Vector.DynamicVector(double)
+local dvec = vector.DynamicVector(double)
 
 math.isapprox = terralib.overloadedfunction("isapprox")
 math.isapprox:adddefinition(terra(a : double, b : double, atol : double)
@@ -32,7 +33,8 @@ math.isapprox:adddefinition(terra(v : dvec, w : dvec, atol : double)
     return false
 end)
 
-testenv "Gauss Legendre quadrature" do
+
+testenv "gauss Legendre quadrature" do
 
     terracode
         var alloc : DefaultAllocator
@@ -41,11 +43,11 @@ testenv "Gauss Legendre quadrature" do
     for N=1, 50, 3 do
 
         local D = 2*N-1
-        local poly = Poly.Polynomial(double, D)
+        local polynomial = poly.Polynomial(double, D)
 
         terracode 
             --create polynomial sum_{i=0}^{D} x^i dx
-            var p = poly{}
+            var p = polynomial{}
             for k = 0, D do
                 p.coeffs(k) = 1.0
             end
@@ -59,7 +61,7 @@ testenv "Gauss Legendre quadrature" do
 
         testset(N) "GL " do
             terracode
-                var x, w = Gauss.legendre(&alloc, N)
+                var x, w = gauss.legendre(&alloc, N)
                 var s = 0.0
                 for i = 0, N do
                     s = s + w(i) * p(x(i))
@@ -73,10 +75,10 @@ testenv "Gauss Legendre quadrature" do
 
 end
 
-testenv "Gauss Chebyshev quadrature" do
+testenv "gauss Chebyshev quadrature" do
 
-    local poly2 = Poly.Polynomial(double, 3)
-    local poly3 = Poly.Polynomial(double, 4)
+    local poly2 = poly.Polynomial(double, 3)
+    local poly3 = poly.Polynomial(double, 4)
     local N = 10
 
     terracode
@@ -89,7 +91,7 @@ testenv "Gauss Chebyshev quadrature" do
 
         testset(N) "Chebyshev t" do
             terracode
-                var x, w = Gauss.chebyshev_t(&alloc, N)
+                var x, w = gauss.chebyshev_t(&alloc, N)
                 var s2, s3 = 0.0, 0.0
                 for i = 0, N do
                     s2 = s2 + w(i) * p2(x(i))
@@ -103,7 +105,7 @@ testenv "Gauss Chebyshev quadrature" do
 
         testset(N) "Chebyshev u" do
             terracode
-                var x, w = Gauss.chebyshev_u(&alloc, N)
+                var x, w = gauss.chebyshev_u(&alloc, N)
                 var s2, s3 = 0.0, 0.0
                 for i = 0, N do
                     s2 = s2 + w(i) * p2(x(i))
@@ -117,7 +119,7 @@ testenv "Gauss Chebyshev quadrature" do
 
         testset(N) "Chebyshev v" do
             terracode
-                var x, w = Gauss.chebyshev_v(&alloc, N)
+                var x, w = gauss.chebyshev_v(&alloc, N)
                 var s2, s3 = 0.0, 0.0
                 for i = 0, N do
                     s2 = s2 + w(i) * p2(x(i))
@@ -131,7 +133,7 @@ testenv "Gauss Chebyshev quadrature" do
 
         testset(N) "Chebyshev w" do
             terracode
-                var x, w = Gauss.chebyshev_w(&alloc, N)
+                var x, w = gauss.chebyshev_w(&alloc, N)
                 var s2, s3 = 0.0, 0.0
                 for i = 0, N do
                     s2 = s2 + w(i) * p2(x(i))
@@ -146,7 +148,7 @@ testenv "Gauss Chebyshev quadrature" do
 end
 
 
-testenv "Gauss Jacobi quadrature" do
+testenv "gauss Jacobi quadrature" do
 
     terracode
         var alloc : DefaultAllocator
@@ -154,50 +156,50 @@ testenv "Gauss Jacobi quadrature" do
 
     for N=1, 50, 3 do
 
-        testset(N) "reproduce Gauss-Legendre" do
+        testset(N) "reproduce gauss-Legendre" do
             terracode
-                var x, w = Gauss.jacobi(&alloc, N, 0, 0)
-                var xref, wref = Gauss.legendre(&alloc, N)
+                var x, w = gauss.jacobi(&alloc, N, 0, 0)
+                var xref, wref = gauss.legendre(&alloc, N)
             end
             test x:size() == N and w:size() == N
             test math.isapprox(xref, x, 1e-13)
             test math.isapprox(wref, w, 1e-13)
         end
 
-        testset(N) "reproduce Gauss-Chebyshev of the 1st kind" do
+        testset(N) "reproduce gauss-Chebyshev of the 1st kind" do
             terracode
-                var x, w = Gauss.jacobi(&alloc, N, -0.5, -0.5)
-                var xref, wref = Gauss.chebyshev_t(&alloc, N)
+                var x, w = gauss.jacobi(&alloc, N, -0.5, -0.5)
+                var xref, wref = gauss.chebyshev_t(&alloc, N)
             end
             test x:size() == N and w:size() == N
             test math.isapprox(xref, x, 1e-13)
             test math.isapprox(wref, w, 1e-13)
         end
 
-        testset(N) "reproduce Gauss-Chebyshev of the 2st kind" do
+        testset(N) "reproduce gauss-Chebyshev of the 2st kind" do
             terracode
-                var x, w = Gauss.jacobi(&alloc, N, 0.5, 0.5)
-                var xref, wref = Gauss.chebyshev_u(&alloc, N)
+                var x, w = gauss.jacobi(&alloc, N, 0.5, 0.5)
+                var xref, wref = gauss.chebyshev_u(&alloc, N)
             end
             test x:size() == N and w:size() == N
             test math.isapprox(xref, x, 1e-13)
             test math.isapprox(wref, w, 1e-13)
         end
 
-        testset(N) "reproduce Gauss-Chebyshev of the 3rd kind" do
+        testset(N) "reproduce gauss-Chebyshev of the 3rd kind" do
             terracode
-                var x, w = Gauss.jacobi(&alloc, N, -0.5, 0.5)
-                var xref, wref = Gauss.chebyshev_v(&alloc, N)
+                var x, w = gauss.jacobi(&alloc, N, -0.5, 0.5)
+                var xref, wref = gauss.chebyshev_v(&alloc, N)
             end
             test x:size() == N and w:size() == N
             test math.isapprox(xref, x, 1e-13)
             test math.isapprox(wref, w, 1e-13)
         end
 
-        testset(N) "reproduce Gauss-Chebyshev of the 4rd kind" do
+        testset(N) "reproduce gauss-Chebyshev of the 4rd kind" do
             terracode
-                var x, w = Gauss.jacobi(&alloc, N, 0.5, -0.5)
-                var xref, wref = Gauss.chebyshev_w(&alloc, N)
+                var x, w = gauss.jacobi(&alloc, N, 0.5, -0.5)
+                var xref, wref = gauss.chebyshev_w(&alloc, N)
             end
             test x:size() == N and w:size() == N
             test math.isapprox(xref, x, 1e-13)
@@ -208,7 +210,7 @@ testenv "Gauss Jacobi quadrature" do
     testset "n = 1" do
         terracode
             var a, b = 1.0, 2.0
-            var x, w = Gauss.jacobi(&alloc, 1, a, b)
+            var x, w = gauss.jacobi(&alloc, 1, a, b)
         end
         test x:size() == 1 and w:size() == 1
         test math.isapprox(x(0), (b - a) / (a + b + 2), 1e-13)
@@ -217,7 +219,7 @@ testenv "Gauss Jacobi quadrature" do
 
     testset "a specific n = 10" do
         terracode
-            var x, w = Gauss.jacobi(&alloc, 10, 0.2, -1./30.)
+            var x, w = gauss.jacobi(&alloc, 10, 0.2, -1./30.)
         end
         test x:size() == 10 and w:size() == 10
         test math.isapprox(x(6), 0.41467011760532446, 1e-13)
@@ -226,11 +228,82 @@ testenv "Gauss Jacobi quadrature" do
 
     testset "a specific n = 42" do
         terracode
-            var x, w = Gauss.jacobi(&alloc, 42, -.1, .3)
+            var x, w = gauss.jacobi(&alloc, 42, -.1, .3)
         end
         test x:size() == 42 and w:size() == 42
         test math.isapprox(x(36), 0.912883347814032, 1e-13)
         test math.isapprox(w(36), 0.046661910947553, 1e-13)
     end
 
+end
+
+local struct interval{
+    a : double
+    b : double
+}
+
+testenv "API" do
+
+    terracode
+        var alloc : DefaultAllocator
+    end
+
+    testset "legendre - without interval" do
+        terracode
+            var x, w = gauss.rule("legendre", &alloc, 3)
+        end
+        test x:size() == 3 and w:size() == 3
+    end
+    
+    testset "legendre - with interval" do
+        terracode
+            var x,w = gauss.rule("legendre", interval{a=1.0, b=3.0}, &alloc, 3)
+        end
+        test x:size() == 3 and w:size() == 3
+        test math.isapprox(w:sum(), 2.0, 1e-13)
+    end
+
+    N = 3
+    local D = 2*N-1
+    local polynomial = poly.Polynomial(double, D)
+
+    terracode
+        --create polynomial sum_{i=0}^{4} x^i dx
+        var p = polynomial{}
+        for k = 0, D do
+            p.coeffs(k) = 1.0
+        end
+    end
+
+    testset "affine scaling" do
+        terracode
+            --int_1^4 p(x) dx
+            var x,w = gauss.rule("legendre", interval{a=1.0, b=4.0}, &alloc, N)
+            var s = 0.0
+            for qr in rn.zip(x,w) do
+                var xx, ww = qr
+                s = s + ww * p(xx)
+            end
+        end
+        test x:size() == N and w:size() == N
+        test math.isapprox(w:sum(), 3.0, 1e-13)
+        test math.isapprox(s, 5997.0 / 20.0, 1e-13)
+    end
+
+    testset "tensor-product rules" do
+        terracode
+            var x,w = gauss.rule("legendre", interval{a=0.0, b=3.0}, &alloc, 3)
+            var y,v = gauss.rule("legendre", interval{a=1.0, b=5.0}, &alloc, 4)
+            var s : double = 0.0
+            for qr in rn.zip(
+                rn.product(x, y), 
+                rn.product(w, v) >> rn.transform([terra(w : &tuple(double,double)) return w._0 * w._1 end])
+            ) do
+                var x, w = qr
+                s = s + w
+            end
+        end
+        test math.isapprox(s, 12.0, 1e-14)
+    end
+   
 end

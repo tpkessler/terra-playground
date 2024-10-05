@@ -15,25 +15,28 @@ local ntuple = function(T, N)
     return tuple(unpack(t))
 end
 
-local function Integral(args)
+local function Integrand(args)
 
     local kernel = args.kernel
     local A = args.domain_a
     local B = args.domain_b
     local C = geo.Hypercube.intersection(A, B)
 
-    local integral
+    local integrant
 
+    --intersection is empty, perform standard tensor product quadrature
     if C==nil then
 
-        struct integral{
+        struct integrant{
             x : A
             y : B
         }
-        return integral
+        return integrant
+
+    --intersectiion is non-empty, perform singular quadrature
     else
         local P_a, P_b = geo.ProductPair.new(C, A / C), geo.ProductPair.new(C, B / C)
-        struct integral{
+        struct integrant{
             x : geo.ProductPair.mapping{domain=P_a}
             y : geo.ProductPair.mapping{domain=P_b}
         }
@@ -56,19 +59,19 @@ local function Integral(args)
         --v̌ ∈ Iᵈ⁻ᵏ
         --ẑ ∈ Aᵏ = [-1,1]ᵏ
         --û ∈ Fᵏ = Iᵏ ∩ (Iᵏ - ẑ)
-        terra integral:integrand(u_tilde : ntuple(T,N-K), v_tilde : ntuple(T,N-K), z_hat : ntuple(T,K), u_hat : ntuple(T,K))
+        terra integrant:evaluate(u_tilde : ntuple(T,N-K), v_tilde : ntuple(T,N-K), z_hat : ntuple(T,K), u_hat : ntuple(T,K))
             var v_hat = V(z_hat, u_hat)
             var x, y = self.x(u_hat, u_tilde), self.y(v_hat, v_tilde)
             var vol_x, vol_y = self.x:vol(u_hat, u_tilde), self.y:vol(v_hat, v_tilde)
             return kernel(x, y) * vol_x * vol_y
         end
 
-        terra integral:evaluate()
+        terra integrant:integrate()
 
         end
 
     end
-    return integral
+    return integrant
 end
 
 
@@ -80,13 +83,13 @@ end
 local A = geo.Hypercube.new(geo.Interval.new(0,1), geo.Interval.new(0,1), geo.Interval.new(0,1))
 local B = geo.Hypercube.new(geo.Interval.new(1,2), geo.Interval.new(1,2), geo.Interval.new(1,2))
 
-local integral = Integral{kernel=kernel, domain_a=A, domain_b=B}
+local integrand = Integrand{kernel=kernel, domain_a=A, domain_b=B}
 
 
 terra main()
-    var J : integral
+    var J : integrand
     --var z = J:integrand({1.}, {1.}, {0.0,0.0}, {0.0,0.0})
-    var z = J:integrand({1.0,1.0,1.0}, {1.,1.0,1.0}, {}, {})
+    var z = J:evaluate({1.0,1.0,1.0}, {1.,1.0,1.0}, {}, {})
     io.printf("v = %0.2f\n", z)
 end
 main()
