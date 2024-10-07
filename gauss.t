@@ -507,28 +507,28 @@ local function isinterval(I)
     return false
 end
 
-local struct quadrule{
-    _0 : dvec
-    _1 : dvec
-}
-quadrule:setconvertible("tuple")
+local function QuadruleBase(rule, x_type, w_type)
+    --add entry types
+    rule.entries:insert({field = "_0", type = x_type})
+    rule.entries:insert({field = "_1", type = w_type})
+    rule:setconvertible("tuple")
+    --entry lookup quadrature points and weights
+    rule.metamethods.__entrymissing = macro(function(entryname, self)
+        if entryname=="x" then
+            return `self._0
+        end
+        if entryname=="w" then
+            return `self._1
+        end
+    end)
+end
 
-quadrule.metamethods.__entrymissing = macro(function(entryname, self)
-    if entryname=="x" then
-        return `self._0
-    end
-    if entryname=="w" then
-        return `self._1
-    end
-end)
-
---convenience wrapper 
-gauss.quadrule = quadrule
-
-gauss.rule = macro(function(method, firstarg, ...)
+local quadrule = macro(function(method, firstarg, ...)
     assert(method.tree.type==&int8 and "method needs to be a rawstring.")
     local I, args, fac
     local rule = gauss[method.tree.value]
+    local gaussrule = terralib.types.newstruct("gaussrule")
+    QuadruleBase(gaussrule, dvec, dvec)
     if isinterval(firstarg) then
         I = firstarg
         args = terralib.newlist{...}
@@ -541,11 +541,59 @@ gauss.rule = macro(function(method, firstarg, ...)
     else
         args = terralib.newlist{firstarg,...}
         return quote
-            var qr : quadrule = [rule](args)
+            var qr : gaussrule = [rule](args)
         in
             qr
         end
     end
 end)
+
+local prod = {}
+
+terra prod.reduce_1d(w : &tuple(double))
+    return w._0
+end
+
+terra prod.reduce_2d(w : &tuple(double, double))
+    return w._0 * w._1
+end
+
+terra prod.reduce_3d(w : &tuple(double, double, double))
+    return w._0 * w._1 * w._2
+end
+
+local productrule = macro(function(...)
+    local args = terralib.newlist{...}
+    local D = #args
+    local xargs, wargs = terralib.newlist(), terralib.newlist()
+    for k,v in pairs(args) do
+        local tp = v.tree.type
+        local x, w = tp.entries[1], tp.entries[2]
+        assert(x.type.isrange and w.type.isrange)
+    end
+    for i,qr in ipairs(args) do
+        xargs:insert(quote in &qr.x end)
+        wargs:insert(quote in &qr.w end)
+    end
+    --quadrule type
+    local quadrule = terralib.types.newstruct("tensorquadrule")
+    --get reduction method
+    local reduction = prod["reduce_" ..tostring(D) .."d"]
+    --return quadrature rule
+    return quote
+        var x = range.product([xargs])
+        var w = range.product([wargs]) >> range.transform([reduction])
+        escape
+            QuadruleBase(quadrule, x.type, w.type)
+        end
+    in
+        quadrule{x, w}
+    end
+end)
+
+--add additional methods
+gauss.QuadruleBase = QuadruleBase
+gauss.productrule = productrule
+gauss.rule = quadrule
 
 return gauss
