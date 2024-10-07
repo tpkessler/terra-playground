@@ -12,6 +12,8 @@ local vecblas = require("vector_blas")
 local range = require("range")
 local err = require("assert")
 
+local io = terralib.includec("stdio.h")
+
 local Allocator = alloc.Allocator
 local size_t = uint64
 
@@ -57,7 +59,10 @@ local DynamicVector = terralib.memoize(function(T)
     veccont.VectorContiguous:addimplementations{V}
 
     V.staticmethods.new = terra(alloc: Allocator, size: size_t)
-        return V{alloc:allocate(sizeof(T), size), 1}
+        var vec : V
+        vec.data = alloc:allocate(sizeof(T), size) 
+        vec.inc = 1
+        return vec
     end
 
     V.staticmethods.like = terra(alloc: Allocator, w: &V)
