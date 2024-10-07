@@ -35,9 +35,10 @@ testenv "Block - Default allocator" do
 			y:set(1, 2.0)
 		end
         test y:isempty() == false
+        test y:size() == 2
+        test y:owns_resource()
 		test y:get(0) == 1.0
 		test y:get(1) == 2.0
-		test y:size() == 2
 	end
 
 	testset "__init - generated" do
