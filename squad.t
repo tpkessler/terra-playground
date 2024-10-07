@@ -1,4 +1,5 @@
 local io = terralib.includec("stdio.h")
+local alloc = require('alloc')
 local geo = require("geometry")
 local gauss = require("gauss")
 local lambdas = require("lambdas")
@@ -85,8 +86,25 @@ local B = geo.Hypercube.new(geo.Interval.new(1,2), geo.Interval.new(1,2), geo.In
 
 local integrand = Integrand{kernel=kernel, domain_a=A, domain_b=B}
 
+local Z = {geo.Interval(-1, 0), geo.Interval(0, 1)}
+
+for k,K in ipairs(Z) do
+    for j,J in ipairs(Z) do
+        for i,I in ipairs(Z) do
+
+            local A = geo.Hypercube.new(I,J,K,0,0,0)
+
+
+        end
+    end
+end
+
+local DefaultAllocator =  alloc.DefaultAllocator()
 
 terra main()
+    var alloc : DefaultAllocator
+    var Q = gauss.rule("legendre",&alloc, 6)
+
     var J : integrand
     --var z = J:integrand({1.}, {1.}, {0.0,0.0}, {0.0,0.0})
     var z = J:evaluate({1.0,1.0,1.0}, {1.,1.0,1.0}, {}, {})

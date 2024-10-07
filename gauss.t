@@ -507,23 +507,44 @@ local function isinterval(I)
     return false
 end
 
+local struct quadrule{
+    _0 : dvec
+    _1 : dvec
+}
+quadrule:setconvertible("tuple")
+
+quadrule.metamethods.__entrymissing = macro(function(entryname, self)
+    if entryname=="x" then
+        return `self._0
+    end
+    if entryname=="w" then
+        return `self._1
+    end
+end)
+
 --convenience wrapper 
+gauss.quadrule = quadrule
+
 gauss.rule = macro(function(method, firstarg, ...)
     assert(method.tree.type==&int8 and "method needs to be a rawstring.")
     local I, args, fac
+    local rule = gauss[method.tree.value]
     if isinterval(firstarg) then
         I = firstarg
         args = terralib.newlist{...}
+        return quote
+            var qr : gaussrule = [rule](args)
+            affinescaling(&qr.x, &qr.w, I.a, I.b)
+        in
+            qr
+        end
     else
-        I = {a=0.0,b=1.0}
         args = terralib.newlist{firstarg,...}
-    end       
-    local rule = gauss[method.tree.value]
-    return quote
-        var x, w = [rule](args)
-        affinescaling(&x, &w, I.a, I.b)   
-    in
-        x, w
+        return quote
+            var qr : quadrule = [rule](args)
+        in
+            qr
+        end
     end
 end)
 
