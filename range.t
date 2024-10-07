@@ -54,6 +54,7 @@ end
 local RangeBase = function(Range, iterator_t, T)
 
     --set the value type and iterator type of the range
+    Range.isrange = true
     Range.iterator_t = iterator_t
     Range.value_t = T
 
