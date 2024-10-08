@@ -1,9 +1,13 @@
 local io = terralib.includec("stdio.h")
 local alloc = require('alloc')
+local tmath = require('mathfuns')
 local geo = require("geometry")
+local vec = require("luavector")
 local gauss = require("gauss")
 local lambdas = require("lambdas")
 
+
+local Allocator = alloc.Allocator
 local size_t = uint64
 local T = double
 
@@ -80,23 +84,54 @@ local kernel = terra(x : T[3], y : T[3])
     return 1.0
 end
 
-
 local A = geo.Hypercube.new(geo.Interval.new(0,1), geo.Interval.new(0,1), geo.Interval.new(0,1))
 local B = geo.Hypercube.new(geo.Interval.new(1,2), geo.Interval.new(1,2), geo.Interval.new(1,2))
 
 local integrand = Integrand{kernel=kernel, domain_a=A, domain_b=B}
 
-local Z = {geo.Interval(-1, 0), geo.Interval(0, 1)}
 
-for k,K in ipairs(Z) do
-    for j,J in ipairs(Z) do
-        for i,I in ipairs(Z) do
-
-            local A = geo.Hypercube.new(I,J,K,0,0,0)
+local terra integrate_imp_pyramid_dd()
 
 
+end
+
+
+
+terra integrate_imp_dd(alloc : Allocator, npts : size_t, alpha : double)
+    var gausrule = gauss.rule("legendre", interval{a=0.0, b=1.0}, &alloc, npts)
+    var Q_1 = gauss.rule("jacobi", interval{a=0.0, b=1.0}, &alloc, npts, 0.0, alpha)
+    var Q_2 = gauss.productrule(gausrule, gausrule)
+    var Q_3 = gauss.productrule(gausrule, gausrule, gausrule)
+    var s : double = 0.0
+    escape
+        local Z = {geo.Interval(-1, 0), geo.Interval(0, 1)}
+        for k,K in ipairs(Z) do
+            for j,J in ipairs(Z) do
+                for i,I in ipairs(Z) do
+                    local cube = geo.Hypercube.new(I,J,K)
+                    --iterate over pyramids in 'cube'
+                    for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex={0,0,0}} do
+                        --generate mapping type
+                        local pyramid_mapping = geo.Pyramid.mapping{domain=pyramid_type}
+                        emit quote
+                            var P : pyramid_mapping
+                            --loop over singular direction
+                            for qs in range.zip(&Q_1.x, &Q_1.w) do
+                                var s, ws = qs; ws = ws / tmath.pow(s, alpha)
+                                --loop over regular directions
+                                for qt in range.zip(&Q_2.x, &Q_2.w) do
+                                    var t, wt
+                                    var z = P(t, s)
+                                    var J = P:vol(t, s)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
         end
-    end
+    end --escape
+    return s
 end
 
 local DefaultAllocator =  alloc.DefaultAllocator()
