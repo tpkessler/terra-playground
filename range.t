@@ -3,24 +3,45 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local interface = require("interface")
+local base = require("base")
+local concept = require("concept")
+local template = require("template")
 local lambdas = require("lambdas")
 local err = require("assert")
-local io = terralib.includec("stdio.h")
 
 local size_t = uint64
 
---the following interface is used to collect elements in
---a range
-local Stacker = terralib.memoize(
-    function(T)
-        return interface.Interface:new{
-            size = {} -> uint64,
-            push = {T} -> {},
-            pop = {} -> {T}
-        }
+--collect requires a stacker interface or a setter interface
+--stacker interface
+local Stacker = concept.AbstractInterface:new("Stacker")
+Stacker:addmethod{push = {concept.Any} -> {}}
+--setter interface
+local Setter = concept.AbstractInterface:new("Setter")
+Setter:addmethod{set = {concept.Integral, concept.Any} -> {}}
+--arraylike implements both the setter and the stacker interface
+local Sequence = concept.AbstractInterface:new("Sequence")
+Sequence:inheritfrom(Stacker)
+Sequence:inheritfrom(Setter)
+
+--get the terra-type of a pointer or type
+local gettype = function(t)
+    assert(terralib.types.istype(t) and "Not a terra type")
+    if t:ispointer() then
+        return t.type
+    else
+        return t
     end
-)
+end
+
+--given a terra value or reference to a value, get its value
+local byvalue = function(t)
+    local typ = t.type or t.tree.type or error("Not a terra type.")
+    if typ:ispointer() then
+        return `@t
+    else
+        return `t
+    end
+end
 
 --an iterator implements the following macros:
 --  methods.getfirst :: (self) -> (state, value)
@@ -30,12 +51,10 @@ local Stacker = terralib.memoize(
 --and adds the '__for' metamethod, and adds a 'collect' 
 --method that collects all elements in the range in a container
 --that satsifies the 'Stacker(T)' interface
---ToDo - maybe its possible to use (mutating) terra functions 
---rather than macros.
-local RangeBase = function(Range, Iter_t, T)
+local RangeBase = function(Range, iterator_t, T)
 
     --set the value type and iterator type of the range
-    Range.state_t = Iter_t
+    Range.iterator_t = iterator_t
     Range.value_t = T
 
     --overloading '>>' operator
@@ -68,20 +87,43 @@ local RangeBase = function(Range, Iter_t, T)
     Range.metamethods.__for = function(self,body)
         return quote
             var range = self
-            var iter = range:getfirst()
-            while range:isvalid(&iter) do
-                var value = range:getvalue(&iter)
-                [body(extract(value))] --run body of loop
-                range:next(&iter) --increment state
+            var iter = range:getiterator()
+            while iter:isvalid() do             --while not at the end
+                var value = iter:getvalue()     --get value
+                [body(byvalue(value))]          --run body of loop
+                iter:next()                     --increment state
             end
         end
     end
 
-    --collect requires only the 'Stacker' interface
-    local S = Stacker(T)
-    terra Range:collect(container : S)
-        for v in self do
-            container:push(v)
+    --definition of collect template
+    Range.templates.collect = template.Template:new("collect")
+    --containers implementing the stacker interface only
+    Range.templates.collect[{&Range.Self, &Stacker} -> {}] = function(Self, Container)
+        return terra(self : Self, container : Container)
+            for v in self do
+                container:push(v)
+            end
+        end
+    end
+    --containers that only implement the setter interface are using 'set'. Sufficient
+    --space needs to be allocated before
+    Range.templates.collect[{&Range.Self, &Setter} -> {}] = function(Self, Container)
+        return terra(self : Self, container : Container)
+            var i = 0
+            for v in self do
+                container:set(i, v)
+                i = i + 1
+            end
+        end
+    end
+    --containers implementing the stacker and setter interface will only use
+    --the stacker interface
+    Range.templates.collect[{&Range.Self, &Sequence} -> {}] = function(Self, Container)
+        return terra(self : Self, container : Container)
+            for v in self do
+                container:push(v)
+            end
         end
     end
 
@@ -93,12 +135,9 @@ local Unitrange = function(T)
         a : T
         b : T
     }
-
-    range.staticmethods = {}
-
-    range.metamethods.__getmethod = function(self, methodname)
-        return self.methods[methodname] or range.staticmethods[methodname]
-    end
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(range)
 
     local new = terra(a : T, b : T, include_last : bool)
         err.assert((b-a) > 0)
@@ -115,29 +154,34 @@ local Unitrange = function(T)
         return self.b - self.a
     end
 
-    terra range:getfirst()
-        return self.a
-    end
-
-    terra range:getvalue(iter : &T)
-        return @iter
-    end
-
-    terra range:next(iter : &T)
-        @iter = @iter + 1
-    end
-
-    terra range:isvalid(iter : &T)
-        return @iter < self.b
-    end
-
-    --add metamethods
-    RangeBase(range, T, T)
-
     range.metamethods.__apply = terra(self : &range, i : size_t)
         err.assert(i < self:size())
         return self.a + i
     end
+
+    local struct iterator{
+        parent : &range
+        state : T
+    }
+
+    terra iterator:next()
+        self.state = self.state + 1
+    end
+
+    terra iterator:getvalue()
+        return self.state
+    end
+
+    terra iterator:isvalid()
+        return self.state < self.parent.b
+    end
+
+    terra range:getiterator()
+        return iterator{self, self.a}
+    end
+
+    --add metamethods
+    RangeBase(range, iterator, T)
 
     return range
 end
@@ -149,12 +193,9 @@ local Steprange = function(T)
         b : T
         step : T
     }
-
-    range.staticmethods = {}
-
-    range.metamethods.__getmethod = function(self, methodname)
-        return self.methods[methodname] or range.staticmethods[methodname]
-    end
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(range)
 
     local new = terra(a : T, b : T, step : T, include_last : bool)
         err.assert(((b-a) >= 0 and step > 0) or ((b-a) <= 0 and step < 0))
@@ -172,100 +213,55 @@ local Steprange = function(T)
         return (self.b-self.a) / self.step
     end
 
-    terra range:getfirst()
-        return self.a
-    end
-
-    terra range:getvalue(iter : &T)
-        return @iter
-    end
-
-    terra range:next(iter : &T)
-        @iter = @iter + self.step
-    end
-
-    terra range:isvalid(iter : &T)
-        return terralib.select(self.step>0, @iter < self.b, @iter > self.b)
-    end
-
-    --add metamethods
-    RangeBase(range, T, T)
-
     range.metamethods.__apply = terra(self : &range, i : size_t)
         err.assert(i < self:size())
         return self.a + i * self.step
     end
 
-    return range
-end
-
-local FilteredRange = function(Range, Function)
-
-    --check that function is a predicate
-    assert(Function.returntype == bool)
-
-    local struct adapter{
-        range : Range
-        predicate : Function
+    local struct iterator{
+        parent : &range
+        state : T
     }
 
-    --select by value or by reference
-    Function.byreference = Function.parameters[1]:ispointer()
-    --evaluate predicate
-    local pred = macro(function(self, value)
-        if Function.byreference then
-            return `self.predicate(&value)
-        else
-            return `self.predicate(value)
-        end
-    end)
-
-    local S = Range.state_t --iterator type (a pointer or a struct holding a pointer)
-    local T = Range.value_t
-
-    terra adapter:getfirst()
-        var state = self.range:getfirst()
-        var v = self.range:getvalue(&state)
-        if pred(self,v)==false then
-            self:next(&state)
-        end
-        return state
+    terra iterator:next()
+        self.state = self.state + self.parent.step
     end
 
-    terra adapter:getvalue(state : &S)
-        return self.range:getvalue(state)
+    terra iterator:getvalue()
+        return self.state
     end
 
-    terra adapter:next(state : &S)
-        self.range:next(state)
-        while (self.range:isvalid(state) and pred(self,self.range:getvalue(state))==false) do
-            self.range:next(state)
-        end
+    terra iterator:isvalid()
+        return terralib.select(self.parent.step>0, self.state < self.parent.b, self.state > self.parent.b)
     end
 
-    terra adapter:isvalid(state : &S)
-        return self.range:isvalid(state)
+    terra range:getiterator()
+        return iterator{self, self.a}
     end
 
     --add metamethods
-    RangeBase(adapter, S, T)
+    RangeBase(range, iterator, T)
 
-    return adapter
+    return range
 end
 
 local TransformedRange = function(Range, Function)
 
-    local struct adapter{
+    local struct transform{
         range : Range
         f : Function
     }
-    local S = Range.state_t
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(transform)
+
+    local iterator_t = Range.iterator_t
     local T = Function.returntype
 
     --select by value or by reference
     Function.byreference = Function.parameters[1]:ispointer()
     --valuate transform
-    local transform = macro(function(self, value)
+    local eval = macro(function(self, value)
         if Function.byreference then
             return `self.f(&value)
         else
@@ -273,100 +269,180 @@ local TransformedRange = function(Range, Function)
         end
     end)
 
-    local struct iter{
-        state : S
+    local struct iterator{
+        adapter : &transform
+        state : iterator_t
     }
 
-    terra adapter:getfirst()
-        return iter{self.range:getfirst()}
+    terra iterator:next()
+        self.state:next()
     end
 
-    terra adapter:getvalue(state : &iter)
-        return transform(self, self.range:getvalue(&state.state))
+    terra iterator:getvalue()
+        var value = self.state:getvalue()
+        return eval(self.adapter, value)
     end
 
-    terra adapter:next(state : &iter)
-        self.range:next(&state.state)
+    terra iterator:isvalid()
+        return self.state:isvalid()
     end
 
-    terra adapter:isvalid(state : &iter)
-        return self.range:isvalid(&state.state)
+    terra transform:getiterator()
+        return iterator{self, self.range:getiterator()}
     end
 
     --add metamethods
-    RangeBase(adapter, S, T)
+    RangeBase(transform, iterator, T)
 
-    return adapter
+    return transform
+end
+
+local FilteredRange = function(Range, Function)
+
+    --check that function is a predicate
+    assert(Function.returntype == bool)
+
+    local struct filter{
+        range : Range
+        predicate : Function
+    }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(filter)
+
+    --select by value or by reference
+    Function.byreference = Function.parameters[1]:ispointer()
+    --evaluate predicate
+    local pred = macro(function(self, value)
+        if Function.byreference then
+            return `self.predicate(&value)
+        else
+            return `self.predicate(value)
+        end
+    end)
+
+    local iterator_t = Range.iterator_t
+    local T = Range.value_t
+
+    local struct iterator{
+        adapter : &filter
+        state : iterator_t
+    }
+
+    terra filter:getiterator()
+        var state = self.range:getiterator()
+        while (state:isvalid() and pred(self, state:getvalue())==false) do
+            state:next()
+        end
+        return iterator{self, state}
+    end
+
+    terra iterator:next()
+        repeat
+            self.state:next()
+        until pred(self.adapter, self.state:getvalue()) or not self.state:isvalid()
+    end
+
+    terra iterator:getvalue()
+        return self.state:getvalue()
+    end
+
+    terra iterator:isvalid()
+        return self.state:isvalid()
+    end
+
+    --add metamethods
+    RangeBase(filter, iterator, T)
+
+    return filter
 end
 
 local TakeRange = function(Range)
 
-    local struct adapter{
+    local struct take{
         range : Range
-        take : int64
+        count : int64
     }
-    local S = Range.state_t
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(take)
+
+    local iterator_t = Range.iterator_t
     local T = Range.value_t
 
-    terra adapter:getfirst()
-        return self.range:getfirst()
+    local struct iterator{
+        adapter : &take
+        state : iterator_t
+        count : int64
+    }
+
+    terra take:getiterator()
+        return iterator{self, self.range:getiterator(), self.count}
     end
 
-    terra adapter:getvalue(state : &S)
-        return self.range:getvalue(state)
+    terra iterator:next()
+        self.state:next()
+        self.count = self.count - 1
     end
 
-    terra adapter:next(state : &S)
-        self.take = self.take - 1
-        self.range:next(state)
+    terra iterator:getvalue()
+        return self.state:getvalue()
     end
 
-    terra adapter:isvalid(state : &S)
-        return (self.take > 0) and self.range:isvalid(state)
+    terra iterator:isvalid()
+        return self.state:isvalid() and self.count > 0
     end
 
     --add metamethods
-    RangeBase(adapter, S, T)
+    RangeBase(take, iterator, T)
 
-    return adapter
+    return take
 end
 
 local DropRange = function(Range)
 
-    local struct adapter{
+    local struct drop{
         range : Range
-        drop : int64
+        count : int64
     }
-    local S = Range.state_t
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(drop)
+
+    local iterator_t = Range.iterator_t
     local T = Range.value_t
 
-    terra adapter:getfirst()
-        var state = self.range:getfirst()
-        for k = 0, self.drop do
-            self.range:next(&state)
-            if not self.range:isvalid(&state) then
-                break
-            end
+    local struct iterator{
+        adapter : &drop
+        state : iterator_t
+    }
+
+    terra drop:getiterator()
+        var state = self.range:getiterator()
+        var count = 0
+        while state:isvalid() and count < self.count do
+            state:next()
+            count = count + 1
         end
-        return state
+        return iterator{self, state}
     end
 
-    terra adapter:getvalue(state : &S)
-        return self.range:getvalue(state)
+    terra iterator:next()
+        self.state:next()
     end
 
-    terra adapter:next(state : &S)
-        self.range:next(state)
+    terra iterator:getvalue()
+        return self.state:getvalue()
     end
 
-    terra adapter:isvalid(state : &S)
-        return self.range:isvalid(state)
+    terra iterator:isvalid()
+        return self.state:isvalid()
     end
 
     --add metamethods
-    RangeBase(adapter, S, T)
+    RangeBase(drop, iterator, T)
 
-    return adapter
+    return drop
 end
 
 local TakeWhileRange = function(Range, Function)
@@ -374,10 +450,13 @@ local TakeWhileRange = function(Range, Function)
     --check that function is a predicate
     assert(Function.returntype == bool)
 
-    local struct adapter{
+    local struct takewhile{
         range : Range
         predicate : Function
     }
+    --add methods, staticmethods and templates and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(takewhile)
 
     --select by value or by reference
     Function.byreference = Function.parameters[1]:ispointer()
@@ -390,37 +469,45 @@ local TakeWhileRange = function(Range, Function)
         end
     end)
 
-    local S = Range.state_t --iterator type (a pointer or a struct holding a pointer)
+    local iterator_t = Range.iterator_t
     local T = Range.value_t
 
-    terra adapter:getfirst()
-        return self.range:getfirst()
+    local struct iterator{
+        adapter : &takewhile
+        state : iterator_t
+    }
+
+    terra takewhile:getiterator()
+        return iterator{self, self.range:getiterator()}
     end
 
-    terra adapter:getvalue(state : &S)
-        return self.range:getvalue(state)
+    terra iterator:next()
+        self.state:next()
     end
 
-    terra adapter:next(state : &S)
-        self.range:next(state)
+    terra iterator:getvalue()
+        return self.state:getvalue()
     end
 
-    terra adapter:isvalid(state : &S)
-        return self.range:isvalid(state) and pred(self,self.range:getvalue(state))==true
+    terra iterator:isvalid()
+        return self.state:isvalid() and pred(self.adapter,self.state:getvalue())==true
     end
 
     --add metamethods
-    RangeBase(adapter, S, T)
+    RangeBase(takewhile, iterator, T)
 
-    return adapter
+    return takewhile
 end
 
 local DropWhileRange = function(Range, Function)
 
-    local struct adapter{
+    local struct dropwhile{
         range : Range
         predicate : Function
     }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(dropwhile)
 
     --select by value or by reference
     Function.byreference = Function.parameters[1]:ispointer()
@@ -433,33 +520,38 @@ local DropWhileRange = function(Range, Function)
         end
     end)
 
-    local S = Range.state_t
+    local iterator_t = Range.iterator_t
     local T = Range.value_t
 
-    terra adapter:getfirst()
-        var state = self.range:getfirst()
-        while (self.range:isvalid(&state) and pred(self,self.range:getvalue(&state))==true) do
-            self.range:next(&state)
+    local struct iterator{
+        adapter : &dropwhile
+        state : iterator_t
+    }
+
+    terra dropwhile:getiterator()
+        var state = self.range:getiterator()
+        while state:isvalid() and pred(self,state:getvalue()) do
+            state:next()
         end
-        return state
+        return iterator{self, state}
     end
 
-    terra adapter:getvalue(state : &S)
-        return self.range:getvalue(state)
+    terra iterator:next()
+        self.state:next()
     end
 
-    terra adapter:next(state : &S)
-        return self.range:next(state)
+    terra iterator:getvalue()
+        return self.state:getvalue()
     end
 
-    terra adapter:isvalid(state : &S)
-        return self.range:isvalid(state)
+    terra iterator:isvalid()
+        return self.state:isvalid()
     end
 
     --add metamethods
-    RangeBase(adapter, S, T)
+    RangeBase(dropwhile, iterator, T)
 
-    return adapter
+    return dropwhile
 end
 
 --factory function for range adapters that carry a lambda
@@ -564,7 +656,10 @@ local Enumerator = function(Ranges)
     --check that a range-for is implemented
     assert(#Ranges==1)
     local Range = Ranges[1]
-    assert(Range.metamethods.__for)
+    local byreference = Range:ispointer()
+    if not (byreference and Range.type.metamethods.__for or Range.metamethods.__for) then
+        error("Terra type does not implement the range interface.")
+    end
 
     local struct enumerator{
         range : Range
@@ -574,7 +669,7 @@ local Enumerator = function(Ranges)
         return quote
             var iter = self
             var i = 0
-            for v in iter.range do
+            for v in [byvalue(`iter.range)] do
                 [body(i,v)]
                 i = i + 1
             end
@@ -586,264 +681,221 @@ end
 
 local JoinRange = function(Ranges)
 
-    local combirange = newcombiner(Ranges, "joiner")
+    local joiner = newcombiner(Ranges, "joiner")
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(joiner)
     local D = #Ranges
 
-    --get range types
-    local T = Ranges[1].value_t
-    local S = Ranges[1].state_t
+    --get value, range and iterator types
+    local T = gettype(Ranges[1]).value_t
+    local iterator_t = gettype(Ranges[1]).iterator_t
     for i,rn in ipairs(Ranges) do
-        assert(rn.value_t == T and rn.state_t==S)
+        assert(gettype(rn).value_t == T and gettype(rn).iterator_t == iterator_t) --make sure the value type is uniform
     end
 
     local struct iterator{
-        state : S
+        range : &joiner
+        state : iterator_t
         index : uint8
     }
-
-    terra combirange:getfirst()
-        return iterator{self._0:getfirst(), 0}
+    
+    terra joiner:getiterator()
+        return iterator{self, self._0:getiterator(), 0}
     end
 
-    terra combirange:getvalue(iter : &iterator)
-        escape
-            for k=0,D-1 do
-                local s = "_"..tostring(k)
-                emit quote
-                    if iter.index==[k] then
-                        return self.[s]:getvalue(&iter.state)
-                    end
-                end
-            end
-        end
+    terra iterator:getvalue()
+        return self.state:getvalue()
     end
 
-    terra combirange:next(iter : &iterator)
-        escape
-            for k=0,D-1 do
-                local s = "_"..tostring(k)
-                emit quote
-                    if iter.index==[k] then
-                        return self.[s]:next(&iter.state)
-                    end
-                end
-            end
-        end
-    end
-
-    terra combirange:isvalid(iter : &iterator)
-        escape
-            for k=0,D-2 do
-                local s1 = "_"..tostring(k)
-                local s2 = "_"..tostring(k+1)
-                emit quote
-                    if iter.index==[k] then
-                        if not self.[s1]:isvalid(&iter.state) then
-                            iter.index = iter.index+1
-                            iter.state = self.[s2]:getfirst()
+    terra iterator:next()
+        self.state:next()
+        if self.state:isvalid()==false and self.index < D-1 then
+            --jump to next iterator
+            self.index = self.index + 1
+            escape
+                for k=1,D-1 do
+                    local s = "_"..tostring(k)
+                    emit quote
+                        if self.index==[k] then
+                            self.state = self.range.[s]:getiterator()
                         end
-                        return true
                     end
                 end
             end
-            local s = "_"..tostring(D-1)
-            emit quote
-                if iter.index==[D-1] then
-                    return self.[s]:isvalid(&iter.state)
-                end
-            end
+            
         end
+    end
+
+    terra iterator:isvalid()
+        return self.state:isvalid()
     end
 
     --add metamethods
-    RangeBase(combirange, iterator, T)
-
-    return combirange
+    RangeBase(joiner, iterator, T)
+    
+    return joiner
 end
 
 
 local ZipRange = function(Ranges)
   
-    local combirange = newcombiner(Ranges, "zip")
+    local zipper = newcombiner(Ranges, "zip")
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(zipper)
     local D = #Ranges
 
     --get range types
     local value_t = terralib.newlist{}
     local state_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        value_t:insert(rn.value_t)
-        state_t:insert(rn.state_t)
+        value_t:insert(gettype(rn).value_t)
+        state_t:insert(gettype(rn).iterator_t)
     end
-    local S = tuple(unpack(state_t))
+    local iterator_t = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
 
-    local getfirst = function(self, iter, k) 
-        local s = "_"..tostring(k)
-        return quote
-            iter.[s] = self.[s]:getfirst()
-        end
-    end
-
-    local getvalue = function(self, iter, value, k)
-        local s = "_"..tostring(k)
-        return quote
-            value.[s] = self.[s]:getvalue(&iter.[s])
-        end
-    end
-
-    local next = function(self, iter, k) 
-        local s = "_"..tostring(k)
-        return quote
-            self.[s]:next(&iter.[s])
-        end
-    end
-
-    local isvalid = function(self, iter, k)
-        local s = "_"..tostring(k)
-        return `self.[s]:isvalid(&iter.[s])
-    end
-
-    terra combirange:getfirst()
-        var iter : S
+    local struct iterator{
+        range : &zipper
+        state : iterator_t
+    }
+    
+    terra zipper:getiterator()
+        var iter : iterator
+        iter.range = self
         escape
-            for k=0, D-1 do
-                emit quote [getfirst(`self, `iter, k)] end
+            for k=0,D-1 do
+                local s = "_"..tostring(k)
+                emit quote
+                    iter.state.[s] = self.[s]:getiterator()
+                end
             end
         end
         return iter
     end
 
-    terra combirange:getvalue(iter : &S)
+    terra iterator:getvalue()
         var value : T
         escape
             for k=0, D-1 do
-                emit quote [getvalue(`self, `@iter, `value, k)] end
+                local s = "_"..tostring(k)
+                emit quote value.[s] = self.state.[s]:getvalue() end
             end
         end
         return value
     end
 
-    terra combirange:next(iter : &S)
+    terra iterator:next()
         escape
             for k=0, D-1 do
-                emit quote [next(`self, `@iter, k)] end
+                local s = "_"..tostring(k)
+                emit quote self.state.[s]:next() end
             end
         end
     end
 
-    terra combirange:isvalid(iter : &S)
+    terra iterator:isvalid()
         escape
             --loop over each of the D ranges
             for k=0, D-1 do
+                local s = "_"..tostring(k)
                 emit quote
-                    if not [isvalid(`self, `@iter, k)] then
+                    if not self.state.[s]:isvalid() then
                         return false
                     end
                 end
             end
-            emit quote return true end
         end
-        return false
+        return true
     end
     
     --add metamethods
-    RangeBase(combirange, S, T)
+    RangeBase(zipper, iterator, T)
 
-    return combirange
+    return zipper
 end
 
 local ProductRange = function(Ranges)
   
-    local combirange = newcombiner(Ranges, "product")
+    local product = newcombiner(Ranges, "product")
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(product)
     local D = #Ranges
 
     local value_t = terralib.newlist{}
     local state_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        value_t:insert(rn.value_t)
-        state_t:insert(rn.state_t)
+        value_t:insert(gettype(rn).value_t)
+        state_t:insert(gettype(rn).iterator_t)
     end
-    local S = tuple(unpack(state_t))
+    local iterator_t = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
 
     local struct iterator{
-        state : S
+        range : &product 
+        state : iterator_t
         value : T
     }
-    iterator:complete()
 
-    local getfirst = function(self, iter, k) 
-        local s = "_"..tostring(k)
-        return quote
-            iter.[s] = self.[s]:getfirst()
-        end
-    end
-
-    local getvalue = function(self, iter, value, k) 
-        local s = "_"..tostring(k)
-        return quote
-            value.[s] = self.[s]:getvalue(&iter.[s])
-        end
-    end
-
-    local next = function(self, iter, k)
-        local s = "_"..tostring(k)
-        return quote
-            self.[s]:next(&iter.[s])
-        end
-    end
-
-    local isvalid = function(self, iter, k)
-        local s = "_"..tostring(k)
-        return `self.[s]:isvalid(&iter.[s])
-    end
-
-    terra combirange:getfirst()
+    terra product:getiterator()
         var iter : iterator
+        iter.range = self
         escape
             for k=0, D-1 do
-                emit quote [getfirst(`self, `iter.state, k)] end
-                emit quote [getvalue(`self, `iter.state, `iter.value, k)] end
+                local s = "_"..tostring(k)
+                emit quote iter.state.[s] = self.[s]:getiterator() end
+                emit quote iter.value.[s] = iter.state.[s]:getvalue() end
             end
         end
         return iter
     end
 
-    terra combirange:getvalue(iter : &iterator)
-        return iter.value
+    terra iterator:getvalue()
+        return self.value
     end
 
-    terra combirange:next(iter : &iterator)
+    terra iterator:next()
         escape
             for k=0, D-2 do
+                local s = "_"..tostring(k)
                 emit quote
                     --increase k
-                    [next(`self, `iter.state, k)]
-                    if [isvalid(`self, `iter.state, k)] then
-                        [getvalue(`self, `iter.state, `iter.value, k)]
+                    self.state.[s]:next()
+                    if self.state.[s]:isvalid() then
+                        self.value.[s] = self.state.[s]:getvalue()
                         return
                     end
                     --reset k
-                    [getfirst(`self, `iter.state, k)]
-                    [getvalue(`self, `iter.state, `iter.value, k)]
+                    self.state.[s] = self.range.[s]:getiterator()
+                    self.value.[s] = self.state.[s]:getvalue()
+                end
+            end
+            --increase D-1
+            local s = "_"..tostring(D-1)
+            emit quote
+                self.state.[s]:next()
+                if self.state.[s]:isvalid() then
+                    self.value.[s] = self.state.[s]:getvalue()
                 end
             end
         end
-        --increase D-1
-        [next(`self, `iter.state, D-1)]
-        if [isvalid(`self, `iter.state, D-1)] then
-            [getvalue(`self, `iter.state, `iter.value, D-1)]
+    end
+
+    terra iterator:isvalid()
+        escape
+            local s = "_"..tostring(D-1)
+            emit quote
+                return self.state.[s]:isvalid()
+            end
         end
     end
 
-    terra combirange:isvalid(iter : &iterator)
-        return [isvalid(`self, `iter.state, D-1)]
-    end
-
     --add metamethods
-    RangeBase(combirange, iterator, T)
+    RangeBase(product, iterator, T)
 
-    return combirange
+    return product
 end
 
 --generate user api macro's for adapters
