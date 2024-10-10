@@ -16,6 +16,37 @@ local size_t = uint32
 local Allocator = alloc.Allocator
 local dvec = dvector.DynamicVector(double)
 
+--table that holds the main implementations of quadrature rules
+local imp = {}
+--table containing api overloaded functions calling underlying implementation
+local gauss = {}
+
+--base clas for quadrature rules
+local function QuadruleBase(rule, x_type, w_type)
+    --add entry types
+    rule.entries:insert({field = "_0", type = x_type})
+    rule.entries:insert({field = "_1", type = w_type})
+    rule:setconvertible("tuple")
+    --entry lookup quadrature points and weights
+    rule.metamethods.__entrymissing = macro(function(entryname, self)
+        if entryname=="x" then
+            return `self._0
+        end
+        if entryname=="w" then
+            return `self._1
+        end
+    end)
+end
+
+--affine scaling of quadrature rule
+local terra affinescaling(x : &dvec, w : &dvec, a : double, b : double, alpha : double, beta : double)
+    var sb, sa, s, exp = b / 2., a / 2., (b-a)/2.0, alpha+beta+1.0
+    for i = 0, x:size() do
+        x(i) = (x(i) + 1) * sb + (1 - x(i)) * sa
+        w(i) = w(i) * math.pow(s, exp)
+    end
+end
+
 local besselj0_roots = terralib.constant(terralib.new(double[20],{
     2.4048255576957728,
     5.5200781102863106,
@@ -266,7 +297,7 @@ local terra rec(alloc : Allocator, n : size_t)
     return x, w
 end
 
-local legendre = terra(alloc : Allocator, n : size_t)
+terra imp.legendre(alloc : Allocator, n : size_t)
     err.assert(n < 101)
     if n==1 then
         return dvec.from(&alloc, 0.0), dvec.from(&alloc, 2.0)
@@ -295,7 +326,7 @@ local legendre = terra(alloc : Allocator, n : size_t)
     end
 end
 
-local terra chebyshev_t(alloc : Allocator, n : size_t)
+terra imp.chebyshev_t(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
     for i = 0, n do
         var k = n - i
@@ -305,7 +336,7 @@ local terra chebyshev_t(alloc : Allocator, n : size_t)
     return x, w
 end
 
-local terra chebyshev_u(alloc : Allocator, n : size_t)
+terra imp.chebyshev_u(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
     for i = 0, n do
         var k = n - i
@@ -315,7 +346,7 @@ local terra chebyshev_u(alloc : Allocator, n : size_t)
     return x, w
 end
 
-local terra chebyshev_v(alloc : Allocator, n : size_t)
+terra imp.chebyshev_v(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
     for i = 0, n do
         var k = n - i
@@ -325,7 +356,7 @@ local terra chebyshev_v(alloc : Allocator, n : size_t)
     return x, w
 end
 
-local terra chebyshev_w(alloc : Allocator, n : size_t)
+terra imp.chebyshev_w(alloc : Allocator, n : size_t)
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
     for i = 0, n do
         var k = n - i
@@ -434,119 +465,132 @@ local terra jacobi_rec(alloc : Allocator, n : size_t, alpha : double, beta : dou
     return x, w
 end
 
-local jacobi_main = terra(alloc : Allocator, n : size_t, alpha : double, beta : double)
+terra imp.jacobi_main(alloc : Allocator, n : size_t, alpha : double, beta : double)
     --check that the Jacobi parameters correspond to a nonintegrable weight function
-    err.assert(n < 101 and math.min(alpha,beta) > -1 and math.max(alpha,beta) < 5)
+    err.assert(n < 101 and math.min(alpha,beta) > -1 and math.max(alpha,beta) <= 5)
     --Gauss-Jacobi quadrature nodes and weights
     if alpha == 0. and beta == 0. then
-        return legendre(&alloc, n)
+        return imp.legendre(&alloc, n)
     elseif alpha == -0.5 and beta == -0.5 then
-        return chebyshev_t(&alloc, n)
+        return imp.chebyshev_t(&alloc, n)
     elseif alpha == 0.5 and beta == 0.5 then
-        return chebyshev_u(&alloc, n)
+        return imp.chebyshev_u(&alloc, n)
     elseif alpha == -0.5 and beta == 0.5 then
-        return chebyshev_v(&alloc, n)
+        return imp.chebyshev_v(&alloc, n)
     elseif alpha == 0.5 and beta == -0.5 then
-        return chebyshev_w(&alloc, n)
+        return imp.chebyshev_w(&alloc, n)
     elseif n==1 then
         var x, w = dvec.new(&alloc, 1), dvec.new(&alloc, 1) 
         x(0) = (beta - alpha) / (alpha + beta + 2.)
         w(0) = math.pow(2, alpha + beta + 1.) * math.beta(alpha + 1., beta + 1.)
         return x, w
-    elseif n < 101 and math.max(alpha,beta) < 5. then
+    elseif n < 101 and math.max(alpha,beta) <= 5. then
         return jacobi_rec(&alloc, n, alpha, beta)
     end
 end
 
-local jacobi_main_test = terra(alloc : Allocator, n : size_t, alpha : double, beta : double)
+terra imp.jacobi_main_test(alloc : Allocator, n : size_t, alpha : double, beta : double)
     --check that the Jacobi parameters correspond to a nonintegrable weight function
-    err.assert(n < 101 and math.min(alpha,beta) > -1 and math.max(alpha,beta) < 5)
+    err.assert(n < 101 and math.min(alpha,beta) > -1 and math.max(alpha,beta) <= 5)
     if n==1 then
         var x, w = dvec.new(&alloc, 1), dvec.new(&alloc, 1) 
         x(0) = (beta - alpha) / (alpha + beta + 2.)
         w(0) = math.pow(2, alpha + beta + 1.) * math.beta(alpha + 1., beta + 1.)
         return x, w
-    elseif n < 101 and math.max(alpha,beta) < 5. then
+    elseif n < 101 and math.max(alpha,beta) <= 5. then
         return jacobi_rec(&alloc, n, alpha, beta)
     end
 end
+
+for _,method in ipairs{"legendre_t", "chebyshev_w_t", "chebyshev_u_t", "chebyshev_v_t", "chebyshev_t_t", "jacobi_t"} do
+    gauss[method] = terralib.types.newstruct(method)
+    QuadruleBase(gauss[method], dvec, dvec)
+end
+
+gauss.legendre = terralib.overloadedfunction("legendre",
+{
+    terra(alloc : Allocator, n : size_t)
+        var qr : gauss.legendre_t = imp.legendre(alloc, n)
+        return qr
+    end,
+    terra(alloc : Allocator, n : size_t, I : tuple(double,double))
+        var qr : gauss.legendre_t = imp.legendre(alloc, n)
+        affinescaling(&qr.x, &qr.w, I._0, I._1, 0.0, 0.0)
+        return qr
+    end
+})
+
+gauss.chebyshev_w = terralib.overloadedfunction("chebyshev_w",
+{
+    terra(alloc : Allocator, n : size_t)
+        var qr : gauss.chebyshev_w_t = imp.chebyshev_w(alloc, n)
+        return qr
+    end,
+    terra(alloc : Allocator, n : size_t, I : tuple(double,double))
+        var qr : gauss.chebyshev_w_t = imp.chebyshev_w(alloc, n)
+        affinescaling(&qr.x, &qr.w, I._0, I._1, 0.5, -0.5)
+        return qr
+    end
+})
+
+gauss.chebyshev_u = terralib.overloadedfunction("chebyshev_u",
+{
+    terra(alloc : Allocator, n : size_t)
+        var qr : gauss.chebyshev_u_t = imp.chebyshev_u(alloc, n)
+        return qr
+    end,
+    terra(alloc : Allocator, n : size_t, I : tuple(double,double))
+        var qr : gauss.chebyshev_u_t = imp.chebyshev_u(alloc, n)
+        affinescaling(&qr.x, &qr.w, I._0, I._1, 0.5, 0.5)
+        return qr
+    end
+})
+
+gauss.chebyshev_v = terralib.overloadedfunction("chebyshev_v",
+{
+    terra(alloc : Allocator, n : size_t)
+        var qr : gauss.chebyshev_v_t = imp.chebyshev_v(alloc, n)
+        return qr
+    end,
+    terra(alloc : Allocator, n : size_t, I : tuple(double,double))
+        var qr : gauss.chebyshev_v_t = imp.chebyshev_v(alloc, n)
+        affinescaling(&qr.x, &qr.w, I._0, I._1, -0.5, 0.5)
+        return qr
+    end
+})
+
+gauss.chebyshev_t = terralib.overloadedfunction("chebyshev_t",
+{
+    terra(alloc : Allocator, n : size_t)
+        var qr : gauss.chebyshev_t_t = imp.chebyshev_t(alloc, n)
+        return qr
+    end,
+    terra(alloc : Allocator, n : size_t, I : tuple(double,double))
+        var qr : gauss.chebyshev_t_t = imp.chebyshev_t(alloc, n)
+        affinescaling(&qr.x, &qr.w, I._0, I._1, -0.5, -0.5)
+        return qr
+    end
+})
 
 --conditional selection of the algorithms based on wheter
 --we run the testsuite
 local function runalltests()
     return _G["runalltests"]
 end
-local jacobi = pcall(runalltests) and jacobi_main_test or jacobi_main
-
---affine scaling of quadrature rule
-local terra affinescaling(x : &dvec, w : &dvec, a : double, b : double)
-    var sb, sa, fac = b / 2., a / 2., (b-a)/2.0
-    for i = 0, x:size() do
-        x(i) = (x(i) + 1) * sb + (1 - x(i)) * sa
-        w(i) = w(i) * fac
+imp.jacobi = pcall(runalltests) and imp.jacobi_main_test or imp.jacobi_main
+    
+gauss.jacobi = terralib.overloadedfunction("jacobi",
+{
+    terra(alloc : Allocator, n : size_t, alpha: double, beta : double)
+        var qr : gauss.jacobi_t = imp.jacobi(alloc, n, alpha, beta)
+        return qr
+    end,
+    terra(alloc : Allocator, n : size_t, alpha: double, beta : double, I : tuple(double,double))
+        var qr : gauss.jacobi_t = imp.jacobi(alloc, n, alpha, beta)
+        affinescaling(&qr.x, &qr.w, I._0, I._1, alpha, beta)
+        return qr
     end
-end
-
-local gauss = {
-    legendre = legendre,
-    chebyshev_t = chebyshev_t,
-    chebyshev_u = chebyshev_u,
-    chebyshev_v = chebyshev_v,
-    chebyshev_w = chebyshev_w,
-    jacobi = jacobi
-}
-
---check of something has the interface of an interval
-local function isinterval(I)
-    local function getentryfield(type, k)
-        return type.cachedentries and type.cachedentries[k].field or nil
-    end
-    if getentryfield(I.tree.type, 1)=="a" and getentryfield(I.tree.type, 2)=="b" then
-        return true
-    end
-    return false
-end
-
-local function QuadruleBase(rule, x_type, w_type)
-    --add entry types
-    rule.entries:insert({field = "_0", type = x_type})
-    rule.entries:insert({field = "_1", type = w_type})
-    rule:setconvertible("tuple")
-    --entry lookup quadrature points and weights
-    rule.metamethods.__entrymissing = macro(function(entryname, self)
-        if entryname=="x" then
-            return `self._0
-        end
-        if entryname=="w" then
-            return `self._1
-        end
-    end)
-end
-
-local quadrule = macro(function(method, firstarg, ...)
-    assert(method.tree.type==&int8 and "method needs to be a rawstring.")
-    local I, args, fac
-    local rule = gauss[method.tree.value]
-    local gaussrule = terralib.types.newstruct("gaussrule")
-    QuadruleBase(gaussrule, dvec, dvec)
-    if isinterval(firstarg) then
-        I = firstarg
-        args = terralib.newlist{...}
-        return quote
-            var qr : gaussrule = [rule](args)
-            affinescaling(&qr.x, &qr.w, I.a, I.b)
-        in
-            qr
-        end
-    else
-        args = terralib.newlist{firstarg,...}
-        return quote
-            var qr : gaussrule = [rule](args)
-        in
-            qr
-        end
-    end
-end)
+})
 
 local prod = {}
 
@@ -560,6 +604,14 @@ end
 
 terra prod.reduce_3d(w : &tuple(double, double, double))
     return w._0 * w._1 * w._2
+end
+
+terra prod.reduce_4d(w : &tuple(double, double, double, double))
+    return w._0 * w._1 * w._2 * w._3
+end
+
+terra prod.reduce_5d(w : &tuple(double, double, double, double, double))
+    return w._0 * w._1 * w._2 * w._3 * w._4
 end
 
 local productrule = macro(function(...)
@@ -594,6 +646,5 @@ end)
 --add additional methods
 gauss.QuadruleBase = QuadruleBase
 gauss.productrule = productrule
-gauss.rule = quadrule
 
 return gauss

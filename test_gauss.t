@@ -146,7 +146,6 @@ testenv "gauss Chebyshev quadrature" do
     end
 end
 
-
 testenv "gauss Jacobi quadrature" do
 
     terracode
@@ -237,26 +236,29 @@ testenv "gauss Jacobi quadrature" do
 end
 
 local struct interval{
-    a : double
-    b : double
+    _0 : double
+    _1 : double
 }
+interval:setconvertible("tuple")
+
+interval.metamethods.__entrymissing = macro(function(entryname, self)
+    if entryname=="a" then
+        return `self._0
+    end
+    if entryname=="b" then
+        return `self._1
+    end
+end)
 
 testenv "API" do
 
     terracode
         var alloc : DefaultAllocator
     end
-
-    testset "legendre - without interval" do
-        terracode
-            var x, w = gauss.rule("legendre", &alloc, 3)
-        end
-        test x:size() == 3 and w:size() == 3
-    end
     
     testset "legendre - with interval" do
         terracode
-            var x,w = gauss.rule("legendre", interval{a=1.0, b=3.0}, &alloc, 3)
+            var x,w = gauss.legendre(&alloc, 3, interval{1.0, 3.0})
         end
         test x:size() == 3 and w:size() == 3
         test math.isapprox(w:sum(), 2.0, 1e-13)
@@ -277,7 +279,7 @@ testenv "API" do
     testset "affine scaling" do
         terracode
             --int_1^4 p(x) dx
-            var x,w = gauss.rule("legendre", interval{a=1.0, b=4.0}, &alloc, N)
+            var x,w = gauss.legendre(&alloc, N, interval{1.0, 4.0})
             var s = 0.0
             for qr in rn.zip(x,w) do
                 var xx, ww = qr
@@ -291,9 +293,9 @@ testenv "API" do
 
     terracode
         var alloc : DefaultAllocator
-        var Q_1 = gauss.rule("legendre", interval{a=0.0, b=3.0}, &alloc, 3)
-        var Q_2 = gauss.rule("legendre", interval{a=1.0, b=5.0}, &alloc, 4)
-        var Q_3 = gauss.rule("legendre", interval{a=2.0, b=7.0}, &alloc, 5)
+        var Q_1 = gauss.legendre(&alloc, 3, interval{0.0, 3.0})
+        var Q_2 = gauss.legendre(&alloc, 4, interval{1.0, 5.0})
+        var Q_3 = gauss.legendre(&alloc, 5, interval{2.0, 7.0})
     end
 
     test Q_1.x.data:owns_resource() and Q_1.w.data:owns_resource()

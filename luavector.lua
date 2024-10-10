@@ -9,12 +9,7 @@ vector.__index = vector;
 vector.__metatable = vector;
 
 function vector.new(v)
-    local n = #v
-    if type(v)=="table" and (n==1 or n==2 or n==3) then
-        return setmetatable(v, vector)
-    else
-        error("Expexted an array of one or more real numbers as arguments.")
-    end
+    return setmetatable(v, vector)
 end
 
 function vector.isa(v)
@@ -26,34 +21,30 @@ function vector:dim()
 end
 
 function vector:__add(other)
-    if self:dim()==1 then
-        return vector.new{self[1] + other[1]}
-    elseif self:dim()==2 then
-        return vector.new{self[1] + other[1], self[2] + other[2]}
-    elseif self:dim()==3 then
-        return vector.new{self[1] + other[1], self[2] + other[2], self[3] + other[3]}
+    assert(self:dim()==other:dim())
+    local result = {}
+    for i,v in ipairs(self) do
+        table.insert(result, v + other[i])
     end
+    return vector.new(result)
 end
 
 function vector:__sub(other)
-	if self:dim()==1 then
-        return vector.new{self[1] - other[1]}
-    elseif self:dim()==2 then
-        return vector.new{self[1] - other[1], self[2] - other[2]}
-    elseif self:dim()==3 then
-        return vector.new{self[1] - other[1], self[2] - other[2], self[3] - other[3]}
+    assert(self:dim()==other:dim())
+    local result = {}
+    for i,v in ipairs(self) do
+        table.insert(result, v - other[i])
     end
+    return vector.new(result)
 end
 
 function vector:__mul(other)
     local function ax(a, x)
-        if x:dim()==1 then
-            return vector.new{a * x[1]}
-        elseif x:dim()==2 then
-            return vector.new{a * x[1], a * x[2]}
-        elseif x:dim()==3 then
-            return vector.new{a * x[1], a * x[2], a * x[3]}
+        local result = {}
+        for i,v in ipairs(x) do
+            table.insert(result, a * v)
         end
+        return vector.new(result)
     end
     if type(self) == "number" then
         return ax(self, other)
@@ -69,21 +60,21 @@ function vector:__mod(other)
         return self[1] * other[2] - self[2] * other[1]
     elseif self:dim()==3 then
         return vector.new{self[2] * other[3] - self[3] * other[2], self[3] * other[1] - self[1] * other[3], self[1] * other[2] - self[2] * other[1]}
+    else
+        error("Operator % only defined for 1,2,3D vectors.")
     end
 end
 
 function vector:__unm()
-    if self:dim()==1 then
-        return vector.new{-self[1]}
-    elseif self:dim()==2 then
-        return vector.new{-self[1], -self[2]}
-    elseif self:dim()==3 then
-        return vector.new{-self[1], -self[2], -self[3]}
+    local result = {}
+    for i,v in ipairs(self) do
+        table.insert(result, -v)
     end
+    return vector.new(result)
 end
 
 function vector:__eq(other)
-    if self:dim() ~=other:dim() then
+    if self:dim()~=other:dim() then
         return false
     end
     for i=1,self:dim() do
@@ -109,6 +100,12 @@ function vector:__tostring()
         return string.format("(%g, %g)", self[1], self[2]);
     elseif self:dim()==3 then
         return string.format("(%g, %g, %g)", self[1], self[2], self[3]);
+    elseif self:dim()==4 then
+        return string.format("(%g, %g, %g %g)", self[1], self[2], self[3], self[4]);
+    elseif self:dim()==5 then
+        return string.format("(%g, %g, %g %g, %g)", self[1], self[2], self[3], self[4], self[5]);
+    elseif self:dim()==6 then
+        return string.format("(%g, %g, %g %g, %g, %g)", self[1], self[2], self[3], self[4], self[5], self[6]);
     end
 end
 
@@ -135,6 +132,7 @@ assert(v:norm()==5)
 --3D vectors
 local v = vector.new{3,4,5}
 local w = vector.new{3,2,1}
+local z = vector.new{3,2,1,4,5,6}
 --test if isa vector
 assert(vector.isa(v))
 --test dimension

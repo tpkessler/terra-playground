@@ -560,13 +560,14 @@ local adapter_lambda_factory = function(Adapter)
     local factory = macro(
         function(fun, ...)
             --get the captured variables
-            local captures = {...}
-            local p = lambdas.lambda_generator(fun, ...)
+            local captvars = terralib.newlist{...}
+            local captvars_t = captvars:map(function(v) return v.tree.type end)
+            local p = lambdas.generate{signature=fun.tree.type, captures=captvars_t}
             --set the generator (FilteredRange or TransformedRange, etc)
             p.generator = Adapter
             --create and return lambda object by value
             return quote
-                var f = p{[captures]}
+                var f = p{[fun],{[captvars]}}
             in
                 f
             end

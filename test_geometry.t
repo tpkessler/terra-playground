@@ -317,9 +317,9 @@ testenv "Pyramid - 2D" do
             var b = p({0}, 1)
             var c = p({1}, 1)
         end
-        test a[0]==1 and a[1]==0
-        test b[0]==3 and b[1]==0
-        test c[0]==3 and c[1]==1
+        test a._0==1 and a._1==0
+        test b._0==3 and b._1==0
+        test c._0==3 and c._1==1
     end
 
     testset "jacobian" do
@@ -369,9 +369,9 @@ testenv "Pyramid - 3D" do
             var b = p({0,0},1)
             var c = p({1,1},1)
         end
-        test a[0]==1 and a[1]==1 and a[2]==1
-        test b[0]==4 and b[1]==0 and b[2]==0
-        test c[0]==4 and c[1]==1 and c[2]==1
+        test a._0==1 and a._1==1 and a._2==1
+        test b._0==4 and b._1==0 and b._2==0
+        test c._0==4 and c._1==1 and c._2==1
     end
 
     testset "jacobian" do
@@ -384,6 +384,24 @@ testenv "Pyramid - 3D" do
         test va==0
         test vb==3
         test vc==3
+    end
+
+end
+
+testenv "Pyramid - 6D" do
+
+    --compute hypercube at compile-time
+    local I = geo.Interval.new(0,1)
+    local cube = geo.Hypercube.new(I,I,I,I,I,I)
+    local apex = cube({0,0,0,0,0,0})
+    local pyramids = geo.Pyramid.decomposition{cube=cube, apex=apex}
+
+    testset "decomposition" do
+        local vol = 0.0
+        for P in pyramids do
+            vol = vol + P:vol()
+        end
+        test [math.abs(vol -1) < 1e-12]
     end
 
 end

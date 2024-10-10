@@ -663,11 +663,14 @@ Pyramid.mapping = terralib.memoize(function(args)
         return x, s
     end
 
+    local tup_t = ntuple(T,N)
+
     mapping.metamethods.__apply = terra(self : &mapping, x : ntuple(T,D-1), s : T)
         var b = base(x)
         var y = eval(s, [&vec](&apex), [&vec](&b))
-        var ptr_y  = [ &T[N] ](&y)
-        return @ptr_y
+        --var ptr_y  = [ &T[N] ](&y)
+        --var ptr_y  = @([ &tup_t ](&y))
+        return @([ &tup_t ](&y))
     end
 
     mapping.methods.vol = terra(self : &mapping, x : ntuple(T,D-1), s : T)
