@@ -7,6 +7,7 @@ local stack = require("stack")
 local err = require("assert")
 local template = require("template")
 local concept = require("concept")
+local mathfun = require("mathfuns")
 
 local Vector = concept.AbstractInterface:new("Vector")
 local Stack = stack.Stack
@@ -20,7 +21,8 @@ Vector:addmethod{
   swap = &Stack -> {},
   scal = concept.Number -> {},
   axpy = {concept.Number, &Stack} -> {},
-  dot = &Stack -> concept.Number
+  dot = &Stack -> concept.Number,
+  norm = {} -> concept.Number, 
 }
 
 local VectorBase = function(V)
@@ -124,20 +126,27 @@ local VectorBase = function(V)
     return axpy
 	end
 
-	-- TODO Include complex numbers
 	V.templates.dot = template.Template:new("dot")
 	V.templates.dot[{&V.Self, &Stack} -> {concept.Number}] = function(Self, S)
-    local terra dot(self: Self, x: S)
-    	err.assert(self:size() == x:size())
-      var size = self:size()
+      local terra dot(self: Self, x: S)
+      	err.assert(self:size() == x:size())
+        var size = self:size()
 
-      var res: T = 0
-      for i = 0, size do
-          res = res + self:get(i) * x:get(i)
+        var res: T = 0
+        for i = 0, size do
+            res = res + mathfun.conj(self:get(i)) * x:get(i)
+        end
+        return res
       end
-      return res
-    end
     return dot
+    end
+
+	V.templates.norm = template.Template:new("norm")
+	V.templates.norm[{&V.Self} -> {concept.Number}] = function(Self)
+      local terra norm(self: Self)
+        return mathfun.sqrt(mathfun.real(self:dot(self)))
+      end
+    return norm
   end
 
   assert(Vector(V), "Incomplete implementation of vector base class")
