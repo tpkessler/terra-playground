@@ -5,6 +5,7 @@
 
 local serde = require("serde")
 local fun = require("fun")
+local base = require("base")
 
 local Interface = {}
 
@@ -30,15 +31,6 @@ local construct_wrapper = terralib.memoize(function(methods_str)
 	-- These function pointers are stored as opaque pointers and will be cast
 	-- to the concrete implementation only when the method is called.
 	local vtable = terralib.types.newstruct("vtable")
-	-- Keep information on the underlying data as an opaque pointer
-	-- together with a lookup table for methods.
-	-- The actual cast to the underlying data is done in methods defined
-	-- on this struct.
-	local struct wrapper{
-			data: &opaque
-			tab:  &vtable
-	}
-
 	-- First implement all fields of the type, then iterate a second
 	-- time to generate the wrapper code
 	for name, method in pairs(methods) do
@@ -50,8 +42,16 @@ local construct_wrapper = terralib.memoize(function(methods_str)
 		vtable.entries:insert({field = name, type = &opaque})
 	end
 	vtable:complete()
+	-- Keep information on the underlying data as an opaque pointer
+	-- together with a lookup table for methods.
+	-- The actual cast to the underlying data is done in methods defined
+	-- on this struct.
+	local struct wrapper {
+		data: &opaque
+		tab: &vtable
+	}
+	base.AbstractBase(wrapper)
 
-	-- Second iteration for method wrappers
 	for name, func in pairs(methods) do
 		-- Write a dynamic wrapper around the method call.
 		-- A method call on the wrapper struct mirrors the method call on the
