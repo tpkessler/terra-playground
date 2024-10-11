@@ -4,6 +4,7 @@
 -- SPDX-License-Identifier: MIT
 
 require("terralibext")
+local base = require("base")
 local alloc = require("alloc")
 local err = require("assert")
 local range = require("range")
@@ -22,15 +23,12 @@ local DynamicStack = terralib.memoize(function(T)
         data : S
         size : size_t
     }
-
-    stack.staticmethods = {}
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(stack)
 
     stack.staticmethods.new = terra(alloc : Allocator, capacity: size_t)
         return stack{alloc:allocate(sizeof(T), capacity), 0}
-    end
-
-    stack.metamethods.__getmethod = function(self, methodname)
-        return self.methods[methodname] or stack.staticmethods[methodname]
     end
 
     terra stack:size()
@@ -67,27 +65,29 @@ local DynamicStack = terralib.memoize(function(T)
 
     --iterator - behaves like a pointer and can be passed
     --around like a value, convenient for use in ranges.
-    local struct iter{
+    local struct iterator{
+        parent : &stack
         ptr : &T
     }
 
-    terra stack:getfirst()
-        return iter{self.data.ptr}
+    terra stack:getiterator()
+        return iterator{self, self.data.ptr}
     end
 
-    terra stack:getvalue(iter : &iter)
-        return @iter.ptr
+    terra iterator:getvalue()
+        return @self.ptr
     end
 
-    terra stack:next(iter : &iter)
-        iter.ptr = iter.ptr + 1
+    terra iterator:next()
+        self.ptr = self.ptr + 1
     end
 
-    terra stack:isvalid(iter : &iter)
-        return iter.ptr < [&T](self.data.ptr+self.size)
+    terra iterator:isvalid()
+        return self.ptr - self.parent.data.ptr < self.parent.size
     end
     
-    range.Base(stack, iter, T)
+    stack.iterator = iterator
+    range.Base(stack, iterator, T)
 
     return stack
 end)

@@ -5,7 +5,6 @@
 
 import "terratest/terratest"
 
-local io = terralib.includec("stdio.h")
 local Alloc = require("alloc")
 local rn = require("range")
 local Stack = require("example_stack_heap")
@@ -24,9 +23,28 @@ for _, T in ipairs{int, double} do
             var alloc : DefaultAllocator
             var s = stack.new(&alloc, 10)
             var t = stack.new(&alloc, 10)
+
         end
 
-        testset "collect" do
+        local doubles = Alloc.SmartBlock(double)
+
+        testset "collect in a block" do
+            terracode
+                var x : doubles =  alloc:allocate(sizeof(double), 3)
+                var y : doubles =  alloc:allocate(sizeof(double), 3)
+                y:set(0, 1.0)
+                y:set(1, 2.0)
+                y:set(2, 3.0)
+                y:collect(&x)
+            end
+            test x:isempty() == false
+            test x:size() == 3
+            test x:get(0) == 1.0
+            test x:get(1) == 2.0
+            test x:get(2) == 3.0
+        end
+
+        testset "collect in a stack" do
             terracode
                 var r = unitrange.new(1, 4)
                 r:collect(&s)
@@ -244,19 +262,6 @@ testenv "range adapters" do
         var s = stack.new(&alloc, 10)
     end
 
-    testset "filter" do
-        terracode
-            var x = 1
-            var range = unitrange{1, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
-            range:collect(&s)
-        end
-        test s:size()==3
-        test s:get(0)==1
-        test s:get(1)==3
-        test s:get(2)==5
-    end
-
-
     testset "transform" do
         terracode
             var x = 2
@@ -268,6 +273,18 @@ testenv "range adapters" do
         test s:get(0)==2
         test s:get(1)==4
         test s:get(2)==6
+    end
+
+    testset "filter" do
+        terracode
+            var x = 1
+            var range = unitrange{1, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
+            range:collect(&s)
+        end
+        test s:size()==3
+        test s:get(0)==1
+        test s:get(1)==3
+        test s:get(2)==5
     end
 
     testset "take" do
