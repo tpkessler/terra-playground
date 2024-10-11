@@ -1,4 +1,3 @@
-local io = terralib.includec("stdio.h")
 local base = require("base")
 local alloc = require('alloc')
 local tmath = require('mathfuns')
@@ -13,6 +12,8 @@ local DefaultAllocator =  alloc.DefaultAllocator()
 local Allocator = alloc.Allocator
 local size_t = uint64
 local T = double
+
+local squad = {}
 
 --return a terra tuple type of length N: {T, T, ..., T}
 local ntuple = function(T, N)
@@ -71,11 +72,9 @@ local Interval = terralib.memoize(function(T)
     interval.methods.vol = terra(self : &interval)
         return self.b-self.a
     end
-    
 
     return interval
 end)
-
 
 local Cube = terralib.memoize(function(T, N)
 
@@ -135,7 +134,6 @@ local Cube = terralib.memoize(function(T, N)
         return x
     end
 
-
     cube.metamethods.__add = terra(self : &cube, x : ntuple(T,N))
         var C : cube
         escape
@@ -178,7 +176,6 @@ local Cube = terralib.memoize(function(T, N)
     return cube
 end)
 
-
 --definition of a kernel type
 kernel_t = lambda.generate{signature={T[3], T[3], double} -> {double}, captures={double}}
 kernel_t.metamethods.__entrymissing = macro(function(entryname, self)
@@ -187,9 +184,12 @@ kernel_t.metamethods.__entrymissing = macro(function(entryname, self)
     end
 end)
 
+-- x-, and y- physical coordinates
+terra squad.xcoord :: {T[3], T[3]} -> {T[3]}
+terra squad.ycoord :: {T[3], T[3]} -> {T[3]}
+
 local function Integrand(args)
 
-    local alpha = args.alpha
     local A = args.domain_a
     local B = args.domain_b
     local C = geo.Hypercube.intersection(A, B)
@@ -216,6 +216,12 @@ local function Integrand(args)
         local N = C:rangedim()
         local K = C:dim()
 
+        local terra integrate_imp :: {&integrant, &kernel_t, size_t} -> {T}
+
+        terra integrant:integrate(kernel : kernel_t, npts : size_t)
+            return integrate_imp(self, &kernel, npts)
+        end
+
         --compute local coordinates
         local relative_to_global_coords = terra(z : ntuple(T,K), u : ntuple(T,K))
             escape
@@ -233,17 +239,12 @@ local function Integrand(args)
         --v̌ ∈ Iᵈ⁻ᵏ
         --ẑ ∈ Aᵏ = [-1,1]ᵏ
         --û ∈ Fᵏ = Iᵏ ∩ (Iᵏ - ẑ)
-        terra integrant:evaluate(kernel : &kernel_t, alpha : T, u_tilde : ntuple(T,N-K), v_tilde : ntuple(T,N-K), z_hat : ntuple(T,K), u_hat : ntuple(T,K))
+        local terra evaluate(self : &integrant, kernel : &kernel_t, u_tilde : ntuple(T,N-K), v_tilde : ntuple(T,N-K), z_hat : ntuple(T,K), u_hat : ntuple(T,K))
             var v_hat = relative_to_global_coords(z_hat, u_hat)
-            var x, y = self.x(u_hat, u_tilde), self.y(v_hat, v_tilde)
+            var xhat, yhat = self.x(u_hat, u_tilde), self.y(v_hat, v_tilde)
+            var x, y = squad.xcoord(xhat, yhat), squad.ycoord(xhat, yhat)
             var vol_x, vol_y = self.x:vol(u_hat, u_tilde), self.y:vol(v_hat, v_tilde)
             return kernel(x, y) * vol_x * vol_y
-        end
-
-        local terra integrate_imp :: {&integrant, &kernel_t, T, size_t} -> {T}
-
-        terra integrant:integrate(kernel : kernel_t, alpha : T, npts : size_t)
-            return integrate_imp(self, &kernel, alpha, npts)
         end
 
         --operations on intervals and cubes at runtime
@@ -251,11 +252,11 @@ local function Integrand(args)
         local cube_t = Cube(T,K)
 
         if K==0 then
-            terra integrate_imp(self : &integrant, kernel : &kernel_t, alpha : T, npts : size_t)
+            terra integrate_imp(self : &integrant, kernel : &kernel_t, npts : size_t)
                 var alloc : DefaultAllocator
-                var alphaloc = alpha + 2*N - K - 1
+                var alpha = kernel.alpha + 2*N - K - 1
                 var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
-                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alphaloc, interval{0.0, 1.0})
+                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
                 var Q_5 = gauss.productrule(gausrule, gausrule, gausrule, gausrule, gausrule)
                 var result : T = 0.0
                 escape
@@ -271,14 +272,14 @@ local function Integrand(args)
                             --loop over singular direction
                             for qs in range.zip(&S_1.x, &S_1.w) do
                                 var s, ws = qs
-                                ws = ws / tmath.pow(s, alphaloc) --alpha is a static variable
+                                ws = ws / tmath.pow(s, alpha) --alpha is a static variable
                                 --loop over regular directions
                                 for qt in range.zip(&Q_5.x, &Q_5.w) do
                                     var t, wt = qt
                                     var p = P(t, s)
                                     var J = P:vol(t, s)
                                     var u_tilde, v_tilde = [&tuple(T,T,T)](&p._0), [&tuple(T,T,T)](&p._3)
-                                    result = result + self:evaluate(kernel, alpha, @u_tilde, @v_tilde, {}, {}) * J * ws * wt
+                                    result = result + evaluate(self, kernel, @u_tilde, @v_tilde, {}, {}) * J * ws * wt
                                 end
                             end
                         end --emit quote
@@ -287,11 +288,11 @@ local function Integrand(args)
                 return result
             end
         elseif K==1 then
-            terra integrate_imp(self : &integrant,  kernel : &kernel_t, alpha : T, npts : size_t)
+            terra integrate_imp(self : &integrant,  kernel : &kernel_t, npts : size_t)
                 var alloc : DefaultAllocator
-                var alphaloc = alpha + 2*N - K - 1
+                var alpha = kernel.alpha + 2*N - K - 1
                 var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
-                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alphaloc, interval{0.0, 1.0})
+                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
                 var Q_1 = gauss.productrule(gausrule)
                 var Q_4 = gauss.productrule(gausrule, gausrule, gausrule, gausrule)
                 var unitcube = cube_t.unit()
@@ -302,15 +303,14 @@ local function Integrand(args)
                     for k,K in ipairs(Z) do
                         local cube = geo.Hypercube.new(I,I,I,I,K)
                         --iterate over pyramids in 'cube'
-                        local apex = cube({0,0,0,0,0})
-                        for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex=apex} do
+                        for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex={0,0,0,0,0}} do
                             --generate mapping type
                             local pyramid_mapping = geo.Pyramid.mapping{domain=pyramid_type}
                             emit quote
                                 var P : pyramid_mapping
                                 --loop over singular direction
                                 for qs in range.zip(&S_1.x, &S_1.w) do
-                                    var s, ws = qs; ws = ws / tmath.pow(s, alphaloc) --alpha is a static variable
+                                    var s, ws = qs; ws = ws / tmath.pow(s, alpha) --alpha is a static variable
                                     --loop over regular directions
                                     for qt in range.zip(&Q_4.x, &Q_4.w) do
                                         var t, wt = qt
@@ -322,7 +322,7 @@ local function Integrand(args)
                                         var vol = F:vol()
                                         for qu in range.zip(&Q_1.x, &Q_1.w) do
                                             var u, wu = F(qu._0), vol * qu._1
-                                            result = result + self:evaluate(kernel, alpha, @u_tilde, @v_tilde, @z, u) * J * ws * wt * wu
+                                            result = result + evaluate(self, kernel, @u_tilde, @v_tilde, @z, u) * J * ws * wt * wu
                                         end
                                     end
                                 end
@@ -333,11 +333,11 @@ local function Integrand(args)
                 return result
             end
         elseif K==2 then
-            terra integrate_imp(self : &integrant, kernel : &kernel_t, alpha : T, npts : size_t)
+            terra integrate_imp(self : &integrant, kernel : &kernel_t, npts : size_t)
                 var alloc : DefaultAllocator
-                var alphaloc = alpha + 2*N - K - 1
+                var alpha = kernel.alpha + 2*N - K - 1
                 var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
-                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alphaloc, interval{0.0, 1.0})
+                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
                 var Q_2 = gauss.productrule(gausrule, gausrule)
                 var Q_3 = gauss.productrule(gausrule, gausrule, gausrule)
                 var unitcube = cube_t.unit()
@@ -349,15 +349,14 @@ local function Integrand(args)
                         for j,J in ipairs(Z) do
                             local cube = geo.Hypercube.new(I,I,J,K)
                             --iterate over pyramids in 'cube'
-                            local apex = cube({0,0,0,0})
-                            for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex=apex} do
+                            for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex={0,0,0,0}} do
                                 --generate mapping type
                                 local pyramid_mapping = geo.Pyramid.mapping{domain=pyramid_type}
                                 emit quote
                                     var P : pyramid_mapping
                                     --loop over singular direction
                                     for qs in range.zip(&S_1.x, &S_1.w) do
-                                        var s, ws = qs; ws = ws / tmath.pow(s, alphaloc) --alpha is a static variable
+                                        var s, ws = qs; ws = ws / tmath.pow(s, alpha) --alpha is a static variable
                                         --loop over regular directions
                                         for qt in range.zip(&Q_3.x, &Q_3.w) do
                                             var t, wt = qt
@@ -369,7 +368,7 @@ local function Integrand(args)
                                             var vol = F:vol()
                                             for qu in range.zip(&Q_2.x, &Q_2.w) do
                                                 var u, wu = F(qu._0), vol * qu._1
-                                                result = result + self:evaluate(kernel, alpha, @u_tilde, @v_tilde, @z, u) * J * ws * wt * wu
+                                                result = result + evaluate(self, kernel, @u_tilde, @v_tilde, @z, u) * J * ws * wt * wu
                                             end
                                         end
                                     end
@@ -381,11 +380,11 @@ local function Integrand(args)
                 return result
             end
         elseif K==3 then
-            terra integrate_imp(self : &integrant, kernel : &kernel_t, alpha : T, npts : size_t)
+            terra integrate_imp(self : &integrant, kernel : &kernel_t, npts : size_t)
                 var alloc : DefaultAllocator
-                var alphaloc = alpha + 2*N - K - 1
+                var alpha = kernel.alpha + 2*N - K - 1
                 var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
-                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alphaloc, interval{0.0, 1.0})
+                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
                 var Q_2 = gauss.productrule(gausrule, gausrule)
                 var Q_3 = gauss.productrule(gausrule, gausrule, gausrule)
                 var unitcube = cube_t.unit()
@@ -397,15 +396,14 @@ local function Integrand(args)
                             for _,I in ipairs(Z) do
                                 local cube = geo.Hypercube.new(I,J,K)
                                 --iterate over pyramids in 'cube'
-                                local apex = cube({0,0,0})
-                                for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex=apex} do
+                                for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex={0,0,0}} do
                                     --generate mapping type
                                     local pyramid_mapping = geo.Pyramid.mapping{domain=pyramid_type}
                                     emit quote
                                         var P : pyramid_mapping
                                         --loop over singular direction
                                         for qs in range.zip(&S_1.x, &S_1.w) do
-                                            var s, ws = qs; ws = ws / tmath.pow(s, alphaloc) --alpha is a static variable
+                                            var s, ws = qs; ws = ws / tmath.pow(s, alpha) --alpha is a static variable
                                             --loop over regular directions
                                             for qt in range.zip(&Q_2.x, &Q_2.w) do
                                                 var t, wt = qt
@@ -416,7 +414,7 @@ local function Integrand(args)
                                                 var vol = F:vol()
                                                 for qu in range.zip(&Q_3.x, &Q_3.w) do
                                                     var u, wu = F(qu._0), vol * qu._1
-                                                    result = result + self:evaluate(kernel, alpha, {}, {}, z, u) * J * ws * wt * wu
+                                                    result = result + evaluate(self, kernel, {}, {}, z, u) * J * ws * wt * wu
                                                 end
                                             end
                                         end
@@ -433,139 +431,7 @@ local function Integrand(args)
     return integrant
 end
 
+squad.kernel_t = kernel_t
+squad.Integrand = Integrand
 
-import "terratest/terratest"
-
-testenv "singular quadrature - smooth kernel" do
-
-    local I, J = geo.Interval.new(0,1), geo.Interval.new(1,2)
-
-    local kernel = terra(x : T[3], y : T[3], alpha : double)
-        return 1.0
-    end
-
-    testset "3D intersection" do
-        local integrand = Integrand{
-            domain_a=geo.Hypercube.new(I, I, I), 
-            domain_b=geo.Hypercube.new(I, I, I)
-        }
-        terracode
-            var G : integrand
-            var alpha = 0.0
-            var p = kernel_t{kernel, alpha}
-            var s = G:integrate(p, 0.0, 4)
-        end
-        test tmath.isapprox(s, 1.0, 1e-12)
-    end
-
-    testset "2D intersection" do
-        local integrand = Integrand{
-            domain_a=geo.Hypercube.new(I, I, I), 
-            domain_b=geo.Hypercube.new(J, I, I)
-        }
-        terracode
-            var G : integrand
-            var s = G:integrate(lambdas.lambda([kernel],0.0), 0.0, 3)
-        end
-        test tmath.isapprox(s, 1.0, 1e-12)
-    end
-
-    testset "1D intersection" do
-        local integrand = Integrand{
-            domain_a=geo.Hypercube.new(I, I, I), 
-            domain_b=geo.Hypercube.new(J, J, I)
-        }
-        terracode
-            var G : integrand
-            var s = G:integrate(kernel, 0.0, 3)
-        end
-        test tmath.isapprox(s, 1.0, 1e-12)
-    end
-
-    testset "0D intersection" do
-        local integrand = Integrand{
-            domain_a=geo.Hypercube.new(I, I, I), 
-            domain_b=geo.Hypercube.new(J, J, J)
-        }
-        terracode
-            var G : integrand
-            var s = G:integrate(kernel, 0.0, 3)
-        end
-        test tmath.isapprox(s, 1.0, 1e-12)
-    end
-
-    local integrand = Integrand{
-        domain_a=geo.Hypercube.new(geo.Interval.new(0,2), I, I), 
-        domain_b=geo.Hypercube.new(geo.Interval.new(2,3), I, I)
-    }
-
-
-    local f1 = terra(x : T[3], y : T[3], alpha : T) return 1.0 end
-    local f2 = terra(x : T[3], y : T[3], alpha : T) return x[0] end
-    local f3 = terra(x : T[3], y : T[3], alpha : T) return x[1] end
-    local f4 = terra(x : T[3], y : T[3], alpha : T) return x[2] end
-
-    testset "reproduction of moments" do
-        terracode
-            var G : integrand
-            var s = { 
-                G:integrate(f1, 0.0, 4),
-                G:integrate(f2, 0.0, 4),
-                G:integrate(f3, 0.0, 4),
-                G:integrate(f4, 0.0, 4)
-            }
-        end
-        test tmath.isapprox(s._0, 2.0, 1e-12)
-        test tmath.isapprox(s._1, 2.0, 1e-12)
-        test tmath.isapprox(s._2, 1.0, 1e-12)
-        test tmath.isapprox(s._3, 1.0, 1e-12)
-    end
-
-end
-
-testenv "singular quadrature - rough kernel" do
-
-    --values computed to double precision
-    local G = {
-        0.4665733572942235, 
-        2.0807459152202297, 
-        8.332275230772728, 
-        28.40088713015304
-    }
-
-    local kernel = terra(x : T[3], y : T[3], alpha : double)
-        var s = 0.0
-        for k=0,3 do
-            s = s + tmath.pow(y[k]-x[k], 2)
-        end
-        s = tmath.sqrt(s)
-        return tmath.pow(s, alpha)
-    end
-
-    local D = 3
-    local I, J = geo.Interval.new(0,1), geo.Interval.new(1,2)
-
-    for K=0,3 do
-        local Js = {I, I, I}
-        for k=K+1,3 do
-            Js[k] = J
-        end
-        local A = geo.Hypercube.new(I, I, I)
-        local B = geo.Hypercube.new(unpack(Js))
-        local alpha = -2 * D + K + (1.0 / math.pi)
-        local precomputedval = G[K+1]
-
-        testset(K) "3D intersection" do
-            local integrand = Integrand{
-                domain_a=A, 
-                domain_b=B
-            }
-            terracode
-                var G : integrand
-                var s = G:integrate(kernel, alpha, 8)
-                io.printf("s = %0.15f\n", s)
-            end
-            test tmath.isapprox(s, precomputedval, 1e-8)
-        end
-    end
-end
+return squad

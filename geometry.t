@@ -607,7 +607,7 @@ Pyramid.decomposition = function(args)
             local I = table.copy(cube.I)
             if I[k].a==0 then 
                 I[k] = I[k].b
-            elseif I.b==0 then
+            elseif I[k].b==0 then
                 I[k] = I[k].a
             else
                 error("The apex should be on the boundary of the product space.")
