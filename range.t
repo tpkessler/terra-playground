@@ -900,6 +900,57 @@ local ProductRange = function(Ranges)
     return product
 end
 
+local operator_table = {
+    ["+"] = macro(function(x,y) return `x + y end);
+    ["*"] = macro(function(x,y) return `x * y end);
+    ["/"] = macro(function(x,y) return `x / y end);
+}
+
+--factory function for range adapters that don't cary state
+local adapter_reduction_factory = function(Adapter)
+    local factory = macro(function(op)
+        --wrapper struct
+        local struct reduction{
+        }
+        reduction.metamethods.__getmethod = function(self, methodname)
+            return self.methods[methodname] or reduction.staticmethods[methodname]
+        end
+        reduction.generator = Adapter
+        reduction.staticmethods.binary_operation = operator_table[op]
+
+        --create and return simple object by value
+        return quote
+            var v = reduction{}
+        in
+            v
+        end
+    end)
+    return factory
+end
+
+local ReductionRange = function(Range, Operator)
+    
+    --check that input value type is a tuple
+    assert(gettype(Range.value_t).convertible=="tuple")
+    
+    local binary_operation = operator_table[Operator]
+    local N = #Range.value_t.entries
+    local f = terra(t : Range.value_t)
+        var v = t._0
+        escape
+            for k=1,N-1 do
+                local s = "_"..k
+                emit quote 
+                    v = binary_operation(v,t.[s])
+                end
+            end
+        end
+        return v
+    end
+    --return the reduction range
+    TransformedRange(Range, f)
+end
+
 --generate user api macro's for adapters
 local transform = adapter_lambda_factory(TransformedRange)
 local filter = adapter_lambda_factory(FilteredRange)
@@ -912,6 +963,7 @@ local enumerate = combiner_factory(Enumerator)
 local join = combiner_factory(JoinRange)
 local product = combiner_factory(ProductRange)
 local zip = combiner_factory(ZipRange)
+local reduce = adapter_reduction_factory(ReductionRange)
 
 --export functionality for developing new ranges
 local develop = {
@@ -931,6 +983,7 @@ return {
     Base = RangeBase,
     Unitrange = Unitrange,
     Steprange = Steprange,
+    reduce = reduce,
     transform = transform,    
     filter = filter,
     take = take,
