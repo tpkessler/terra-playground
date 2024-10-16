@@ -99,3 +99,79 @@ testenv "templates" do
 		test i > 1
 	end
 end
+
+testenv "Function templates" do
+	testset "Single definition" do
+		local f = template.functiontemplate("add")
+		f:adddefinition{
+			[concept.Integer -> concept.Integer] = function(I)
+				return terra(x: I) return x + 1 end
+			end
+		}
+
+		for _, I in pairs({int8, int16, int32, int64}) do
+			local ok, ret = pcall(
+				function(f) return f:dispatch(I) end,
+				f
+			)
+			local is_function = terralib.isfunction(ret)
+
+			test ok == true
+			test is_function == true
+		end
+
+		for _, I in pairs({float, double, uint32, bool}) do
+			local ok, ret = pcall(
+				function(f) return f:dispatch(I) end,
+				f
+			)
+			test ok == false
+		end
+
+		local g = f:dispatch(int32)
+		terracode
+			var x = 11
+			var ref = 12
+			var resf = f(x)
+			var resg = g(x)
+		end
+
+		test resf == ref
+		test resg == ref
+	end
+
+	testset "Multiple definition" do
+		local f = template.functiontemplate("add")
+		f:adddefinition{
+			[concept.Float -> concept.Float] = function(F)
+				return terra(x: F) return 2.0 * x end
+			end,
+			[{concept.Float, concept.Float} -> concept.Float] = (
+				function(F1, F2)
+					return terra(x: F1, y: F2) return x * y end
+				end
+			)
+		}
+
+		local g = f:dispatch(double)
+		local h = f:dispatch(float, double)
+		terracode
+			var x = 3.0
+			var y = 2.5f
+
+			var ref1 = 6.0
+			var resf1 = f(x)
+			var resg = g(x)
+
+			var ref2 = 7.5
+			var resf2 = f(y, x)
+			var resh = h(y, x)
+		end
+
+		test ref1 == resf1
+		test ref1 == resg
+
+		test ref2 == resf2
+		test ref2 == resh
+	end
+end

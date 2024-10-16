@@ -4,6 +4,7 @@
 -- SPDX-License-Identifier: MIT
 
 local concept = require("concept")
+local base = require("base")
 local fun = require("fun")
 
 local Template = {}
@@ -140,8 +141,37 @@ local function istemplate(T)
 	return type(T) == "table" and T.type == "template"
 end
 
+local function dispatch(T, ...)
+    return T.templates.eval(...)
+end
+
+local functiontemplate = function(name)
+    local T = terralib.types.newstruct(name)
+    base.AbstractBase(T)
+    T.templates.eval = Template:new("eval")
+    T.metamethods.__apply = macro(function(self, ...)
+        local args = terralib.newlist({...})
+        local typs = args:map(function(a) return a:gettype() end)
+        local func = dispatch(T, unpack(typs))
+        return `func([args])
+    end)
+
+    local t = constant(T)
+    function t:adddefinition(methods)
+        for sig, func in pairs(methods) do
+            T.templates.eval[sig] = func
+        end
+    end
+    function t:dispatch(...)
+        return dispatch(T, ...)
+    end
+
+    return t
+end
+
 return {
 	Template = Template,
+	functiontemplate = functiontemplate,
 	istemplate = istemplate,
 }
 
