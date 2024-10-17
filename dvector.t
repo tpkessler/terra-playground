@@ -58,7 +58,11 @@ local DynamicVector = terralib.memoize(function(T)
     veccont.VectorContiguous:addimplementations{V}
 
     V.staticmethods.new = terra(alloc: Allocator, size: size_t)
-        return V {alloc:allocate(sizeof(T), size), size, 1}
+        var vec : V
+        vec.data = alloc:allocate(sizeof(T), size)
+        vec.size = size
+        vec.inc = 1
+        return vec
     end
 
     V.staticmethods.like = terra(alloc: Allocator, w: &V)
