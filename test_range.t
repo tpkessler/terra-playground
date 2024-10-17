@@ -529,3 +529,45 @@ testenv "range combiners" do
     end
 
 end
+
+
+testenv "range composition" do
+
+    terracode
+        var alloc : DefaultAllocator
+        var s = stack.new(&alloc, 10)
+    end
+
+    testset "compose transform and filter - lvalues" do
+        terracode
+            var r = unitrange{0, 5}
+            var x = 0
+            var y = 3
+            var g = rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
+            var h = rn.transform([terra(i : int, y : int) return y * i end], y)
+            var range = r >> g >> h
+            range:collect(&s)
+        end
+        test s:size()==3
+        test s:get(0)==0
+        test s:get(1)==6
+        test s:get(2)==12
+    end
+
+    testset "compose transform and filter - rvalues" do
+        terracode
+            var x = 0
+            var y = 3
+            for v in unitrange{0, 5} >> 
+                        rn.filter([terra(i : int, x : int) return i % 2 == x end], x) >>
+                            rn.transform([terra(i : int, y : int) return y * i end], y) do
+                s:push(v)
+            end
+        end
+        test s:size()==3
+        test s:get(0)==0
+        test s:get(1)==6
+        test s:get(2)==12
+    end
+
+end
