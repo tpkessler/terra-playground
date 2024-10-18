@@ -145,7 +145,7 @@ local function dispatch(T, ...)
     return T.templates.eval(...)
 end
 
-local functiontemplate = function(name)
+local functiontemplate = function(name, methods)
     local T = terralib.types.newstruct(name)
     base.AbstractBase(T)
     T.templates.eval = Template:new("eval")
@@ -158,6 +158,7 @@ local functiontemplate = function(name)
 
     local t = constant(T)
     function t:adddefinition(methods)
+		methods = methods or {}
         for sig, func in pairs(methods) do
             T.templates.eval[sig] = func
         end
@@ -165,6 +166,8 @@ local functiontemplate = function(name)
     function t:dispatch(...)
         return dispatch(T, ...)
     end
+
+	t:adddefinition(methods)
 
     return t
 end
