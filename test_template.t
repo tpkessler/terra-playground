@@ -102,12 +102,14 @@ end
 
 testenv "Function templates" do
 	testset "Single definition" do
-		local f = template.functiontemplate("add")
-		f:adddefinition{
-			[concept.Integer -> concept.Integer] = function(I)
-				return terra(x: I) return x + 1 end
-			end
-		}
+		local f = template.functiontemplate(
+			"add",
+			{
+				[concept.Integer -> concept.Integer] = function(I)
+					return terra(x: I) return x + 1 end
+				end
+			}
+		)
 
 		for _, I in pairs({int8, int16, int32, int64}) do
 			local ok, ret = pcall(
@@ -141,11 +143,14 @@ testenv "Function templates" do
 	end
 
 	testset "Multiple definition" do
-		local f = template.functiontemplate("add")
+		local f = template.functiontemplate(
+			"add",
+			{
+				[concept.Float -> concept.Float] = function(F)
+					return terra(x: F) return 2.0 * x end
+				end
+			})
 		f:adddefinition{
-			[concept.Float -> concept.Float] = function(F)
-				return terra(x: F) return 2.0 * x end
-			end,
 			[{concept.Float, concept.Float} -> concept.Float] = (
 				function(F1, F2)
 					return terra(x: F1, y: F2) return x * y end
