@@ -13,6 +13,14 @@ local function sgn(x)
 	return x > 0 and 1 or x < 0 and -1 or 0
 end
 
+local function printtable(tab)
+	for k,v in pairs(tab) do
+		print(k)
+		print(v)
+		print()
+	end
+end
+
 function Template:new()
 	local template = {
 		-- Stores implementations for different concepts
@@ -25,7 +33,7 @@ function Template:new()
     -- Check if method signature satisfies method concepts.
     -- This is used to rule out methods, such that only admissable methods remain.
     local function concepts_check(sig, args)
-		if #sig~= #args then
+		if #sig~=#args then
 			return false
 		end
 		local res = fun.all(function(C, T)
@@ -60,13 +68,13 @@ function Template:new()
 		-- Only check input arguments. We can't control the return type
 		-- when we do method dispatching.
 		return fun.filter(function(sig, func)
-							  return concepts_check(sig.parameters, args)
+							  return concepts_check(sig, args)
 						  end,
 						  self.methods
 						 )
 						 -- For later comparison we only return the function
 						 -- parameters but not its return type.
-						 :map(function(sig, func) return sig.parameters, func end)
+						 :map(function(sig, func) return sig, func end)
 						 :tomap()
 	end
 
@@ -106,9 +114,9 @@ function Template:new()
 
 	local mt = {}
 	function mt:__newindex(key, value)
-		assert(terralib.types.istype(key) and key:ispointertofunction(),
-			"Need to pass function pointer but got " .. tostring(key))
-		key = key.type
+		--assert(terralib.types.istype(key) and key:ispointertofunction(),
+		--	"Need to pass function pointer but got " .. tostring(key))
+		--key = key.type
 		self.methods[key] = value
 	end
 

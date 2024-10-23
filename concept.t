@@ -119,11 +119,14 @@ end
 local function has_implementation(C, T)
 	assert(terralib.types.istype(C) and terralib.types.istype(T))
 	if C:ispointer() and T:ispointer() then
+		--dereference pointer types
 		return has_implementation(C.type, T.type)
 	elseif isconcept(C) then
+		--in case C is a concept
 		return C(T)
 	else
-		error("Argument " .. tostring(C) .. " has to be a concept")
+		--in case C is a concrete type
+		return C==T
 	end
 end
 
@@ -189,8 +192,10 @@ function AbstractInterface:new(name, ref_methods)
 		if not T:isstruct() then
 			return false
 		end
-
 		local function has_implementation(C, S)
+			print(C)
+			print(S)
+			print()
 			if isconcept(C) and isconcept(S) then
 				return is_specialized_over(S, C)
 			elseif isconcept(C) and terralib.types.istype(S) then
