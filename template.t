@@ -113,10 +113,9 @@ function Template:new()
 			return 0 == compare_two_methods(formsig(sig[1], sig[2]), formsig(saved[1], saved[2]))
 		end
 		local methods = fun.filter(ambiguous, admissible):tomap()
-		--if there are still ambiguas methods try reducing the methods 
-		--to one candidate by comparing concrete types against the 'pos' array
-		--evaluate to true if: args[i] == args[pos[i]] for all arguments
-		local function evalcandidates(args, pos)
+		--there may still be some ambiguous methods, but some of these may
+		--lead to casts
+		local function nocasts(args, pos)
 			for i,v in ipairs(pos) do
 				if args[i]~=args[v] then
 					return false
@@ -124,9 +123,12 @@ function Template:new()
 			end
 			return true
 		end
+		--if there are still ambiguous methods try reducing the methods 
+		--to one candidate by comparing concrete types against the 'pos' array
+		--evaluate to true if: args[i] == args[pos[i]] for all arguments
 		if fun.length(methods) > 1 then
 			for sig,func in pairs(methods) do
-				if not evalcandidates(args, sig[2]) then
+				if not nocasts(args, sig[2]) then
 					methods[sig] = nil
 				end
 			end

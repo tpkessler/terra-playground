@@ -10,7 +10,6 @@ local Float = concept.Float
 
 testenv "terraforming free functions" do
 
-
     testset "method dispatch" do
         terraform foo(a : T, b : T) where {T : Real}
             return a * b
