@@ -92,6 +92,15 @@ local function is_specialized_over(C1, C2)
 		return true
 	end
 
+	--if C1 is a concrete type then return the concept check
+	if not isconcept(C1) and isconcept(C2) then
+		return C2(C1)
+	end
+	--if C2 is a concrete type then C2 is always more specialized
+	if not isconcept(C2) and isconcept(C1) then
+		return false
+	end
+
 	if C1:ispointer() and C2:ispointer() then
 		return is_specialized_over(C1.type, C2.type)
 	elseif C1:ispointer() or C2:ispointer() then

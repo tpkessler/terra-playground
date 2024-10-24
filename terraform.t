@@ -1,6 +1,6 @@
-local process_template, printtable, get_local_vars, get_terra_types, addtoenv
+local process_template, printtable
 
-local template = require("template_new")
+local template = require("template")
 local concept = require("concept")
 
 local conceptlang = {
@@ -19,20 +19,28 @@ local process_where_clause, process_template_parameters, get_template_parameter_
 --easy set/get access of namespaces of 'n' levels depth
 local namespace = {
 	__index = function(t, path)
-		local n = #path
-		local v = t.env
-		for k=1,n do
-			v = v[path[k]]
+		if type(path)=="table" then
+			local n = #path
+			local v = t.env
+			for k=1,n do
+				v = v[path[k]]
+			end
+			return v
+		else
+			return t.env[path]
 		end
-		return v
 	end,
 	__newindex = function(t, path, value)
-		local n = #path
-		local v = t.env
-		for k=1,n-1 do
-			v = v[path[k]]
+		if type(path)=="table" then
+			local n = #path
+			local v = t.env
+			for k=1,n-1 do
+				v = v[path[k]]
+			end
+			v[path[n]] = value
+		else
+			t.env[path] = value
 		end
-		v[path[n]] = value
 	end
 }
 namespace.new = function(env)
@@ -58,33 +66,47 @@ function process_template(self, lex)
 	return function(envfun)
 		--initialize environment
 		local env = envfun()
-		local ns = namespace.new(env)
-		local alltypes = get_terra_types()
+		--add any concept to local environment
+		env["Any"] = concept.Any
+		--allow easy searching in 'env' of variables that are nested inside tables
+		local localenv = namespace.new(env)
 		--get parameter-types list
-		local templparams = get_template_parameter_list(env, params, alltypes, constraints)
+		local templparams = get_template_parameter_list(localenv, params, constraints)
 		--get/register new template function
-		local templfun = ns[path] or template.functiontemplate(methodname)
+		local templfun = localenv[path] or template.functiontemplate(methodname)
 		local argumentlist = terralib.newlist{}
-		local localenv = {}
-		templfun:adddefinition({[templparams] = function(...)
+		templfun:adddefinition({[templparams] = terralib.memoize(function(...)
 			local args = terralib.newlist{...}
-			assert(#args==#params) --sanity check, concept check is already applied, so this should always be correct.
 			local argumentlist = terralib.newlist{}
 			for counter,param in ipairs(params) do
 				local sym = symbol(args[counter])
 				argumentlist:insert(sym)
 				localenv[param.name] = sym
 			end
-			addtoenv(env, localenv)
 			return terra([argumentlist])
 				[terrastmts(env)]
 			end
-		end})
+		end)})
 		--register template function
-		ns[path] = templfun
+		localenv[path] = templfun
 		--give control back to Lua
 		return luaexprs(env)
 	end
+end
+
+function get_template_parameter_list(localenv, params, constraints)
+	local templparams = terralib.newlist{}
+	for _,param in ipairs(params) do
+		local c = constraints[param.typename]
+		local typ
+		if c then --get concept type
+			typ = localenv[c.path] or error("Concept " .. tostring(c.name) .. " not found in current scope.")
+		else --get concrete type from 'env' or primitives
+			typ = localenv[param.typename] or terralib.types[param.typename] or error("Type " .. tostring(c) .. " not found in current scope.")
+		end
+		templparams:insert(typ)
+	end
+	return templparams
 end
 
 function process_namespace_indexing(lex)
@@ -95,29 +117,6 @@ function process_namespace_indexing(lex)
 	return ns, ns[#ns] --return path and methodname
 end
 
-function get_template_parameter_list(env, params, alltypes, constraints)
-	local templparams = terralib.newlist{}
-	for _,param in ipairs(params) do
-		--treat explicit types
-		if terralib.types.istype(alltypes[param.typename]) then
-			templparams:insert(alltypes[param.typename])
-		--treat as a concept
-		else
-			local constraint = constraints[param.typename]
-			if constraint=="Any" then
-				templparams:insert(concept.Any)
-			else
-				if env[constraint] then
-					templparams:insert(env[constraint])
-				else
-					error("Concept " .. tostring(constraint) .. " not found in current scope.")
-				end
-			end
-		end
-	end
-	return templparams
-end
-
 function process_template_parameters(lex)                                  
 	local params = terralib.newlist()         
 	if lex:matches("(") then
@@ -125,29 +124,31 @@ function process_template_parameters(lex)
 		repeat      
 			local paramname = lex:expect(lex.name).value
 			lex:expect(":")    
-			local constraint = lex:expect(lex.name).value      
-			params:insert({name=paramname, typename=constraint})                 
+			local paramtype = lex:expect(lex.name).value   
+			lex:ref(paramtype) --if paramtype is a concrete type (not a concept), 
+			--then make it available in 'env'
+			params:insert({name=paramname, typename=paramtype})                 
 		until not lex:nextif(",")                                
 		lex:expect(")")                                
 	end        
 	return params
 end
 
-function process_where_clause(lex)                                  
+function process_where_clause(lex)
 	local params = terralib.newlist()   
-	local constraint 
+	local constraint = {}
 	if lex:matches("where") then
 		lex:expect("where")
 		lex:expect("{") 
 		repeat      
-			local param = lex:expect(lex.name).value              
-			lex:ref(param)
-			if lex:matches("<") then
-				lex:expect("<")
-				constraint = lex:expect(lex.name).value      
-				lex:ref(constraint)
+			local param = lex:expect(lex.name).value
+			if lex:matches(":") then
+				lex:expect(":")
+				constraint.path, constraint.name = process_namespace_indexing(lex)
+				lex:ref(constraint.path[1])
 			else
-				constraint = "Any"
+				constraint.path = {"Any"}
+				constraint.name = "Any"
 			end
 			params[param] = constraint             
 		until not lex:nextif(",")                                
@@ -162,68 +163,6 @@ printtable = function(tab)
 		print(v)
 		print()
 	end 
-end
-
-function addtoenv(dest, source)
-	for i,v in pairs(source) do
-		dest[i] = v
-	end
-	return dest
-end
-
-function get_local_vars()
-	--[=[
-		Return a key-value list of all lua variables available in the current scope.
-	--]=]
-	local upvalues = {}
-	local thread = 0 -- Index of scope
-	local failure = 0 -- It might fail on the inner scope, so break if this larger than 1.
-	while true do
-		thread = thread + 1
-		local index = 0 -- Index of local variables in scope
-		while true do
-			index = index + 1
-			-- The number of scopes is not known before, so we have to iterate
-			-- until debug.getlocal throws an error
-			local ok, name, value = pcall(debug.getlocal, thread, index)
-			if ok and name ~= nil then
-				upvalues[name] = value
-			else
-				if index == 1 then -- no variables in scope
-					failure = failure + 1
-				end
-				break
-			end
-		end
-		if failure > 1 then
-			break
-		end
-	end
-	return upvalues
-end
-
-function get_terra_types()
-	--[=[
-		Return key-value list of a terra types available in the current scope.
-	--]=]
-	local types = {}
-	-- First iterate over globally defined types. This includes primitive types
-	for k, v in pairs(_G) do
-		if terralib.types.istype(v) then
-			types[k] = v
-			types[tostring(v)] = v
-		end
-	end
-	-- Terra structs or type aliases can be defined with the local keyword,
-	-- so we have to iterate over the local lua variables too.
-	local upvalues = get_local_vars()
-	for k, v in pairs(upvalues) do
-		if terralib.types.istype(v) then
-			types[k] = v
-			types[tostring(v)] = v
-		end
-	end
-	return types
 end
 
 return conceptlang

@@ -1,23 +1,38 @@
 import "terraform"
+
 local io = terralib.includec("stdio.h")
-
-
-local template = require("template_new")
 local concept = require("concept")
 
+import "terratest/terratest"
+
 local Float = concept.Float
-local Real = concept.Real
+local Integer = concept.Integer
 
 local ns = {}
 ns.bar = {}
+ns.bar.Float = Float
 
-terraform ns.bar.foo(a : T, b : T, c : int) where {T}
-    return a * b + c
+
+testenv "terraforming free functions" do
+
+    terraform foo(a : T, b : double, c : T) where {T}
+        return a * b * c
+    end
+    --{Float, double, Float}, {1,2,1} = {Float, double}
+
+    test foo(1.0, 2.0, 3.0)==6
+
+    terraform foo(a : T1, b : double, c : T2) where {T1 : Float, T2 : Float}
+        return a * b * c + 1
+    end
+    --{Float, double, Float}, {1,2,3} = {Float, double, Float}
+
+    test foo(1.0, 2.0, 3.0)==7
+
+    terraform foo(a : double, b : double, c : double)
+        return a * b * c + 2
+    end
+
+    test foo(1.0, 2.0, 3.0)==8
+
 end
-
-
-terra main()
-    var y = ns.bar.foo(2.0, 3.0, 1)
-    io.printf("value of y: %0.2f\n", y)
-end
-main()
