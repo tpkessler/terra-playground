@@ -71,11 +71,11 @@ function process_template(self, lex)
 		--allow easy searching in 'env' of variables that are nested inside tables
 		local localenv = namespace.new(env)
 		--get parameter-types list
-		local templparams = get_template_parameter_list(localenv, params, constraints)
+		local uniqueparams, pos = get_template_parameter_list(localenv, params, constraints)
 		--get/register new template function
 		local templfun = localenv[path] or template.functiontemplate(methodname)
 		local argumentlist = terralib.newlist{}
-		templfun:adddefinition({[templparams] = terralib.memoize(function(...)
+		templfun:adddefinition({[{uniqueparams, pos}] = terralib.memoize(function(...)
 			local args = terralib.newlist{...}
 			local argumentlist = terralib.newlist{}
 			for counter,param in ipairs(params) do
@@ -95,18 +95,33 @@ function process_template(self, lex)
 end
 
 function get_template_parameter_list(localenv, params, constraints)
-	local templparams = terralib.newlist{}
+	local uniqueparams, pos = terralib.newlist(), terralib.newlist()
+	local counter = 1
 	for _,param in ipairs(params) do
 		local c = constraints[param.typename]
-		local typ
-		if c then --get concept type
-			typ = localenv[c.path] or error("Concept " .. tostring(c.name) .. " not found in current scope.")
+		local tp
+		if c then --c is either a concept or has been mutated to an integer that points to
+		--a concept already treated in uniqueparams
+			if type(c)=="number" then
+				--already treated in uniqueparams, so insert number 'c' and do not
+				--change uniqueparams
+				pos:insert(c)
+			else
+				--get concept type
+				tp = localenv[c.path] or error("Concept " .. tostring(c.name) .. " not found in current scope.")
+				constraints[param.typename] = counter --update to a number in uniqueparams
+				uniqueparams:insert(tp)
+				pos:insert(counter)
+				counter = counter + 1
+			end
 		else --get concrete type from 'env' or primitives
-			typ = localenv[param.typename] or terralib.types[param.typename] or error("Type " .. tostring(c) .. " not found in current scope.")
+			tp = localenv[param.typename] or terralib.types[param.typename] or error("Type " .. tostring(c) .. " not found in current scope.")
+			uniqueparams:insert(tp)
+			pos:insert(counter)
+			counter = counter + 1
 		end
-		templparams:insert(typ)
 	end
-	return templparams
+	return uniqueparams, pos
 end
 
 function process_namespace_indexing(lex)

@@ -61,6 +61,15 @@ function Template:new()
 		local res = fun.foldl(compare, {0, 0}, fun.zip(clist_1, clist_2))
 		return sgn(res[1] - res[2])
 	end
+	
+	local formsig = function(uniqueparams, pos)
+		local sig = terralib.newlist()
+		for k,v in ipairs(pos) do
+			sig:insert(uniqueparams[v])
+		end
+		return sig
+	end
+
 
     -- Return a table of admissable methods.
 	function template:get_methods(...)
@@ -68,28 +77,29 @@ function Template:new()
 		-- Only check input arguments. We can't control the return type
 		-- when we do method dispatching.
 		return fun.filter(function(sig, func)
-							  return concepts_check(sig, args)
-						  end,
-						  self.methods
-						 )
-						 -- For later comparison we only return the function
-						 -- parameters but not its return type.
-						 :map(function(sig, func) return sig, func end)
-						 :tomap()
+							local s = formsig(sig[1], sig[2])
+							return concepts_check(s, args)
+						end,
+						self.methods
+						)
+						-- For later comparison we only return the function
+						-- parameters but not its return type.
+						:map(function(sig, func) return sig, func end)
+						:tomap()
 	end
 
 	function template:select_method(...)
 		local args = {...}
 		local admissible = self:get_methods(...)
-	
 		-- Matches every concept
 		local Any = concept.Any
-		local saved = terralib.newlist()
+		local saved = {terralib.newlist(), terralib.newlist()}
 		for i = 1, #args do
-			saved:insert(Any)
+			saved[1]:insert(Any)
+			saved[2]:insert(i)
 		end
 		local function minimal(acc, sig, func)
-			local s = compare_two_methods(sig, acc)
+			local s = compare_two_methods(formsig(sig[1], sig[2]), formsig(acc[1], acc[2]))
 			if s > 0 then -- sig is more specialized
 				return sig
 			else
@@ -98,17 +108,45 @@ function Template:new()
 		end
 		-- Find minimal, most specialized implementation
 		saved = fun.foldl(minimal, saved, admissible)
-
+		--find all methods that reach same minimum
 		local function ambiguous(sig, func)
-			local s = compare_two_methods(sig, saved)
-			if s == 0 then
-				return true
-			else
-				return false
-			end
+			return 0 == compare_two_methods(formsig(sig[1], sig[2]), formsig(saved[1], saved[2]))
 		end
 		local methods = fun.filter(ambiguous, admissible):tomap()
-
+		--if there are still ambiguas methods try reducing the methods 
+		--to one candidate by comparing concrete types against the 'pos' array
+		--evaluate to true if: args[i] == args[pos[i]] for all arguments
+		local function evalcandidates(args, pos)
+			for i,v in ipairs(pos) do
+				if args[i]~=args[v] then
+					return false
+				end
+			end
+			return true
+		end
+		if fun.length(methods) > 1 then
+			for sig,func in pairs(methods) do
+				if not evalcandidates(args, sig[2]) then
+					methods[sig] = nil
+				end
+			end
+		end
+		--remaining methods are all valid methods that do not lead 
+		--to casts
+		--now select the method with minimal unique constraint list
+		if fun.length(methods) > 1 then
+			local sig, func = next(methods)
+			for s,f in pairs(methods) do
+				if #s[1] < #sig[1] then
+					sig, func = s, f
+				end
+			end
+			for s,f in pairs(methods) do
+				if #s[1] > #sig[1] then
+					methods[s] = nil
+				end
+			end
+		end
 		return methods
 	end
 
@@ -121,9 +159,13 @@ function Template:new()
 	end
 
 	function mt:__call(...)
-		local methods = self:select_method(...) 
-		local len = fun.length(methods)
-		if len > 1 then
+		local args = terralib.newlist{...}
+		local methods = self:select_method(unpack(args))
+		if fun.length(methods) == 1 then
+			local sig, func = next(methods)
+			return (func or self.default)(...)
+		else
+			--throw an ambiguity error
 			local err_str = ""
 			err_str = err_str
 				.. "The following method calls are ambiguous:\n"
@@ -136,9 +178,6 @@ function Template:new()
 					.. tostring(terralib.newlist(sig)) .. "\n"
 			end
         	return error("Method call is ambiguous.\n" .. err_str, 2)
-		else
-			local sig, func = next(methods)
-			return (func or self.default)(...)
 		end
 	end
 
