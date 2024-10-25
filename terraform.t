@@ -71,11 +71,11 @@ function process_template(self, lex)
 		--allow easy searching in 'env' of variables that are nested inside tables
 		local localenv = namespace.new(env)
 		--get parameter-types list
-		local uniqueparams, pos = get_template_parameter_list(localenv, params, constraints)
+		local paramconceptlist = get_template_parameter_list(localenv, params, constraints)
 		--get/register new template function
 		local templfun = localenv[path] or template.functiontemplate(methodname)
 		local argumentlist = terralib.newlist{}
-		templfun:adddefinition({[{uniqueparams, pos}] = terralib.memoize(function(...)
+		templfun:adddefinition({[paramconceptlist] = terralib.memoize(function(...)
 			local args = terralib.newlist{...}
 			local argumentlist = terralib.newlist{}
 			for counter,param in ipairs(params) do
@@ -121,7 +121,7 @@ function get_template_parameter_list(localenv, params, constraints)
 			counter = counter + 1
 		end
 	end
-	return uniqueparams, pos
+	return template.paramlist.new(uniqueparams, pos)
 end
 
 function process_namespace_indexing(lex)

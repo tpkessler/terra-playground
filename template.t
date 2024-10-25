@@ -13,12 +13,65 @@ local function sgn(x)
 	return x > 0 and 1 or x < 0 and -1 or 0
 end
 
-local function printtable(tab)
-	for k,v in pairs(tab) do
-		print(k)
-		print(v)
-		print()
+--representation of signature in terms of two tables,
+--unique types and 
+--{{T,S},{1,2,1}} = {T, S, T}
+local paramlist = {}
+--readonly table
+paramlist.__newindex = function(t,k,v)
+	error("Attempt to update a read-only table", 2)
+end
+--accessing values
+paramlist.__index = function(t,k)
+	if type(k)=="number" then
+		return t.keys[t.pos[k]]
+	else
+		return paramlist[k] or rawget(t, k)
 	end
+end
+--create a new parameter list from unique keys and position array
+--{{T,S},{1,2,1}} = {T, S, T}
+paramlist.new = function(keys, pos)
+	local t = {keys=keys, pos=pos}
+	return setmetatable(t, paramlist)
+end
+--return parameter-list {Any,Any,...}
+paramlist.init = function(n)
+	assert(type(n) == "number")
+	local keys, pos = terralib.newlist(), terralib.newlist()
+	for i = 1, n do
+		keys:insert(concept.Any)
+		pos:insert(i)
+	end
+	return paramlist.new(keys, pos)
+end
+--return iterator
+function paramlist:iter()
+	local i = 0
+	local n = #rawget(self,"pos")
+	return function()
+		if i < n then
+			i = i + 1
+			return i, self[i]
+		end
+	end
+end
+function paramlist:len()
+	return #rawget(self,"pos")
+end
+paramlist.__tostring = function(t)
+	local s = {}
+	for k,v in t:iter() do
+		table.insert(s, tostring(v))
+	end
+	return "{" .. table.concat(s, ", ") .. "}"
+end
+function paramlist:collect()
+	local s = {}
+	for k,v in self:iter() do
+		table.insert(s, v)
+	end
+	return s
 end
 
 function Template:new()
@@ -33,12 +86,12 @@ function Template:new()
     -- Check if method signature satisfies method concepts.
     -- This is used to rule out methods, such that only admissable methods remain.
     local function concepts_check(sig, args)
-		if #sig~=#args then
+		if sig:len()~=#args then
 			return false
 		end
 		local res = fun.all(function(C, T)
 								return concept.has_implementation(C, T)
-							end, fun.zip(sig, args))
+							end, fun.zip(sig:collect(), args))
 		return res
 	end
 
@@ -61,15 +114,6 @@ function Template:new()
 		local res = fun.foldl(compare, {0, 0}, fun.zip(clist_1, clist_2))
 		return sgn(res[1] - res[2])
 	end
-	
-	local formsig = function(uniqueparams, pos)
-		local sig = terralib.newlist()
-		for k,v in ipairs(pos) do
-			sig:insert(uniqueparams[v])
-		end
-		return sig
-	end
-
 
     -- Return a table of admissable methods.
 	function template:get_methods(...)
@@ -77,8 +121,7 @@ function Template:new()
 		-- Only check input arguments. We can't control the return type
 		-- when we do method dispatching.
 		return fun.filter(function(sig, func)
-							local s = formsig(sig[1], sig[2])
-							return concepts_check(s, args)
+							return concepts_check(sig, args)
 						end,
 						self.methods
 						)
@@ -91,15 +134,9 @@ function Template:new()
 	function template:select_method(...)
 		local args = {...}
 		local admissible = self:get_methods(...)
-		-- Matches every concept
-		local Any = concept.Any
-		local saved = {terralib.newlist(), terralib.newlist()}
-		for i = 1, #args do
-			saved[1]:insert(Any)
-			saved[2]:insert(i)
-		end
+		--find minimal 
 		local function minimal(acc, sig, func)
-			local s = compare_two_methods(formsig(sig[1], sig[2]), formsig(acc[1], acc[2]))
+			local s = compare_two_methods(sig:collect(), acc:collect())
 			if s > 0 then -- sig is more specialized
 				return sig
 			else
@@ -107,16 +144,17 @@ function Template:new()
 			end
 		end
 		-- Find minimal, most specialized implementation
+		local saved = paramlist.init(#args)
 		saved = fun.foldl(minimal, saved, admissible)
 		--find all methods that reach same minimum
 		local function ambiguous(sig, func)
-			return 0 == compare_two_methods(formsig(sig[1], sig[2]), formsig(saved[1], saved[2]))
+			return 0 == compare_two_methods(sig:collect(), saved:collect())
 		end
 		local methods = fun.filter(ambiguous, admissible):tomap()
 		--there may still be some ambiguous methods, but some of these may
 		--lead to casts
-		local function nocasts(args, pos)
-			for i,v in ipairs(pos) do
+		local function nocasts(args, sig)
+			for i,v in ipairs(sig.pos) do
 				if args[i]~=args[v] then
 					return false
 				end
@@ -128,7 +166,7 @@ function Template:new()
 		--evaluate to true if: args[i] == args[pos[i]] for all arguments
 		if fun.length(methods) > 1 then
 			for sig,func in pairs(methods) do
-				if not nocasts(args, sig[2]) then
+				if not nocasts(args, sig) then
 					methods[sig] = nil
 				end
 			end
@@ -139,12 +177,12 @@ function Template:new()
 		if fun.length(methods) > 1 then
 			local sig, func = next(methods)
 			for s,f in pairs(methods) do
-				if #s[1] < #sig[1] then
+				if #s.keys < #sig.keys then
 					sig, func = s, f
 				end
 			end
 			for s,f in pairs(methods) do
-				if #s[1] > #sig[1] then
+				if #s.keys > #sig.keys then
 					methods[s] = nil
 				end
 			end
@@ -222,6 +260,7 @@ local functiontemplate = function(name, methods)
 end
 
 return {
+	paramlist = paramlist,
 	Template = Template,
 	functiontemplate = functiontemplate,
 	istemplate = istemplate,
