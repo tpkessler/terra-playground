@@ -9,6 +9,15 @@ local fun = require("fun")
 
 local Template = {}
 
+printtable = function(tab)
+	for k,v in pairs(tab) do
+		print(k)
+		print(v)
+		print()
+	end 
+end
+
+
 local function sgn(x)
 	return x > 0 and 1 or x < 0 and -1 or 0
 end
@@ -220,6 +229,13 @@ function Template:new()
         	return error("Method call is ambiguous.\n" .. err_str, 2)
 		end
 	end
+
+	function template:adddefinition(methods)
+		methods = methods or {}
+        for sig, func in pairs(methods) do
+            self[sig] = func
+        end
+    end
 
 	return setmetatable(template, mt)
 end

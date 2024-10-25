@@ -1,5 +1,6 @@
 local process_template, printtable
 
+local base = require("base")
 local template = require("template")
 local concept = require("concept")
 
@@ -14,7 +15,7 @@ local conceptlang = {
 	end;
 }
 
-local process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing
+local process_method_name, process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing
 
 --easy set/get access of namespaces of 'n' levels depth
 local namespace = {
@@ -50,10 +51,11 @@ end
 
 function process_template(self, lex)
 	lex:expect("terraform")
-	--process methodname and possible indexing
-	local path, methodname = process_namespace_indexing(lex)
+	--process method path / class path
+	local path = process_namespace_indexing(lex)
+	local classname, methodname = process_method_name(lex, path)
 	--process templatefunction parameters
-	local params = process_template_parameters(lex)  
+	local params = process_template_parameters(lex, classname)  
 	--process template parameter constraints
 	local constraints = process_where_clause(lex)
 	--process terra-block
@@ -73,7 +75,17 @@ function process_template(self, lex)
 		--get parameter-types list
 		local paramconceptlist = get_template_parameter_list(localenv, params, constraints)
 		--get/register new template function
-		local templfun = localenv[path] or template.functiontemplate(methodname)
+		local templfun
+		if classname then
+			--case of a class method
+			local class = localenv[path]
+			if not class["templates"] then base.AbstractBase(class) end --add base functionality
+			templfun = class["templates"][methodname] or template.Template:new(methodname)
+		else
+			--case of a free function
+			templfun = localenv[path] or template.functiontemplate(methodname) 
+		end
+		--add current template method implementation
 		local argumentlist = terralib.newlist{}
 		templfun:adddefinition({[paramconceptlist] = terralib.memoize(function(...)
 			local args = terralib.newlist{...}
@@ -88,7 +100,11 @@ function process_template(self, lex)
 			end
 		end)})
 		--register template function
-		localenv[path] = templfun
+		if classname then
+			localenv[path]["templates"][methodname] = templfun
+		else
+			localenv[path] = templfun
+		end
 		--give control back to Lua
 		return luaexprs(env)
 	end
@@ -110,12 +126,20 @@ function get_template_parameter_list(localenv, params, constraints)
 				--get concept type
 				tp = localenv[c.path] or error("Concept " .. tostring(c.name) .. " not found in current scope.")
 				constraints[param.typename] = counter --update to a number in uniqueparams
+				--add '&' to get reference to 'tp'
+				for k=1,param.nref do
+					tp = &tp
+				end
 				uniqueparams:insert(tp)
 				pos:insert(counter)
 				counter = counter + 1
 			end
 		else --get concrete type from 'env' or primitives
 			tp = localenv[param.typename] or terralib.types[param.typename] or error("Type " .. tostring(c) .. " not found in current scope.")
+			--add '&' to get reference to 'tp'
+			for k=1,param.nref do
+				tp = &tp
+			end
 			uniqueparams:insert(tp)
 			pos:insert(counter)
 			counter = counter + 1
@@ -124,28 +148,50 @@ function get_template_parameter_list(localenv, params, constraints)
 	return template.paramlist.new(uniqueparams, pos)
 end
 
-function process_namespace_indexing(lex)
-	local ns = terralib.newlist{}
-	repeat
-		ns:insert(lex:expect(lex.name).value)
-	until not lex:nextif(".")
-	return ns, ns[#ns] --return path and methodname
+function process_method_name(lex, path)
+	local classname, methodname
+	if lex:nextif(":") then
+		classname = path[#path]
+		methodname = lex:expect(lex.name).value
+	else
+		methodname = path[#path]
+	end
+	return classname, methodname
 end
 
-function process_template_parameters(lex)                                  
-	local params = terralib.newlist()         
+function process_namespace_indexing(lex)
+	local path = terralib.newlist{}
+	repeat
+		path:insert(lex:expect(lex.name).value)
+	until not lex:nextif(".")
+	lex:ref(path[1]) --add root entry to local environment
+	return path
+end
+
+function process_template_parameters(lex,classname)
+	local params = terralib.newlist()
+	if classname then
+		--add first parameter 'self'
+		params:insert({name="self", typename=classname, nref=1})
+	end
 	if lex:matches("(") then
 		lex:expect("(")
 		repeat      
 			local paramname = lex:expect(lex.name).value
-			lex:expect(":")    
-			local paramtype = lex:expect(lex.name).value   
+			lex:expect(":")
+			--is this a reference to a type?
+			local nref = 0
+			while lex:matches("&") do
+				lex:expect("&") --move to next token
+				nref = nref + 1
+			end
+			local paramtype = lex:expect(lex.name).value
 			lex:ref(paramtype) --if paramtype is a concrete type (not a concept), 
 			--then make it available in 'env'
-			params:insert({name=paramname, typename=paramtype})                 
-		until not lex:nextif(",")                                
-		lex:expect(")")                                
-	end        
+			params:insert({name=paramname, typename=paramtype, nref=nref})                 
+		until not lex:nextif(",")
+		lex:expect(")")
+	end
 	return params
 end
 
