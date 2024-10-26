@@ -202,9 +202,6 @@ function AbstractInterface:new(name, ref_methods)
 			return false
 		end
 		local function has_implementation(C, S)
-			print(C)
-			print(S)
-			print()
 			if isconcept(C) and isconcept(S) then
 				return is_specialized_over(S, C)
 			elseif isconcept(C) and terralib.types.istype(S) then
