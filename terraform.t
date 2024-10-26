@@ -1,3 +1,8 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
 local process_template, printtable
 
 local base = require("base")
@@ -110,11 +115,20 @@ function process_template(self, lex)
 	end
 end
 
+function table.shallow_copy(t)
+  	local t2 = {}
+  	for k,v in pairs(t) do
+    	t2[k] = v
+	end
+	return t2
+end
+
 function get_template_parameter_list(localenv, params, constraints)
 	local uniqueparams, pos = terralib.newlist(), terralib.newlist()
 	local counter = 1
+	local ctrs = table.shallow_copy(constraints)
 	for _,param in ipairs(params) do
-		local c = constraints[param.typename]
+		local c = ctrs[param.typename]
 		local tp
 		if c then --c is either a concept or has been mutated to an integer that points to
 		--a concept already treated in uniqueparams
@@ -125,7 +139,7 @@ function get_template_parameter_list(localenv, params, constraints)
 			else
 				--get concept type
 				tp = localenv[c.path] or error("Concept " .. tostring(c.name) .. " not found in current scope.")
-				constraints[param.typename] = counter --update to a number in uniqueparams
+				ctrs[param.typename] = counter --update to a number in uniqueparams
 				--add '&' to get reference to 'tp'
 				for k=1,param.nref do
 					tp = &tp
@@ -165,7 +179,7 @@ function process_namespace_indexing(lex)
 		path:insert(lex:expect(lex.name).value)
 	until not lex:nextif(".")
 	lex:ref(path[1]) --add root entry to local environment
-	return path
+	return path, path[#path]
 end
 
 function process_template_parameters(lex,classname)
