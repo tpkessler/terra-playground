@@ -82,6 +82,10 @@ function paramlist:collect()
 	end
 	return s
 end
+function paramlist:signature()
+	local parameters = self:collect()
+	return parameters -> {}
+end
 
 function Template:new()
 	local template = {
