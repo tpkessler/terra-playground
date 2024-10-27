@@ -251,9 +251,9 @@ function AbstractInterface:new(name, ref_methods)
 				if T.templates[name] then
 					local methods = T.templates[name].methods
 					local res = fun.any(function(sig)
-											return is_implemented(sig, ref_sig.type)
+											return is_implemented(sig.type, ref_sig.type)
 										end,
-										fun.map(function(k, v) return k end,
+										fun.map(function(k, v) return k:signature() end,
 												methods)
 										)
 					return res
