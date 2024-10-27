@@ -188,15 +188,13 @@ function process_template_parameters(lex,classname)
 		--add first parameter 'self'
 		params:insert({name="self", typename=classname, nref=1})
 	end
-	if lex:matches("(") then
-		lex:expect("(")
+	if lex:nextif("(") then
 		repeat      
 			local paramname = lex:expect(lex.name).value
 			lex:expect(":")
 			--is this a reference to a type?
 			local nref = 0
-			while lex:matches("&") do
-				lex:expect("&") --move to next token
+			while lex:nextif("&") do
 				nref = nref + 1
 			end
 			local paramtype = lex:expect(lex.name).value
@@ -209,23 +207,23 @@ function process_template_parameters(lex,classname)
 	return params
 end
 
+local function process_single_constraint(lex)
+	if lex:nextif(":") then
+		local path, name = process_namespace_indexing(lex)
+		lex:ref(path[1])
+		return {path=path, name=name}
+	else
+		return {path = {"Any"}, name = "Any"}
+	end
+end
+
 function process_where_clause(lex)
-	local params = terralib.newlist()   
-	local constraint = {}
-	if lex:matches("where") then
-		lex:expect("where")
+	local params = terralib.newlist()
+	if lex:nextif("where") then
 		lex:expect("{") 
 		repeat      
 			local param = lex:expect(lex.name).value
-			if lex:matches(":") then
-				lex:expect(":")
-				constraint.path, constraint.name = process_namespace_indexing(lex)
-				lex:ref(constraint.path[1])
-			else
-				constraint.path = {"Any"}
-				constraint.name = "Any"
-			end
-			params[param] = constraint             
+			params[param] = process_single_constraint(lex)    
 		until not lex:nextif(",")                                
 		lex:expect("}")                                
 	end        
