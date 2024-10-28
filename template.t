@@ -246,7 +246,6 @@ function Template:new()
 			--check if method with this serialized key already exists
 			for s,v in pairs(self.methods) do
 				if sig:serialize()==s:serialize() then --overwrite old definition
-					print(sig:serialize())
 					self[s] = func
 					return
 				end
