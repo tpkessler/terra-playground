@@ -47,7 +47,20 @@ local namespace = {
 		else
 			t.env[path] = value
 		end
-	end
+	end,
+	__call = function(t, path, i)
+		local i = i or 0
+		if type(path)=="table" then
+			local n = #path-i
+			local v = t.env
+			for k=1,n do
+				v = v[path[k]]
+			end
+			return v
+		else
+			return t.env[path]
+		end
+	end,
 }
 namespace.new = function(env)
 	local t = {env=env}
@@ -94,8 +107,16 @@ function process_template(self, lex)
 			if not class["templates"] then base.AbstractBase(class) end --add base functionality
 			templfun = class["templates"][methodname] or template.Template:new(methodname)
 		else
-			--case of a free function
-			templfun = localenv[path] or template.functiontemplate(methodname) 
+			local isstaticmethod = #path>1 and terralib.types.istype(localenv(path,1))
+			if isstaticmethod then
+				--case of a static method
+				local class = localenv(path,1)
+				if not class["templates"] then base.AbstractBase(class) end --add base functionality
+				templfun = class["templates"][methodname] or template.Template:new(methodname)
+			else
+				--case of a free function
+				templfun = localenv[path] or template.functiontemplate(methodname)
+			end
 		end
 		--add current template method implementation
 		local argumentlist = terralib.newlist{}
@@ -115,9 +136,16 @@ function process_template(self, lex)
 		end)})
 		--register template function
 		if classname then
-			localenv[path]["templates"][methodname] = templfun
+			local class = localenv[path]
+			class.templates[methodname] = templfun
 		else
-			localenv[path] = templfun
+			local isstaticmethod = #path>1 and terralib.types.istype(localenv(path,1))
+			if isstaticmethod then
+				local class = localenv(path,1)
+				class.templates[methodname] = templfun
+			else
+				localenv[path] = templfun
+			end
 		end
 		--give control back to Lua
 		return luaexprs(env)

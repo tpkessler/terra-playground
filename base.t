@@ -54,12 +54,20 @@ local AbstractBase = Base:new("AbstractBase",
 		end
 
 		T.metamethods.__methodmissing = macro(function(name, obj, ...)
-			local args = terralib.newlist({...})
+			local args = terralib.newlist{...}
 			local types = args:map(function(t) return t.tree.type end)
-			types:insert(1, &T)
 			local method = T.templates[name]
-			local func = method(unpack(types))
-			return `[func](&obj, [args])
+			if obj.tree.type == T then
+				--case of a class method
+				types:insert(1, &T)
+				local func = method(unpack(types))
+				return `[func](&obj, [args])
+			else
+				--case of a static method
+				types:insert(1, obj.tree.type)
+				local func = method(unpack(types))
+				return `[func](obj, [args])
+			end
 		end)
 	end
 )

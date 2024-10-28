@@ -7,7 +7,9 @@ local concept = require("concept")
 import "terratest/terratest"
 
 local Real = concept.Real
+local Integer = concept.Integer
 local Float = concept.Float
+
 
 testenv "terraforming free functions" do
 
@@ -147,6 +149,17 @@ testenv "terraforming class methods" do
 
     terracode
         var mybar = bar{1}
+    end
+
+    testset "static methods" do
+        terraform bar.foo(a : T) where {T : Real}
+            return a + 2
+        end
+        terraform bar:foo(a : T) where {T : Real}
+            return a + self.index
+        end
+        test bar.foo(2) == 4
+        test mybar:foo(2) == 3
     end
 
     testset "concrete types" do

@@ -10,6 +10,15 @@ local serde = require("serde")
 
 local Template = {}
 
+printtable = function(tab)
+	for k,v in pairs(tab) do
+		print(k)
+		print(v)
+		print()
+	end 
+end
+
+
 local function sgn(x)
 	return x > 0 and 1 or x < 0 and -1 or 0
 end
