@@ -37,8 +37,8 @@ local function BLASDenseMatrixBase(M)
             where {T1 : BLASNumber, V1 : BLASVector, T2 : BLASNumber, V2 : BLASVector}
         escape
             local T = M.eltype
-            --assert(T == x.type.type.eltype)
-            --assert(T == y.type.type.eltype)
+            assert(T == x.type.type.eltype)
+            assert(T == y.type.type.eltype)
         end
         var nx, xptr, incx = x:getblasinfo()
         var ny, yptr, incy = y:getblasinfo()
@@ -50,7 +50,7 @@ local function BLASDenseMatrixBase(M)
         end
         var flag = 0
         if trans then
-            flag = [conjtrans(T)]
+            flag = [conjtrans(M.eltype)]
         else
             flag = blas.NoTrans
         end
@@ -63,6 +63,7 @@ local function BLASDenseMatrixBase(M)
             where {S1 : BLASNumber, S2 : BLASNumber, M1 : BLASDenseMatrix, M2 : BLASDenseMatrix}
         escape
             local T = M.eltype
+            print(T)
             assert(T == a.type.type.eltype)
             assert(T == b.type.type.eltype)
         end
@@ -103,14 +104,14 @@ local function BLASDenseMatrixBase(M)
 
         var fa = 0
         if atrans then
-            fa = [conjtrans(T)]
+            fa = [ conjtrans(M.eltype) ]
         else
             fa = blas.NoTrans
         end
 
         var fb = 0
         if btrans then
-            fb = [conjtrans(T)]
+            fb = [ conjtrans(M.eltype) ]
         else
             fb = blas.NoTrans
         end

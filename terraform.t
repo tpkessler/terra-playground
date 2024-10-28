@@ -239,12 +239,4 @@ function process_where_clause(lex)
 	return params
 end
 
-printtable = function(tab)
-	for k,v in pairs(tab) do
-		print(k)
-		print(v)
-		print()
-	end 
-end
-
 return conceptlang
