@@ -125,6 +125,16 @@ testenv "terraforming free functions" do
         test ns.bar.foo(float(1), 2.) == 3.0 
     end
 
+    testset "Access to parametric types in escape" do
+        terraform foo(a : T1, b : T2) where {T1 : Float, T2 : Float}
+            escape
+                assert(a.type == double and b.type==float)
+            end
+            return a * b + 1
+        end
+        test foo(2.0, float(3.0)) == 7
+    end
+
 end
 
 

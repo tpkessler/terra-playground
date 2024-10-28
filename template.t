@@ -6,6 +6,7 @@
 local concept = require("concept")
 local base = require("base")
 local fun = require("fun")
+local serde = require("serde")
 
 local Template = {}
 
@@ -74,6 +75,11 @@ paramlist.__tostring = function(t)
 		table.insert(s, tostring(v))
 	end
 	return "{" .. table.concat(s, ", ") .. "}"
+end
+function paramlist:serialize()
+	local s1 = tostring(self.keys)
+	local s2 = tostring(self.pos)
+	return s1 ..":" .. s2
 end
 function paramlist:collect()
 	local s = {}
@@ -236,8 +242,16 @@ function Template:new()
 
 	function template:adddefinition(methods)
 		methods = methods or {}
-        for sig, func in pairs(methods) do
-            self[sig] = func
+		for sig,func in pairs(methods) do
+			--check if method with this serialized key already exists
+			for s,v in pairs(self.methods) do
+				if sig:serialize()==s:serialize() then --overwrite old definition
+					print(sig:serialize())
+					self[s] = func
+					return
+				end
+			end
+			self[sig] = func
         end
     end
 
@@ -267,6 +281,14 @@ local functiontemplate = function(name, methods)
     function t:adddefinition(methods)
 		methods = methods or {}
         for sig, func in pairs(methods) do
+			--check if method with this serialized key already exists
+			for s,v in pairs(T.templates.eval.methods) do
+				if sig:serialize()==s:serialize() then --overwrite old definition
+					T.templates.eval[s] = func
+					return
+				end
+			end
+			--otherwise add new definition with new key
             T.templates.eval[sig] = func
         end
     end

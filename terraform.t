@@ -54,6 +54,13 @@ namespace.new = function(env)
 	return setmetatable(t, namespace)
 end
 
+local function dereference(v)
+	if v:ispointer() then
+		return dereference(v.type)
+	end
+	return v
+end
+
 function process_template(self, lex)
 	lex:expect("terraform")
 	--process method path / class path
@@ -96,8 +103,10 @@ function process_template(self, lex)
 			local args = terralib.newlist{...}
 			local argumentlist = terralib.newlist{}
 			for counter,param in ipairs(params) do
-				local sym = symbol(args[counter])
+				local typ = args[counter]
+				local sym = symbol(typ)
 				argumentlist:insert(sym)
+				--add variable and its type to the local environment
 				localenv[param.name] = sym
 			end
 			return terra([argumentlist])
@@ -198,7 +207,7 @@ function process_template_parameters(lex,classname)
 				nref = nref + 1
 			end
 			local paramtype = lex:expect(lex.name).value
-			lex:ref(paramtype) --if paramtype is a concrete type (not a concept), 
+			--lex:ref(paramtype) --if paramtype is a concrete type (not a concept), 
 			--then make it available in 'env'
 			params:insert({name=paramname, typename=paramtype, nref=nref})                 
 		until not lex:nextif(",")
