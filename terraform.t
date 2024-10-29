@@ -111,8 +111,8 @@ function process_template(self, lex)
 			if isstaticmethod then
 				--case of a static method
 				local class = localenv(path,1)
-				if not class["templates"] then base.AbstractBase(class) end --add base functionality
-				templfun = class["templates"][methodname] or template.Template:new(methodname)
+				if not class["staticmethods"] then base.AbstractBase(class) end --add base functionality
+				templfun = class["staticmethods"][methodname] or template.functiontemplate(methodname)
 			else
 				--case of a free function
 				templfun = localenv[path] or template.functiontemplate(methodname)
@@ -142,7 +142,7 @@ function process_template(self, lex)
 			local isstaticmethod = #path>1 and terralib.types.istype(localenv(path,1))
 			if isstaticmethod then
 				local class = localenv(path,1)
-				class.templates[methodname] = templfun
+				class.staticmethods[methodname] = templfun
 			else
 				localenv[path] = templfun
 			end

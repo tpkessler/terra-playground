@@ -152,13 +152,13 @@ testenv "terraforming class methods" do
     end
 
     testset "static methods" do
-        terraform bar.foo(a : T) where {T : Real}
+        terraform bar.sin(a : T) where {T : Real}
             return a + 2
         end
         terraform bar:foo(a : T) where {T : Real}
             return a + self.index
         end
-        test bar.foo(2) == 4
+        test bar.sin(2) == 4
         test mybar:foo(2) == 3
     end
 

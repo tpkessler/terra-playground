@@ -44,7 +44,17 @@ local AbstractBase = Base:new("AbstractBase",
 		Self.templates = T.templates
 
 		T.metamethods.__getmethod = function(self, methodname)
-		    local fnlike = self.methods[methodname] or self.staticmethods[methodname]
+		    local fnlike = self.methods[methodname]
+			--try staticmethods table
+			if not fnlike then
+				fnlike = T.staticmethods[methodname]
+				--detect name collisions with T.tempplates
+				if fnlike and T.templates[methodname] then
+					return error("NameCollistion: Function " .. methodname .. " defined in ".. 
+									tostring(T) .. ".templates and " .. tostring(T) ..".staticmethods.")
+				end
+			end
+			--if no implementation is found try __methodmissing
 		    if not fnlike and terralib.ismacro(self.metamethods.__methodmissing) then
 		        fnlike = terralib.internalmacro(function(ctx, tree, ...)
 		            return self.metamethods.__methodmissing:run(ctx, tree, methodname, ...)
@@ -58,15 +68,9 @@ local AbstractBase = Base:new("AbstractBase",
 			local types = args:map(function(t) return t.tree.type end)
 			local method = T.templates[name]
 			if obj.tree.type == T then
-				--case of a class method
 				types:insert(1, &T)
 				local func = method(unpack(types))
 				return `[func](&obj, [args])
-			else
-				--case of a static method
-				types:insert(1, obj.tree.type)
-				local func = method(unpack(types))
-				return `[func](obj, [args])
 			end
 		end)
 	end
