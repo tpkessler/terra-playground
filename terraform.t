@@ -8,6 +8,7 @@ local process_template, printtable
 local base = require("base")
 local template = require("template")
 local concept = require("concept")
+local serde = require("serde")
 
 local conceptlang = {
 	name = "conceptlang";
@@ -20,7 +21,7 @@ local conceptlang = {
 	end;
 }
 
-local process_method_name, process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing
+local process_method_name, process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing, printtable
 
 --easy set/get access of namespaces of 'n' levels depth
 local namespace = {
@@ -164,7 +165,7 @@ function get_template_parameter_list(localenv, params, constraints)
 	local uniqueparams, pos = terralib.newlist(), terralib.newlist()
 	local counter = 1
 	local ctrs = table.shallow_copy(constraints)
-	for _,param in ipairs(params) do
+	for i,param in ipairs(params) do
 		local c = ctrs[param.typename]
 		local tp
 		if c then --c is either a concept or has been mutated to an integer that points to
@@ -185,8 +186,19 @@ function get_template_parameter_list(localenv, params, constraints)
 				pos:insert(counter)
 				counter = counter + 1
 			end
-		else --get concrete type from 'env' or primitives
-			tp = localenv[param.typename] or terralib.types[param.typename] or error("Type " .. tostring(c) .. " not found in current scope.")
+		else 
+			--get concrete type from 'env' or primitives
+			tp = localenv[param.typename] or terralib.types[param.typename]
+			--if not in the current localenv, check broader using 'serde.get_local_vars' 
+			--and add to current local environment
+			if not tp then
+				local localvars = serde.get_local_vars()
+				tp = localvars[param.typename]
+				if not tp then
+					error("Type " .. tostring(c) .. " not found in current scope.")
+				end
+				localenv[param.typename] = tp
+			end
 			--add '&' to get reference to 'tp'
 			for k=1,param.nref do
 				tp = &tp
@@ -265,6 +277,14 @@ function process_where_clause(lex)
 		lex:expect("}")                                
 	end        
 	return params
+end
+
+function printtable(tab)
+ 	for k,v in pairs(tab) do 
+		print(k)
+		print(v)
+		print()
+	end
 end
 
 return conceptlang
