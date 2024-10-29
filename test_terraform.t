@@ -9,6 +9,7 @@ import "terratest/terratest"
 local Real = concept.Real
 local Integer = concept.Integer
 local Float = concept.Float
+local size_t = uint64
 
 
 testenv "terraforming free functions" do
@@ -109,6 +110,13 @@ testenv "terraforming free functions" do
         test foo(float(1), 2.) == 3.0 --calling foo<T> would lead to a cast, which is 
         --not allowed, so we call foo<T1,T2>
     end
+
+    testset "reference to local typealiases" do
+        terraform foo(a : size_t)
+            return a + 2
+        end
+        test foo(size_t(2)) == 4.0
+    end    
 
     testset "nested namespaces" do
         local ns = {}
