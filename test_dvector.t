@@ -110,6 +110,27 @@ for _, S in pairs({int, uint, int64, uint64, float, double, float128, float1024}
             test v:get(1) == 2
             test v:get(2) == 1
         end
+
+        testset "iterator" do
+            terracode
+                var x = dvector.from(&alloc, 3, 2, 1)
+                var y = dvector.from(&alloc, 1, 2, 3, 4)
+                y.inc = 2
+                y.size = 4 / y.inc
+                var sumx: T = 0
+                for xx in x do
+                    sumx = sumx + xx
+                end
+
+                var prody: T = 1
+                for yy in y do
+                    prody = prody * yy
+                end
+            end
+
+            test sumx == 6
+            test prody == 3
+        end
     end
 end
 end

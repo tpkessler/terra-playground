@@ -23,6 +23,7 @@ local DynamicVector = terralib.memoize(function(T)
 
     local struct V{
         data: S
+        size: size_t
         inc: size_t
     }
     V.eltype = T
@@ -34,7 +35,7 @@ local DynamicVector = terralib.memoize(function(T)
     base.AbstractBase(V)
 
     terra V:size()
-        return self.data:size()
+        return self.size
     end
 
     terra V:get(i: size_t)
@@ -60,7 +61,8 @@ local DynamicVector = terralib.memoize(function(T)
 
     V.staticmethods.new = terra(alloc: Allocator, size: size_t)
         var vec : V
-        vec.data = alloc:allocate(sizeof(T), size) 
+        vec.data = alloc:allocate(sizeof(T), size)
+        vec.size = size
         vec.inc = 1
         return vec
     end
@@ -121,11 +123,31 @@ local DynamicVector = terralib.memoize(function(T)
         vecblas.VectorBLASBase(V)
     end
 
+    local struct iterator{
+        -- Reference to vector over which we iterate.
+        -- It's used to check the length of the iterator
+        parent: &V
+        -- Reference to the current element held in the smart block
+        ptr: &T
+    }
+
     terra V:getiterator()
-        return self.data:getiterator()
+        return iterator {self, self.data.ptr}
     end
-    
-    range.Base(V, S.iterator_t, T)
+
+    terra iterator:getvalue()
+        return @self.ptr
+    end
+
+    terra iterator:next()
+        self.ptr = self.ptr + self.parent.inc
+    end
+
+    terra iterator:isvalid()
+        return (self.ptr - self.parent.data.ptr) < self.parent.size * self.parent.inc
+    end
+
+    range.Base(V, iterator, T)
 
     return V
 end)

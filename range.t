@@ -8,6 +8,11 @@ local concept = require("concept")
 local template = require("template")
 local lambdas = require("lambdas")
 local err = require("assert")
+<<<<<<< HEAD
+=======
+
+import "terraform"
+>>>>>>> terraform
 
 local size_t = uint64
 
@@ -75,15 +80,6 @@ local RangeBase = function(Range, iterator_t, T)
         end
     end)
 
-    --always extract a value type into the body of the loop
-    local extract = function(value) 
-        if value.type:ispointer() then
-            return `@value
-        else
-            return `value
-        end
-    end
-
     --__for is generated for iterators
     Range.metamethods.__for = function(self,body)
         return quote
@@ -96,6 +92,7 @@ local RangeBase = function(Range, iterator_t, T)
             end
         end
     end
+<<<<<<< HEAD
 
     --definition of collect template
     Range.templates.collect = template.Template:new("collect")
@@ -105,10 +102,18 @@ local RangeBase = function(Range, iterator_t, T)
             for v in self do
                 container:push(v)
             end
+=======
+    
+    --containers that only implement the stacker interface are using 'push'.
+    terraform Range:collect(container : &S) where {S : Stacker}
+        for v in self do
+            container:push(v)
+>>>>>>> terraform
         end
     end
     --containers that only implement the setter interface are using 'set'. Sufficient
     --space needs to be allocated before
+<<<<<<< HEAD
     Range.templates.collect[{&Range.Self, &Setter} -> {}] = function(Self, Container)
         return terra(self : Self, container : Container)
             var i = 0
@@ -116,15 +121,28 @@ local RangeBase = function(Range, iterator_t, T)
                 container:set(i, v)
                 i = i + 1
             end
+=======
+    terraform Range:collect(container : &S) where {S : Setter}
+        var i = 0
+        for v in self do
+            container:set(i, v)
+            i = i + 1
+>>>>>>> terraform
         end
     end
     --containers implementing the stacker and setter interface will only use
     --the stacker interface
+<<<<<<< HEAD
     Range.templates.collect[{&Range.Self, &Sequence} -> {}] = function(Self, Container)
         return terra(self : Self, container : Container)
             for v in self do
                 container:push(v)
             end
+=======
+    terraform Range:collect(container : &S) where {S : Sequence}
+        for v in self do
+            container:push(v)
+>>>>>>> terraform
         end
     end
 
