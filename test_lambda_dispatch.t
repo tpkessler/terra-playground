@@ -1,27 +1,31 @@
 import "terraform"
 local io = terralib.includec("stdio.h")
-local lambda = require("lambda")
-
-local size_t = uint64
-
-local struct integrant{
-    x : double
-    y : double
-}
-
-terraform integrant:eval(kernel : K, npts : size_t) where {K}
-    return kernel(self.x) * npts
-end
+--local lambda = require("lambda")
+local base = require("base")
 
 
-local Kernel = lambda.lambda(double -> double, struct {y: double})
+local Bar = terralib.memoize(function(T)
+
+    local struct bar{
+        x : T
+    }
+    base.AbstractBase(bar)
+
+    terraform bar:eval(x : double, y : double)
+        return 1.0
+    end
+
+    return bar
+end)
+
+print(type(Bar(double)))
+
+--local Kernel = lambda.lambda({double} -> double, struct {y: double})
+local mybar = Bar(double)
 
 terra main()
-    --define lambda
-    var kernel = Kernel.new([terra(x : double, y : double) return x * y end], 2.0)
-    --io.printf("kernel(...) = %0.2f\n", kernel(10.0))
-    --integrant
-    var x = integrant{2.,3.}
-    io.printf("x:eval(...) = %0.2f\n", x:eval(kernel, 10))
+    --var f = Kernel.new([terra(x : double, y : double) return x * y end], 2.0)
+    var x = mybar{2.0}
+    --var y = x:eval(&f, 2.0)
 end
 main()

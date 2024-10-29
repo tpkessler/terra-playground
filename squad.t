@@ -1,10 +1,11 @@
+import "terraform"
 local base = require("base")
 local alloc = require('alloc')
 local tmath = require('mathfuns')
 local geo = require("geometry")
 local vec = require("luavector")
 local gauss = require("gauss")
-local lambda = require("lambdas")
+local lambda = require("lambda")
 local range = require("range")
 
 local DefaultAllocator =  alloc.DefaultAllocator()
@@ -176,14 +177,6 @@ local Cube = terralib.memoize(function(T, N)
     return cube
 end)
 
---definition of a kernel type
-kernel_t = lambda.generate{signature={T[3], T[3], double} -> {double}, captures={double}}
-kernel_t.metamethods.__entrymissing = macro(function(entryname, self)
-    if entryname=="alpha" then
-        return `self.captures._0
-    end
-end)
-
 -- x-, and y- physical coordinates
 terra squad.xcoord :: {T[3], T[3]} -> {T[3]}
 terra squad.ycoord :: {T[3], T[3]} -> {T[3]}
@@ -216,12 +209,6 @@ local function Integrand(args)
         local N = C:rangedim()
         local K = C:dim()
 
-        local terra integrate_imp :: {&integrant, &kernel_t, size_t} -> {T}
-
-        terra integrant:integrate(kernel : kernel_t, npts : size_t)
-            return integrate_imp(self, &kernel, npts)
-        end
-
         --compute local coordinates
         local relative_to_global_coords = terra(z : ntuple(T,K), u : ntuple(T,K))
             escape
@@ -233,13 +220,17 @@ local function Integrand(args)
             return u
         end
 
+        terraform integrant:integrate(kernel : &F, npts : size_t) where {F}
+            return integrate_imp(self, kernel, npts)
+        end
+
         --pullback kernel to regularized coordinates. Here
         --(ǔ, v̌, û, ẑ) ∈ R⁶ with
         --ǔ ∈ Iᵈ⁻ᵏ
         --v̌ ∈ Iᵈ⁻ᵏ
         --ẑ ∈ Aᵏ = [-1,1]ᵏ
         --û ∈ Fᵏ = Iᵏ ∩ (Iᵏ - ẑ)
-        local terra evaluate(self : &integrant, kernel : &kernel_t, u_tilde : ntuple(T,N-K), v_tilde : ntuple(T,N-K), z_hat : ntuple(T,K), u_hat : ntuple(T,K))
+        terraform integrant:evaluate(kernel : &F, u_tilde : ntuple(T,N-K), v_tilde : ntuple(T,N-K), z_hat : ntuple(T,K), u_hat : ntuple(T,K)) where {F}
             var v_hat = relative_to_global_coords(z_hat, u_hat)
             var xhat, yhat = self.x(u_hat, u_tilde), self.y(v_hat, v_tilde)
             var x, y = squad.xcoord(xhat, yhat), squad.ycoord(xhat, yhat)
@@ -252,7 +243,7 @@ local function Integrand(args)
         local cube_t = Cube(T,K)
 
         if K==0 then
-            terra integrate_imp(self : &integrant, kernel : &kernel_t, npts : size_t)
+            terraform integrant.integrate_imp(self : &integrant, kernel : &F, npts : size_t) where {F}
                 var alloc : DefaultAllocator
                 var alpha = kernel.alpha + 2*N - K - 1
                 var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
@@ -288,7 +279,7 @@ local function Integrand(args)
                 return result
             end
         elseif K==1 then
-            terra integrate_imp(self : &integrant,  kernel : &kernel_t, npts : size_t)
+            terraform integrant.integrate_imp(self : &integrant,  kernel : &F, npts : size_t) where {F}
                 var alloc : DefaultAllocator
                 var alpha = kernel.alpha + 2*N - K - 1
                 var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
@@ -333,7 +324,7 @@ local function Integrand(args)
                 return result
             end
         elseif K==2 then
-            terra integrate_imp(self : &integrant, kernel : &kernel_t, npts : size_t)
+            terraform integrant.integrate_imp(self : &integrant, kernel : &F, npts : size_t) where {F}
                 var alloc : DefaultAllocator
                 var alpha = kernel.alpha + 2*N - K - 1
                 var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
@@ -380,7 +371,7 @@ local function Integrand(args)
                 return result
             end
         elseif K==3 then
-            terra integrate_imp(self : &integrant, kernel : &kernel_t, npts : size_t)
+            terraform integrant.integrate_imp(self : &integrant, kernel : &F, npts : size_t) where {F}
                 var alloc : DefaultAllocator
                 var alpha = kernel.alpha + 2*N - K - 1
                 var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})

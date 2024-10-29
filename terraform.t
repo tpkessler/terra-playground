@@ -192,12 +192,12 @@ function get_template_parameter_list(localenv, params, constraints)
 			--if not in the current localenv, check broader using 'serde.get_local_vars' 
 			--and add to current local environment
 			if not tp then
-				local localvars = serde.get_local_vars()
-				tp = localvars[param.typename]
+				--local localvars = serde.get_local_vars()
+				--tp = localvars[param.typename]
 				if not tp then
-					error("Type " .. tostring(c) .. " not found in current scope.")
+					error("Type " .. tostring(param.typename) .. " not found in current scope.")
 				end
-				localenv[param.typename] = tp
+			--	localenv[param.typename] = tp
 			end
 			--add '&' to get reference to 'tp'
 			for k=1,param.nref do
