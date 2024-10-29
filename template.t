@@ -220,7 +220,10 @@ function Template:new()
 	function mt:__call(...)
 		local args = terralib.newlist{...}
 		local methods = self:select_method(unpack(args))
-		if fun.length(methods) == 1 then
+		local n_methods = fun.length(methods)
+		if n_methods==0 then
+			error("No implemementation found that satisfies the concept check.", 2)
+		elseif n_methods == 1 then
 			local sig, func = next(methods)
 			return (func or self.default)(...)
 		else
