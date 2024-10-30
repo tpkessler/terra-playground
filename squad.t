@@ -223,8 +223,8 @@ local function Integrand(args)
             end
             --pullback evaluation kernel to regularized coordinates
             local nktup, ktup = ntuple(T,N-K), ntuple(T,K)
-            local terraform evaluate(self : &integral, mapping : G, kernel : F, 
-                    u_tilde : nktup, v_tilde : nktup, z_hat : ktup, u_hat : ktup) where {G, F}
+            local terraform evaluate(self : &integral, mapping, kernel, 
+                    u_tilde : nktup, v_tilde : nktup, z_hat : ktup, u_hat : ktup)
                 var v_hat = relative_to_global_coords(z_hat, u_hat)
                 var xhat, yhat = self.x(u_hat, u_tilde), self.y(v_hat, v_tilde)
                 var x, y = mapping:xcoord(xhat, yhat), mapping:ycoord(xhat, yhat)
@@ -234,7 +234,7 @@ local function Integrand(args)
             --generate the quadrature kernel
             local quadrature_kernel_imp
             if K==0 then
-                terraform quadrature_kernel_imp(self : &integral, mapping : &G, kernel : &F, npts : int) where {G, F}
+                terraform quadrature_kernel_imp(self : &integral, mapping, kernel, npts : int)
                     var alloc : DefaultAllocator
                     var alpha = kernel.alpha + 2*N - K - 1
                     var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
@@ -270,7 +270,7 @@ local function Integrand(args)
                     return result
                 end
             elseif K==1 then
-                terraform quadrature_kernel_imp(self : &integral, mapping : &G, kernel : &F, npts : int) where {G, F}
+                terraform quadrature_kernel_imp(self : &integral, mapping, kernel, npts : int)
                     var alloc : DefaultAllocator
                     var alpha = kernel.alpha + 2*N - K - 1
                     var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
@@ -417,7 +417,7 @@ local function Integrand(args)
         local quadkernel = generate_quadrature_kernel(K)
 
         --API function that evaluates the integral
-        terraform integral:eval(mapping : G, kernel : F, npts : int) where {G, F}
+        terraform integral:eval(mapping, kernel, npts : int)
             return quadkernel(self, &mapping, &kernel, npts)
         end
 
