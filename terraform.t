@@ -3,28 +3,155 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local process_template, printtable
-
 local base = require("base")
 local template = require("template")
 local concept = require("concept")
-local serde = require("serde")
+
+local generate_terrafun, parse_terraform_statement, process_free_function_statement, process_class_method_statement
+local namespace, process_method_name, process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing
+local isclasstemplate, isnamespacedfunctiontemplate, isfreefunctiontemplate, isstaticmethod
 
 local conceptlang = {
 	name = "conceptlang";
 	entrypoints = {"terraform"};
 	keywords = {"where"};
-	statement = function(self,lex)
-		if lex:matches("terraform") then
-			return process_template(self, lex)
-		end
-	end;
+	statement = 
+		function(self,lex)
+			local templ = parse_terraform_statement(self,lex)
+			if isclasstemplate(templ) then
+				return process_class_method_statement(templ)
+			else
+				if isnamespacedfunctiontemplate(templ) then
+					return process_namespaced_function_statement(templ)
+				elseif isfreefunctiontemplate(templ) then
+					return process_free_function_statement(templ), { templ.path } -- create the statement: path = ctor(envfun)
+				end
+			end
+		end;
+	localstatement = 
+		function(self,lex)
+			local templ = parse_terraform_statement(self,lex)
+			if isfreefunctiontemplate(templ) then
+				return process_free_function_statement(templ), { templ.path } -- create the statement: path = ctor(envfun)
+			end
+		end;
 }
 
-local process_method_name, process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing, printtable
+function table.shallow_copy(t)
+  	local t2 = {}
+  	for k,v in pairs(t) do
+    	t2[k] = v
+	end
+	return t2
+end
+
+function parse_terraform_statement(self,lex)
+	local templ = {}
+	lex:expect("terraform")
+	--process method path / class path
+	templ.path = process_namespace_indexing(lex)
+	templ.classname, templ.methodname = process_method_name(lex, templ.path)
+	--process templatefunction parameters
+	templ.params = process_template_parameters(lex, templ.classname)  
+	--process template parameter constraints
+	templ.constraints = process_where_clause(lex)
+	--process terra-block
+	templ.terrastmts = lex:terrastats()
+	--end of terra-block
+	lex:expect("end")
+	return templ
+end
+
+function generate_terrafun(templ, localenv)
+	return function(...)
+		local args = terralib.newlist{...}
+		local argumentlist = terralib.newlist{}
+		for counter,param in ipairs(templ.params) do
+			local typ = args[counter]
+			local sym = symbol(typ)
+			argumentlist:insert(sym)
+			--add variable and its type to the local environment
+			localenv[param.name] = sym
+		end
+		return terra([argumentlist])
+			[templ.terrastmts(localenv)]
+		end
+	end
+end
+
+function process_free_function_statement(templ)
+	return function(envfun)
+		--initialize environment
+		local env = envfun()
+		--add any concept to local environment
+		env["Any"] = concept.Any
+		--allow easy searching in 'env' of variables that are nested inside tables
+		local localenv = namespace.new(env)
+		--get parameter-types list
+		local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
+		--get/register new template function
+		local templfun = localenv[templ.path] or template.functiontemplate(templ.methodname)
+		--add current template method implementation
+		templfun:adddefinition({[paramconceptlist] = terralib.memoize(generate_terrafun(templ,localenv))})
+		return templfun
+	end
+end
+
+function process_namespaced_function_statement(templ)
+	return function(envfun)
+		--initialize environment
+		local env = envfun()
+		--add any concept to local environment
+		env["Any"] = concept.Any
+		--allow easy searching in 'env' of variables that are nested inside tables
+		local localenv = namespace.new(env)
+		--get parameter-types list
+		local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
+		--get/register new template function
+		local templfun
+		if isstaticmethod(templ,localenv) then
+			--case of a static method
+			local class = localenv(templ.path,1)
+			if not class["staticmethods"] then base.AbstractBase(class) end --add base functionality
+			templfun = class["staticmethods"][templ.methodname] or template.functiontemplate(templ.methodname)
+		else
+			templfun = localenv[templ.path] or template.functiontemplate(templ.methodname)
+		end
+		--add current template method implementation
+		templfun:adddefinition({[paramconceptlist] = terralib.memoize(generate_terrafun(templ,localenv))})
+		--register method
+		if isstaticmethod(templ,localenv) then
+			local class = localenv(templ.path,1)
+			class["staticmethods"][templ.methodname] = templfun
+		else
+			localenv[templ.path] = templfun
+		end
+	end
+end
+
+function process_class_method_statement(templ)
+	return function(envfun)
+		--initialize environment
+		local env = envfun()
+		--add any concept to local environment
+		env["Any"] = concept.Any
+		--allow easy searching in 'env' of variables that are nested inside tables
+		local localenv = namespace.new(env)
+		--get parameter-types list
+		local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
+		--get/register new template function
+		local class = localenv[templ.path]
+		if not class["templates"] then base.AbstractBase(class) end --add base functionality
+		local templfun = class["templates"][templ.methodname] or template.Template:new(templ.methodname)
+		--add current template method implementation
+		templfun:adddefinition({[paramconceptlist] = terralib.memoize(generate_terrafun(templ,localenv))})
+		--register class method
+		class["templates"][templ.methodname] = templfun
+	end
+end
 
 --easy set/get access of namespaces of 'n' levels depth
-local namespace = {
+namespace = {
 	__index = function(t, path)
 		if type(path)=="table" then
 			local n = #path
@@ -73,92 +200,6 @@ local function dereference(v)
 		return dereference(v.type)
 	end
 	return v
-end
-
-function process_template(self, lex)
-	lex:expect("terraform")
-	--process method path / class path
-	local path = process_namespace_indexing(lex)
-	local classname, methodname = process_method_name(lex, path)
-	--process templatefunction parameters
-	local params = process_template_parameters(lex, classname)  
-	--process template parameter constraints
-	local constraints = process_where_clause(lex)
-	--process terra-block
-	local terrastmts = lex:terrastats()
-	--end of terra-block
-	lex:expect("end")
-	--give control back to lua
-	local luaexprs = lex:luastats()
-	--return env-function
-	return function(envfun)
-		--initialize environment
-		local env = envfun()
-		--add any concept to local environment
-		env["Any"] = concept.Any
-		--allow easy searching in 'env' of variables that are nested inside tables
-		local localenv = namespace.new(env)
-		--get parameter-types list
-		local paramconceptlist = get_template_parameter_list(localenv, params, constraints)
-		--get/register new template function
-		local templfun
-		if classname then
-			--case of a class method
-			local class = localenv[path]
-			if not class["templates"] then base.AbstractBase(class) end --add base functionality
-			templfun = class["templates"][methodname] or template.Template:new(methodname)
-		else
-			local isstaticmethod = #path>1 and terralib.types.istype(localenv(path,1))
-			if isstaticmethod then
-				--case of a static method
-				local class = localenv(path,1)
-				if not class["staticmethods"] then base.AbstractBase(class) end --add base functionality
-				templfun = class["staticmethods"][methodname] or template.functiontemplate(methodname)
-			else
-				--case of a free function
-				templfun = localenv[path] or template.functiontemplate(methodname)
-			end
-		end
-		--add current template method implementation
-		local argumentlist = terralib.newlist{}
-		templfun:adddefinition({[paramconceptlist] = terralib.memoize(function(...)
-			local args = terralib.newlist{...}
-			local argumentlist = terralib.newlist{}
-			for counter,param in ipairs(params) do
-				local typ = args[counter]
-				local sym = symbol(typ)
-				argumentlist:insert(sym)
-				--add variable and its type to the local environment
-				localenv[param.name] = sym
-			end
-			return terra([argumentlist])
-				[terrastmts(env)]
-			end
-		end)})
-		--register template function
-		if classname then
-			local class = localenv[path]
-			class.templates[methodname] = templfun
-		else
-			local isstaticmethod = #path>1 and terralib.types.istype(localenv(path,1))
-			if isstaticmethod then
-				local class = localenv(path,1)
-				class.staticmethods[methodname] = templfun
-			else
-				localenv[path] = templfun
-			end
-		end
-		--give control back to Lua
-		return luaexprs(env)
-	end
-end
-
-function table.shallow_copy(t)
-  	local t2 = {}
-  	for k,v in pairs(t) do
-    	t2[k] = v
-	end
-	return t2
 end
 
 function get_template_parameter_list(localenv, params, constraints)
@@ -247,7 +288,7 @@ function process_template_parameters(lex,classname)
 				nref = nref + 1
 			end
 			local paramtype = lex:expect(lex.name).value
-			--lex:ref(paramtype) --if paramtype is a concrete type (not a concept), 
+			lex:ref(paramtype) --if paramtype is a concrete type (not a concept), 
 			--then make it available in 'env'
 			params:insert({name=paramname, typename=paramtype, nref=nref})                 
 		until not lex:nextif(",")
@@ -279,12 +320,20 @@ function process_where_clause(lex)
 	return params
 end
 
-function printtable(tab)
- 	for k,v in pairs(tab) do 
-		print(k)
-		print(v)
-		print()
-	end
+function isclasstemplate(templ)
+	return templ.classname~=nil
+end
+
+function isnamespacedfunctiontemplate(templ)
+	return templ.classname==nil and #templ.path > 1
+end
+
+function isfreefunctiontemplate(templ)
+	return templ.classname==nil and #templ.path == 1
+end
+
+function isstaticmethod(templ,localenv)
+	return #templ.path>1 and terralib.types.istype(localenv(templ.path,1))
 end
 
 return conceptlang

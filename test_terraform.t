@@ -11,14 +11,12 @@ local Integer = concept.Integer
 local Float = concept.Float
 local size_t = uint64
 
-
 testenv "terraforming free functions" do
 
     testset "concrete types" do
         terraform foo(a : double, b : double)
             return a * b + 2
         end
-
         terraform foo(a : float, b : double)
             return a * b + 3
         end
@@ -26,7 +24,7 @@ testenv "terraforming free functions" do
         test foo(float(1), 2.) == 5.0
     end    
 
-    testset "method dispatch parametric concrete types" do
+    testset "global method dispatch parametric concrete types" do
         terraform foo(a : T, b : T) where {T : Real}
             return a * b
         end
@@ -46,7 +44,27 @@ testenv "terraforming free functions" do
         test foo(1, 2) == 5.0
     end
 
-    testset "method dispatch parametric reference types" do
+    testset "lobal method dispatch parametric concrete types" do
+        local terraform foo(a : T, b : T) where {T : Real}
+            return a * b
+        end
+        local terraform foo(a : int, b : T) where {T : Real}
+            return a * b + 1
+        end
+        local terraform foo(a : T, b : int) where {T : Real}
+            return a * b + 2
+        end
+        local terraform foo(a : int, b : int)
+            return a * b + 3
+        end
+        --typical use-case in dispatch
+        test foo(1., 2.) == 2.0
+        test foo(1, 2.) == 3.0
+        test foo(1., 2) == 4.0
+        test foo(1, 2) == 5.0
+    end
+
+    testset "global method dispatch parametric reference types" do
         terraform foo(a : &T, b : &T) where {T : Real}
             return @a * @b
         end
@@ -57,6 +75,31 @@ testenv "terraforming free functions" do
             return @a * @b + 2
         end
         terraform foo(a : &int, b : &int)
+            return @a * @b + 3
+        end
+        terracode
+            var x = 1.
+            var y = 2.
+            var i = 1
+            var j = 2
+        end
+        test foo(&x, &y) == 2.0
+        test foo(&i, &y) == 3.0
+        test foo(&x, &j) == 4.0
+        test foo(&i, &j) == 5.0
+    end
+
+    testset "local method dispatch parametric reference types" do
+        local terraform foo(a : &T, b : &T) where {T : Real}
+            return @a * @b
+        end
+        local terraform foo(a : &int, b : &T) where {T : Real}
+            return @a * @b + 1
+        end
+        local terraform foo(a : &T, b : &int) where {T : Real}
+            return @a * @b + 2
+        end
+        local terraform foo(a : &int, b : &int)
             return @a * @b + 3
         end
         terracode
@@ -285,6 +328,23 @@ testenv "terraforming class methods" do
         end
         test mybar:foo(1., 2.) == 3.0
         test mybar:foo(float(1), 2.) == 4.0 
+    end
+
+    testset "use in parametric class definition" do
+        local Bar = function(T)
+            local struct bar{
+                x : T
+            }
+            terraform bar:eval(x : S) where {S}
+                return x + self.x
+            end
+            return bar
+        end
+        local bbar = Bar(double)
+        terracode
+            var mybar = bbar{1}
+        end
+        test mybar:eval(1.) == 2
     end
 
 end
