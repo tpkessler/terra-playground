@@ -24,6 +24,17 @@ testenv "terraforming free functions" do
         test foo(float(1), 2.) == 5.0
     end    
 
+    testset "duck-typing" do
+        terraform foo(a, b)
+            return a * b + 1
+        end
+        terraform foo(a, b, c : T) where {T : Integer}
+            return a * b + c
+        end
+        test foo(2, 3) == 7
+        test foo(2, 3, 2) == 8
+    end    
+
     testset "global method dispatch parametric concrete types" do
         terraform foo(a : T, b : T) where {T : Real}
             return a * b
@@ -223,6 +234,17 @@ testenv "terraforming class methods" do
         test mybar:foo(1., 2.) == 3.0
         test mybar:foo(float(1), 2.) == 4.0
     end    
+
+    testset "duck-typing" do
+        terraform bar:foo(a, b)
+            return a * b + self.index
+        end
+        terraform bar:foo(a, b, c : T)  where {T : Integer}
+            return a * b + self.index + c
+        end
+        test mybar:foo(2, 3) == 7
+        test mybar:foo(2, 3, 1) == 8
+    end   
 
     testset "method dispatch parametric concrete types" do
         terraform bar:foo(a : T, b : T) where {T : Real}
