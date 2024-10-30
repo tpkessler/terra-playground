@@ -281,16 +281,19 @@ function process_template_parameters(lex,classname)
 	if lex:nextif("(") then
 		repeat      
 			local paramname = lex:expect(lex.name).value
-			lex:expect(":")
-			--is this a reference to a type?
-			local nref = 0
-			while lex:nextif("&") do
-				nref = nref + 1
-			end
-			local paramtype = lex:expect(lex.name).value
-			lex:ref(paramtype) --if paramtype is a concrete type (not a concept), 
-			--then make it available in 'env'
-			params:insert({name=paramname, typename=paramtype, nref=nref})                 
+			if lex:nextif(":") then
+				--is this a reference to a type?
+				local nref = 0
+				while lex:nextif("&") do
+					nref = nref + 1
+				end
+				local paramtype = lex:expect(lex.name).value
+				lex:ref(paramtype) --if paramtype is a concrete type (not a concept), 
+				--then make it available in 'env'
+				params:insert({name=paramname, typename=paramtype, nref=nref}) 
+			else
+				params:insert({name=paramname, typename="__ducktype__", nref=0})
+			end   
 		until not lex:nextif(",")
 		lex:expect(")")
 	end
@@ -308,7 +311,7 @@ local function process_single_constraint(lex)
 end
 
 function process_where_clause(lex)
-	local params = terralib.newlist()
+	local params = terralib.newlist{__ducktype__ = {path = {"Any"}, name = "Any"}}
 	if lex:nextif("where") then
 		lex:expect("{") 
 		repeat      
