@@ -36,6 +36,7 @@ for _, S in pairs({int, uint, int64, uint64, float, double, float128, float1024}
                 var v = dvector.new(&alloc, 3)
             end
             test v:size() == 3
+            test v.data:owns_resource()
         end
 
         testset "all" do

@@ -9,6 +9,8 @@ local template = require("template")
 local lambdas = require("lambdas")
 local err = require("assert")
 
+import "terraform"
+
 local size_t = uint64
 
 --collect requires a stacker interface or a setter interface
@@ -75,15 +77,6 @@ local RangeBase = function(Range, iterator_t, T)
         end
     end)
 
-    --always extract a value type into the body of the loop
-    local extract = function(value) 
-        if value.type:ispointer() then
-            return `@value
-        else
-            return `value
-        end
-    end
-
     --__for is generated for iterators
     Range.metamethods.__for = function(self,body)
         return quote
@@ -96,35 +89,27 @@ local RangeBase = function(Range, iterator_t, T)
             end
         end
     end
-
-    --definition of collect template
-    Range.templates.collect = template.Template:new("collect")
-    --containers implementing the stacker interface only
-    Range.templates.collect[{&Range.Self, &Stacker} -> {}] = function(Self, Container)
-        return terra(self : Self, container : Container)
-            for v in self do
-                container:push(v)
-            end
+    
+    --containers that only implement the stacker interface are using 'push'.
+    terraform Range:collect(container : &S) where {S : Stacker}
+        for v in self do
+            container:push(v)
         end
     end
     --containers that only implement the setter interface are using 'set'. Sufficient
     --space needs to be allocated before
-    Range.templates.collect[{&Range.Self, &Setter} -> {}] = function(Self, Container)
-        return terra(self : Self, container : Container)
-            var i = 0
-            for v in self do
-                container:set(i, v)
-                i = i + 1
-            end
+    terraform Range:collect(container : &S) where {S : Setter}
+        var i = 0
+        for v in self do
+            container:set(i, v)
+            i = i + 1
         end
     end
     --containers implementing the stacker and setter interface will only use
     --the stacker interface
-    Range.templates.collect[{&Range.Self, &Sequence} -> {}] = function(Self, Container)
-        return terra(self : Self, container : Container)
-            for v in self do
-                container:push(v)
-            end
+    terraform Range:collect(container : &S) where {S : Sequence}
+        for v in self do
+            container:push(v)
         end
     end
 
@@ -560,13 +545,14 @@ local adapter_lambda_factory = function(Adapter)
     local factory = macro(
         function(fun, ...)
             --get the captured variables
-            local captures = {...}
-            local p = lambdas.lambda_generator(fun, ...)
+            local captvars = terralib.newlist{...}
+            local captvars_t = captvars:map(function(v) return v.tree.type end)
+            local p = lambdas.generate{signature=fun.tree.type, captures=captvars_t}
             --set the generator (FilteredRange or TransformedRange, etc)
             p.generator = Adapter
             --create and return lambda object by value
             return quote
-                var f = p{[captures]}
+                var f = p{[fun],{[captvars]}}
             in
                 f
             end

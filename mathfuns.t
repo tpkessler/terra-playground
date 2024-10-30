@@ -108,7 +108,7 @@ end
 
 --comparing functions
 math.isapprox = terra(a : double, b : double, atol : double)
-    return math.dist(a, b) < atol
+    return math.abs(b-a) < atol
 end
 
 for _, name in pairs({"real", "imag", "conj"}) do

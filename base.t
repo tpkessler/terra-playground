@@ -44,7 +44,17 @@ local AbstractBase = Base:new("AbstractBase",
 		Self.templates = T.templates
 
 		T.metamethods.__getmethod = function(self, methodname)
-		    local fnlike = self.methods[methodname] or self.staticmethods[methodname]
+		    local fnlike = self.methods[methodname]
+			--try staticmethods table
+			if not fnlike then
+				fnlike = T.staticmethods[methodname]
+				--detect name collisions with T.tempplates
+				if fnlike and T.templates[methodname] then
+					return error("NameCollistion: Function " .. methodname .. " defined in ".. 
+									tostring(T) .. ".templates and " .. tostring(T) ..".staticmethods.")
+				end
+			end
+			--if no implementation is found try __methodmissing
 		    if not fnlike and terralib.ismacro(self.metamethods.__methodmissing) then
 		        fnlike = terralib.internalmacro(function(ctx, tree, ...)
 		            return self.metamethods.__methodmissing:run(ctx, tree, methodname, ...)
@@ -53,13 +63,18 @@ local AbstractBase = Base:new("AbstractBase",
 		    return fnlike
 		end
 
-		T.metamethods.__methodmissing = macro(function(name, obj, ...)
-			local args = terralib.newlist({...})
+		T.metamethods.__methodmissing = macro(function(methodname, obj, ...)
+			local args = terralib.newlist{...}
 			local types = args:map(function(t) return t.tree.type end)
-			types:insert(1, &T)
-			local method = T.templates[name]
-			local func = method(unpack(types))
-			return `[func](&obj, [args])
+			local method = T.templates[methodname]
+			if not method then
+				error("No template method exists with name " .. methodname)
+			end
+			if obj.tree.type == T then
+				types:insert(1, &T)
+				local func = method(unpack(types))
+				return `[func](&obj, [args])
+			end
 		end)
 	end
 )

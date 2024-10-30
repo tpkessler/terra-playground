@@ -84,6 +84,9 @@ local function Base(block, T)
         return block{self.ptr, self.nbytes, self.alloc}
     end
 
+    terralib.ext.addmissing.__forward(block)
+    terralib.ext.addmissing.__move(block)
+
 end
 
 --abstraction of a memory block without any type information.

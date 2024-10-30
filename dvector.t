@@ -12,6 +12,8 @@ local vecblas = require("vector_blas")
 local range = require("range")
 local err = require("assert")
 
+local io = terralib.includec("stdio.h")
+
 local Allocator = alloc.Allocator
 local size_t = uint64
 
