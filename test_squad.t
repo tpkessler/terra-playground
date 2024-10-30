@@ -1,33 +1,34 @@
 local geo = require("geometry")
 local squad = require("squad")
-local tmath = require('mathfuns')
+local tmath = require("mathfuns")
+local lambda = require("lambda")
 
 import "terratest/terratest"
 
 local T = double
 
+
 testenv "singular quadrature - smooth kernel" do
 
     local I, J = geo.Interval.new(0,1), geo.Interval.new(1,2)
 
-    local kernel = terra(x : T[3], y : T[3], alpha : double)
-        return 1.0
+    local struct coordinatemapping{
+    }
+    terra coordinatemapping:xcoord(x : T[3], y : T[3])
+        return x
+    end
+    terra coordinatemapping:ycoord(x : T[3], y : T[3])
+        return y
     end
 
     --definition of a kernel type
     local Kernel = lambda.lambda({T[3], T[3]} -> double, struct {alpha: double})
-    --create lambda
-    terracode
-        var kernel = Kernel.new([terra(x : T[3], y : T[3], alpha : double) return 1.0 end], 1.0)
-    end
 
-    --x-coordinates from mapping to physical (curved) space
-    terra squad.xcoord(xhat : T[3], yhat : T[3])
-        return xhat
-    end
-    --y-coordinates from mapping to physical (curved) space
-    terra squad.ycoord(xhat : T[3], yhat : T[3])
-        return yhat
+    terracode
+        --create coordinate functions
+        var mapping : coordinatemapping
+        --create lambda
+        var kernel = Kernel.new([terra(x : T[3], y : T[3], alpha : double) return 1.0 end], 0.0)
     end
  
     testset "3D intersection" do
@@ -37,7 +38,7 @@ testenv "singular quadrature - smooth kernel" do
         }
         terracode
             var G : integrand
-            var s = G:integrate(&kernel, 4)
+            var s = G:eval(mapping, kernel, 4)
         end
         test tmath.isapprox(s, 1.0, 1e-12)
     end
@@ -49,7 +50,7 @@ testenv "singular quadrature - smooth kernel" do
         }
         terracode
             var G : integrand
-            var s = G:integrate(&kernel, 4)
+            var s = G:eval(mapping, kernel, 4)
         end
         test tmath.isapprox(s, 1.0, 1e-12)
     end
@@ -61,7 +62,7 @@ testenv "singular quadrature - smooth kernel" do
         }
         terracode
             var G : integrand
-            var s = G:integrate(&kernel, 4)
+            var s = G:eval(mapping, kernel, 4)
         end
         test tmath.isapprox(s, 1.0, 1e-12)
     end
@@ -73,7 +74,7 @@ testenv "singular quadrature - smooth kernel" do
         }
         terracode
             var G : integrand
-            var s = G:integrate(&kernel, 4)
+            var s = G:eval(mapping, kernel, 4)
         end
         test tmath.isapprox(s, 1.0, 1e-12)
     end
@@ -92,20 +93,21 @@ testenv "singular quadrature - smooth kernel" do
         terracode
             var G : integrand
             var s = { 
-                G:integrate(Kernel.new([f1], 1.0), 4),
-                G:integrate(Kernel.new([f2], 1.0), 4),
-                G:integrate(Kernel.new([f3], 1.0), 4),
-                G:integrate(Kernel.new([f4], 1.0), 4)
+                G:eval(mapping, Kernel.new([f1], 0.0), 4),
+                G:eval(mapping, Kernel.new([f2], 0.0), 4),
+                G:eval(mapping, Kernel.new([f3], 0.0), 4),
+                G:eval(mapping, Kernel.new([f4], 0.0), 4)
             }
         end
         test tmath.isapprox(s._0, 2.0, 1e-12)
         test tmath.isapprox(s._1, 2.0, 1e-12)
-        test tmath.isapprox(s._2, 1.0, 1e-12)
-        test tmath.isapprox(s._3, 1.0, 1e-12)
+        test tmath.isapprox(s._2, 2.0, 1e-12)
+        test tmath.isapprox(s._3, 2.0, 1e-12)
     end
 
 end
---[[
+
+
 testenv "singular quadrature - rough kernel" do
 
     --values computed to double precision
@@ -116,13 +118,29 @@ testenv "singular quadrature - rough kernel" do
         28.40088713015304
     }
 
-    local kernel = terra(x : T[3], y : T[3], alpha : double)
+    local struct coordinatemapping{}
+
+    terra coordinatemapping:xcoord(x : T[3], y : T[3])
+        return x
+    end
+    terra coordinatemapping:ycoord(x : T[3], y : T[3])
+        return y
+    end
+
+    --definition of a kernel type
+    local Kernel = lambda.lambda({T[3], T[3]} -> double, struct {alpha: double})
+    --kernel function
+    local kernel = terra(x : T[3], y : T[3], alpha : double) 
         var s = 0.0
         for k=0,3 do
             s = s + tmath.pow(y[k]-x[k], 2)
         end
         s = tmath.sqrt(s)
         return tmath.pow(s, alpha)
+    end
+
+    terracode
+        var mapping : coordinatemapping
     end
 
     local D = 3
@@ -145,10 +163,9 @@ testenv "singular quadrature - rough kernel" do
             }
             terracode
                 var G : integrand
-                var s = G:integrate(squad.kernel_t{kernel, {alpha}}, 8)
+                var s = G:eval(mapping, Kernel.new(kernel, alpha), 8)
             end
             test tmath.isapprox(s, precomputedval, 1e-8)
         end
     end
 end
---]]

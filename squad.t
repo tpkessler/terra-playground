@@ -1,4 +1,6 @@
 import "terraform"
+
+local io = terralib.includec("stdio.h")
 local base = require("base")
 local alloc = require('alloc')
 local tmath = require('mathfuns')
@@ -14,7 +16,6 @@ local Allocator = alloc.Allocator
 local size_t = uint64
 local T = double
 
-local squad = {}
 
 --return a terra tuple type of length N: {T, T, ..., T}
 local ntuple = function(T, N)
@@ -177,170 +178,114 @@ local Cube = terralib.memoize(function(T, N)
     return cube
 end)
 
--- x-, and y- physical coordinates
-terra squad.xcoord :: {T[3], T[3]} -> {T[3]}
-terra squad.ycoord :: {T[3], T[3]} -> {T[3]}
-
 local function Integrand(args)
 
     local A = args.domain_a
     local B = args.domain_b
     local C = geo.Hypercube.intersection(A, B)
 
-    local integrant
-
     --intersection is empty, perform standard tensor product quadrature
     if C==nil then
 
-        struct integrant{
+        local struct integral{
             x : A
             y : B
         }
-        return integrant
+        return integral
 
     --intersectiion is non-empty, perform singular quadrature
     else
+        
         local P_a, P_b = geo.ProductPair.new(C, A / C), geo.ProductPair.new(C, B / C)
-        struct integrant{
+        local struct integral{
             x : geo.ProductPair.mapping{domain=P_a}
             y : geo.ProductPair.mapping{domain=P_b}
         }
+
         --treat different cases
         local N = C:rangedim()
         local K = C:dim()
-
-        --compute local coordinates
-        local relative_to_global_coords = terra(z : ntuple(T,K), u : ntuple(T,K))
-            escape
-                for k=0,K-1 do
-                    local s = "_"..tostring(k)
-                    emit quote u.[s] = u.[s] + z.[s] end
-                end
-            end
-            return u
-        end
-
-        terraform integrant:integrate(kernel : &F, npts : size_t) where {F}
-            return integrate_imp(self, kernel, npts)
-        end
-
-        --pullback kernel to regularized coordinates. Here
-        --(ǔ, v̌, û, ẑ) ∈ R⁶ with
-        --ǔ ∈ Iᵈ⁻ᵏ
-        --v̌ ∈ Iᵈ⁻ᵏ
-        --ẑ ∈ Aᵏ = [-1,1]ᵏ
-        --û ∈ Fᵏ = Iᵏ ∩ (Iᵏ - ẑ)
-        terraform integrant:evaluate(kernel : &F, u_tilde : ntuple(T,N-K), v_tilde : ntuple(T,N-K), z_hat : ntuple(T,K), u_hat : ntuple(T,K)) where {F}
-            var v_hat = relative_to_global_coords(z_hat, u_hat)
-            var xhat, yhat = self.x(u_hat, u_tilde), self.y(v_hat, v_tilde)
-            var x, y = squad.xcoord(xhat, yhat), squad.ycoord(xhat, yhat)
-            var vol_x, vol_y = self.x:vol(u_hat, u_tilde), self.y:vol(v_hat, v_tilde)
-            return kernel(x, y) * vol_x * vol_y
-        end
 
         --operations on intervals and cubes at runtime
         local interval = Interval(T)
         local cube_t = Cube(T,K)
 
-        if K==0 then
-            terraform integrant.integrate_imp(self : &integrant, kernel : &F, npts : size_t) where {F}
-                var alloc : DefaultAllocator
-                var alpha = kernel.alpha + 2*N - K - 1
-                var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
-                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
-                var Q_5 = gauss.productrule(gausrule, gausrule, gausrule, gausrule, gausrule)
-                var result : T = 0.0
+        local function generate_quadrature_kernel(K)
+            --compute local coordinates
+            local relative_to_global_coords = terra(z : ntuple(T,K), u : ntuple(T,K))
                 escape
-                    local I = geo.Interval.new(0,1)
-                    local cube = geo.Hypercube.new(I,I,I,I,I,I)
-                    --iterate over pyramids in 'cube'
-                    local apex = cube({0,0,0,0,0,0})
-                    for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex=apex} do
-                        --generate mapping type
-                        local pyramid_mapping = geo.Pyramid.mapping{domain=pyramid_type}
-                        emit quote
-                            var P : pyramid_mapping
-                            --loop over singular direction
-                            for qs in range.zip(&S_1.x, &S_1.w) do
-                                var s, ws = qs
-                                ws = ws / tmath.pow(s, alpha) --alpha is a static variable
-                                --loop over regular directions
-                                for qt in range.zip(&Q_5.x, &Q_5.w) do
-                                    var t, wt = qt
-                                    var p = P(t, s)
-                                    var J = P:vol(t, s)
-                                    var u_tilde, v_tilde = [&tuple(T,T,T)](&p._0), [&tuple(T,T,T)](&p._3)
-                                    result = result + evaluate(self, kernel, @u_tilde, @v_tilde, {}, {}) * J * ws * wt
-                                end
-                            end
-                        end --emit quote
+                    for k=0,K-1 do
+                        local s = "_"..tostring(k)
+                        emit quote u.[s] = u.[s] + z.[s] end
                     end
-                end --escape
-                return result
+                end
+                return u
             end
-        elseif K==1 then
-            terraform integrant.integrate_imp(self : &integrant,  kernel : &F, npts : size_t) where {F}
-                var alloc : DefaultAllocator
-                var alpha = kernel.alpha + 2*N - K - 1
-                var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
-                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
-                var Q_1 = gauss.productrule(gausrule)
-                var Q_4 = gauss.productrule(gausrule, gausrule, gausrule, gausrule)
-                var unitcube = cube_t.unit()
-                var result : double = 0.0
-                escape
-                    local I = geo.Interval.new(0, 1)
-                    local Z = {geo.Interval.new(-1, 0), geo.Interval.new(0, 1)}
-                    for k,K in ipairs(Z) do
-                        local cube = geo.Hypercube.new(I,I,I,I,K)
+            --pullback evaluation kernel to regularized coordinates
+            local nktup, ktup = ntuple(T,N-K), ntuple(T,K)
+            local terraform evaluate(self : &integral, mapping : G, kernel : F, 
+                    u_tilde : nktup, v_tilde : nktup, z_hat : ktup, u_hat : ktup) where {G, F}
+                var v_hat = relative_to_global_coords(z_hat, u_hat)
+                var xhat, yhat = self.x(u_hat, u_tilde), self.y(v_hat, v_tilde)
+                var x, y = mapping:xcoord(xhat, yhat), mapping:ycoord(xhat, yhat)
+                var vol_x, vol_y = self.x:vol(u_hat, u_tilde), self.y:vol(v_hat, v_tilde)
+                return kernel(x, y) * vol_x * vol_y
+            end
+            --generate the quadrature kernel
+            local quadrature_kernel_imp
+            if K==0 then
+                terraform quadrature_kernel_imp(self : &integral, mapping : &G, kernel : &F, npts : int) where {G, F}
+                    var alloc : DefaultAllocator
+                    var alpha = kernel.alpha + 2*N - K - 1
+                    var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
+                    var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
+                    var Q_5 = gauss.productrule(gausrule, gausrule, gausrule, gausrule, gausrule)
+                    var result : T = 0.0
+                    escape
+                        local I = geo.Interval.new(0,1)
+                        local cube = geo.Hypercube.new(I,I,I,I,I,I)
                         --iterate over pyramids in 'cube'
-                        for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex={0,0,0,0,0}} do
+                        local apex = cube({0,0,0,0,0,0})
+                        for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex=apex} do
                             --generate mapping type
                             local pyramid_mapping = geo.Pyramid.mapping{domain=pyramid_type}
                             emit quote
                                 var P : pyramid_mapping
                                 --loop over singular direction
                                 for qs in range.zip(&S_1.x, &S_1.w) do
-                                    var s, ws = qs; ws = ws / tmath.pow(s, alpha) --alpha is a static variable
+                                    var s, ws = qs
+                                    ws = ws / tmath.pow(s, alpha) --alpha is a static variable
                                     --loop over regular directions
-                                    for qt in range.zip(&Q_4.x, &Q_4.w) do
+                                    for qt in range.zip(&Q_5.x, &Q_5.w) do
                                         var t, wt = qt
                                         var p = P(t, s)
-                                        var u_tilde, v_tilde, z = [&tuple(T,T)](&p._0), [&tuple(T,T)](&p._2), [&tuple(T)](&p._4)
                                         var J = P:vol(t, s)
-                                        var shiftedcube = unitcube - @z
-                                        var F = cube_t.intersection(&unitcube, &shiftedcube)
-                                        var vol = F:vol()
-                                        for qu in range.zip(&Q_1.x, &Q_1.w) do
-                                            var u, wu = F(qu._0), vol * qu._1
-                                            result = result + evaluate(self, kernel, @u_tilde, @v_tilde, @z, u) * J * ws * wt * wu
-                                        end
+                                        var u_tilde, v_tilde = [&tuple(T,T,T)](&p._0), [&tuple(T,T,T)](&p._3)
+                                        result = result + evaluate(self, mapping, kernel, @u_tilde, @v_tilde, {}, {}) * J * ws * wt
                                     end
                                 end
                             end --emit quote
                         end
-                    end
-                end --escape
-                return result
-            end
-        elseif K==2 then
-            terraform integrant.integrate_imp(self : &integrant, kernel : &F, npts : size_t) where {F}
-                var alloc : DefaultAllocator
-                var alpha = kernel.alpha + 2*N - K - 1
-                var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
-                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
-                var Q_2 = gauss.productrule(gausrule, gausrule)
-                var Q_3 = gauss.productrule(gausrule, gausrule, gausrule)
-                var unitcube = cube_t.unit()
-                var result : double = 0.0
-                escape
-                    local I = geo.Interval.new(0, 1)
-                    local Z = {geo.Interval.new(-1, 0), geo.Interval.new(0, 1)}
-                    for k,K in ipairs(Z) do
-                        for j,J in ipairs(Z) do
-                            local cube = geo.Hypercube.new(I,I,J,K)
+                    end --escape
+                    return result
+                end
+            elseif K==1 then
+                terraform quadrature_kernel_imp(self : &integral, mapping : &G, kernel : &F, npts : int) where {G, F}
+                    var alloc : DefaultAllocator
+                    var alpha = kernel.alpha + 2*N - K - 1
+                    var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
+                    var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
+                    var Q_1 = gauss.productrule(gausrule)
+                    var Q_4 = gauss.productrule(gausrule, gausrule, gausrule, gausrule)
+                    var unitcube = cube_t.unit()
+                    var result : double = 0.0
+                    escape
+                        local I = geo.Interval.new(0, 1)
+                        local Z = {geo.Interval.new(-1, 0), geo.Interval.new(0, 1)}
+                        for k,K in ipairs(Z) do
+                            local cube = geo.Hypercube.new(I,I,I,I,K)
                             --iterate over pyramids in 'cube'
-                            for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex={0,0,0,0}} do
+                            for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex={0,0,0,0,0}} do
                                 --generate mapping type
                                 local pyramid_mapping = geo.Pyramid.mapping{domain=pyramid_type}
                                 emit quote
@@ -349,45 +294,44 @@ local function Integrand(args)
                                     for qs in range.zip(&S_1.x, &S_1.w) do
                                         var s, ws = qs; ws = ws / tmath.pow(s, alpha) --alpha is a static variable
                                         --loop over regular directions
-                                        for qt in range.zip(&Q_3.x, &Q_3.w) do
+                                        for qt in range.zip(&Q_4.x, &Q_4.w) do
                                             var t, wt = qt
                                             var p = P(t, s)
-                                            var u_tilde, v_tilde, z = [&tuple(T)](&p._0), [&tuple(T)](&p._1), [&tuple(T,T)](&p._2)
+                                            var u_tilde, v_tilde, z = [&tuple(T,T)](&p._0), [&tuple(T,T)](&p._2), [&tuple(T)](&p._4)
                                             var J = P:vol(t, s)
                                             var shiftedcube = unitcube - @z
                                             var F = cube_t.intersection(&unitcube, &shiftedcube)
                                             var vol = F:vol()
-                                            for qu in range.zip(&Q_2.x, &Q_2.w) do
+                                            for qu in range.zip(&Q_1.x, &Q_1.w) do
                                                 var u, wu = F(qu._0), vol * qu._1
-                                                result = result + evaluate(self, kernel, @u_tilde, @v_tilde, @z, u) * J * ws * wt * wu
+                                                result = result + evaluate(self, mapping, kernel, @u_tilde, @v_tilde, @z, u) * J * ws * wt * wu
                                             end
                                         end
                                     end
                                 end --emit quote
                             end
                         end
-                    end
-                end --escape
-                return result
-            end
-        elseif K==3 then
-            terraform integrant.integrate_imp(self : &integrant, kernel : &F, npts : size_t) where {F}
-                var alloc : DefaultAllocator
-                var alpha = kernel.alpha + 2*N - K - 1
-                var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
-                var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
-                var Q_2 = gauss.productrule(gausrule, gausrule)
-                var Q_3 = gauss.productrule(gausrule, gausrule, gausrule)
-                var unitcube = cube_t.unit()
-                var result : double = 0.0
-                escape
-                    local Z = {geo.Interval.new(-1, 0), geo.Interval.new(0, 1)}
-                    for _,K in ipairs(Z) do
-                        for _,J in ipairs(Z) do
-                            for _,I in ipairs(Z) do
-                                local cube = geo.Hypercube.new(I,J,K)
+                    end --escape
+                    return result
+                end
+            elseif K==2 then
+                terraform quadrature_kernel_imp(self : &integral, mapping : &G, kernel : &F, npts : int) where {G, F}
+                    var alloc : DefaultAllocator
+                    var alpha = kernel.alpha + 2*N - K - 1
+                    var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
+                    var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
+                    var Q_2 = gauss.productrule(gausrule, gausrule)
+                    var Q_3 = gauss.productrule(gausrule, gausrule, gausrule)
+                    var unitcube = cube_t.unit()
+                    var result : double = 0.0
+                    escape
+                        local I = geo.Interval.new(0, 1)
+                        local Z = {geo.Interval.new(-1, 0), geo.Interval.new(0, 1)}
+                        for k,K in ipairs(Z) do
+                            for j,J in ipairs(Z) do
+                                local cube = geo.Hypercube.new(I,I,J,K)
                                 --iterate over pyramids in 'cube'
-                                for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex={0,0,0}} do
+                                for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex={0,0,0,0}} do
                                     --generate mapping type
                                     local pyramid_mapping = geo.Pyramid.mapping{domain=pyramid_type}
                                     emit quote
@@ -396,16 +340,17 @@ local function Integrand(args)
                                         for qs in range.zip(&S_1.x, &S_1.w) do
                                             var s, ws = qs; ws = ws / tmath.pow(s, alpha) --alpha is a static variable
                                             --loop over regular directions
-                                            for qt in range.zip(&Q_2.x, &Q_2.w) do
+                                            for qt in range.zip(&Q_3.x, &Q_3.w) do
                                                 var t, wt = qt
-                                                var z = P(t, s)
+                                                var p = P(t, s)
+                                                var u_tilde, v_tilde, z = [&tuple(T)](&p._0), [&tuple(T)](&p._1), [&tuple(T,T)](&p._2)
                                                 var J = P:vol(t, s)
-                                                var shiftedcube = unitcube - z
+                                                var shiftedcube = unitcube - @z
                                                 var F = cube_t.intersection(&unitcube, &shiftedcube)
                                                 var vol = F:vol()
-                                                for qu in range.zip(&Q_3.x, &Q_3.w) do
+                                                for qu in range.zip(&Q_2.x, &Q_2.w) do
                                                     var u, wu = F(qu._0), vol * qu._1
-                                                    result = result + evaluate(self, kernel, {}, {}, z, u) * J * ws * wt * wu
+                                                    result = result + evaluate(self, mapping, kernel, @u_tilde, @v_tilde, @z, u) * J * ws * wt * wu
                                                 end
                                             end
                                         end
@@ -413,16 +358,75 @@ local function Integrand(args)
                                 end
                             end
                         end
-                    end
-                end --escape
-                return result
-            end
-        end -- if K
+                    end --escape
+                    return result
+                end
+            elseif K==3 then
+                terraform quadrature_kernel_imp(self : &integral, mapping : &G, kernel : &F, npts : int) where {G, F}
+                    var alloc : DefaultAllocator
+                    var alpha = kernel.alpha + 2*N - K - 1
+                    var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
+                    var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
+                    var Q_2 = gauss.productrule(gausrule, gausrule)
+                    var Q_3 = gauss.productrule(gausrule, gausrule, gausrule)
+                    var unitcube = cube_t.unit()
+                    var result : double = 0.0
+                    escape
+                        local Z = {geo.Interval.new(-1, 0), geo.Interval.new(0, 1)}
+                        for _,K in ipairs(Z) do
+                            for _,J in ipairs(Z) do
+                                for _,I in ipairs(Z) do
+                                    local cube = geo.Hypercube.new(I,J,K)
+                                    --iterate over pyramids in 'cube'
+                                    for pyramid_type in geo.Pyramid.decomposition{cube=cube, apex={0,0,0}} do
+                                        --generate mapping type
+                                        local pyramid_mapping = geo.Pyramid.mapping{domain=pyramid_type}
+                                        emit quote
+                                            var P : pyramid_mapping
+                                            --loop over singular direction
+                                            for qs in range.zip(&S_1.x, &S_1.w) do
+                                                var s, ws = qs; ws = ws / tmath.pow(s, alpha) --alpha is a static variable
+                                                --loop over regular directions
+                                                for qt in range.zip(&Q_2.x, &Q_2.w) do
+                                                    var t, wt = qt
+                                                    var z = P(t, s)
+                                                    var J = P:vol(t, s)
+                                                    var shiftedcube = unitcube - z
+                                                    var F = cube_t.intersection(&unitcube, &shiftedcube)
+                                                    var vol = F:vol()
+                                                    for qu in range.zip(&Q_3.x, &Q_3.w) do
+                                                        var u, wu = F(qu._0), vol * qu._1
+                                                        result = result + evaluate(self, mapping, kernel, {}, {}, z, u) * J * ws * wt * wu
+                                                    end
+                                                end
+                                            end
+                                        end --emit quote
+                                    end
+                                end
+                            end
+                        end
+                    end --escape
+                    return result
+                end
+            end -- if K
+            --return the generated singular quadrature kernel
+            return quadrature_kernel_imp
+        end
+
+        --generate the quadrature kernel
+        local quadkernel = generate_quadrature_kernel(K)
+
+        --API function that evaluates the integral
+        terraform integral:eval(mapping : G, kernel : F, npts : int) where {G, F}
+            return quadkernel(self, &mapping, &kernel, npts)
+        end
+
+        return integral
     end
-    return integrant
+    
 end
 
-squad.kernel_t = kernel_t
-squad.Integrand = Integrand
 
-return squad
+return{
+    Integrand = Integrand
+}

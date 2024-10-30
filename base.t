@@ -63,10 +63,13 @@ local AbstractBase = Base:new("AbstractBase",
 		    return fnlike
 		end
 
-		T.metamethods.__methodmissing = macro(function(name, obj, ...)
+		T.metamethods.__methodmissing = macro(function(methodname, obj, ...)
 			local args = terralib.newlist{...}
 			local types = args:map(function(t) return t.tree.type end)
-			local method = T.templates[name]
+			local method = T.templates[methodname]
+			if not method then
+				error("No template method exists with name " .. methodname)
+			end
 			if obj.tree.type == T then
 				types:insert(1, &T)
 				local func = method(unpack(types))
