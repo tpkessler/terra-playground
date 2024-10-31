@@ -9,7 +9,7 @@ local concept = require("concept")
 
 local generate_terrafun, parse_terraform_statement, process_free_function_statement, process_class_method_statement
 local namespace, process_method_name, process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing
-local isclasstemplate, isnamespacedfunctiontemplate, isfreefunctiontemplate, isstaticmethod
+local isclasstemplate, isnamespacedfunctiontemplate, isfreefunctiontemplate, isstaticmethod, isvarargstemplate
 
 local conceptlang = {
 	name = "conceptlang";
@@ -52,7 +52,7 @@ function parse_terraform_statement(self,lex)
 	templ.path = process_namespace_indexing(lex)
 	templ.classname, templ.methodname = process_method_name(lex, templ.path)
 	--process templatefunction parameters
-	templ.params = process_template_parameters(lex, templ.classname)  
+	templ.params = process_template_parameters(lex, templ.classname)
 	--process template parameter constraints
 	templ.constraints = process_where_clause(lex)
 	--process terra-block
@@ -64,11 +64,20 @@ end
 
 function generate_terrafun(templ, localenv)
 	return function(...)
-		local args = terralib.newlist{...}
+		local types = terralib.newlist{...}
 		local argumentlist = terralib.newlist{}
 		for counter,param in ipairs(templ.params) do
-			local typ = args[counter]
-			local sym = symbol(typ)
+			local argtype
+			if param.typename=="__varargs__" then
+				local varargs = terralib.newlist{}
+				for k=counter,#types do
+					varargs:insert(types[k])
+				end
+				argtype = tuple(unpack(varargs))
+			else
+				argtype = types[counter]
+			end
+			local sym = symbol(argtype)
 			argumentlist:insert(sym)
 			--add variable and its type to the local environment
 			localenv[param.name] = sym
@@ -81,12 +90,9 @@ end
 
 function process_free_function_statement(templ)
 	return function(envfun)
-		--initialize environment
-		local env = envfun()
-		--add any concept to local environment
-		env["Any"] = concept.Any
-		--allow easy searching in 'env' of variables that are nested inside tables
-		local localenv = namespace.new(env)
+		--initialize environment and allow easy searching in 'env' 
+		--of variables that are nested inside tables
+		local localenv = namespace.new(envfun())
 		--get parameter-types list
 		local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
 		--get/register new template function
@@ -99,12 +105,9 @@ end
 
 function process_namespaced_function_statement(templ)
 	return function(envfun)
-		--initialize environment
-		local env = envfun()
-		--add any concept to local environment
-		env["Any"] = concept.Any
-		--allow easy searching in 'env' of variables that are nested inside tables
-		local localenv = namespace.new(env)
+		--initialize environment and allow easy searching in 'env' 
+		--of variables that are nested inside tables
+		local localenv = namespace.new(envfun())
 		--get parameter-types list
 		local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
 		--get/register new template function
@@ -131,12 +134,9 @@ end
 
 function process_class_method_statement(templ)
 	return function(envfun)
-		--initialize environment
-		local env = envfun()
-		--add any concept to local environment
-		env["Any"] = concept.Any
-		--allow easy searching in 'env' of variables that are nested inside tables
-		local localenv = namespace.new(env)
+		--initialize environment and allow easy searching in 'env' 
+		--of variables that are nested inside tables
+		local localenv = namespace.new(envfun())
 		--get parameter-types list
 		local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
 		--get/register new template function
@@ -191,6 +191,8 @@ namespace = {
 	end,
 }
 namespace.new = function(env)
+	env["Any"] = concept.Any
+	env["Vararg"] = concept.Vararg
 	local t = {env=env}
 	return setmetatable(t, namespace)
 end
@@ -229,17 +231,7 @@ function get_template_parameter_list(localenv, params, constraints)
 			end
 		else 
 			--get concrete type from 'env' or primitives
-			tp = localenv[param.typename] or terralib.types[param.typename]
-			--if not in the current localenv, check broader using 'serde.get_local_vars' 
-			--and add to current local environment
-			if not tp then
-				local localvars = serde.get_local_vars()
-				tp = localvars[param.typename]
-				if not tp then
-					error("Type " .. tostring(c) .. " not found in current scope.")
-				end
-				localenv[param.typename] = tp
-			end
+			tp = localenv[param.typename] or terralib.types[param.typename] or error("Could not find " .. param.typename)
 			--add '&' to get reference to 'tp'
 			for k=1,param.nref do
 				tp = &tp
@@ -291,6 +283,9 @@ function process_template_parameters(lex,classname)
 				lex:ref(paramtype) --if paramtype is a concrete type (not a concept), 
 				--then make it available in 'env'
 				params:insert({name=paramname, typename=paramtype, nref=nref}) 
+			elseif lex:nextif("...") then --expecting ...
+				params:insert({name=paramname, typename="__varargs__", nref=0})
+				break --... is the last argument in the loop
 			else
 				params:insert({name=paramname, typename="__ducktype__", nref=0})
 			end   
@@ -311,7 +306,10 @@ local function process_single_constraint(lex)
 end
 
 function process_where_clause(lex)
-	local params = terralib.newlist{__ducktype__ = {path = {"Any"}, name = "Any"}}
+	local params = terralib.newlist{
+		__ducktype__ = {path = {"Any"}, name = "Any"},
+		__varargs__ = {path = {"Vararg"}, name = "Vararg"}
+	}
 	if lex:nextif("where") then
 		lex:expect("{") 
 		repeat      
@@ -337,6 +335,11 @@ end
 
 function isstaticmethod(templ,localenv)
 	return #templ.path>1 and terralib.types.istype(localenv(templ.path,1))
+end
+
+function isvarargstemplate(templ)
+	local n = #templ.params
+	return templ.params[n].typename == "__varargs__"
 end
 
 return conceptlang
