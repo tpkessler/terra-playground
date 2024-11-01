@@ -4,8 +4,11 @@
 -- SPDX-License-Identifier: MIT
 
 import "terratest/terratest"
+import "terraform"
 
+local io = terralib.includec("stdio.h")
 local Alloc = require("alloc")
+local concept = require("concept")
 local rn = require("range")
 local Stack = require("example_stack_heap")
 
@@ -529,7 +532,6 @@ testenv "range combiners" do
     end
 
 end
-
 
 testenv "range composition" do
 

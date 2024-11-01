@@ -6,26 +6,54 @@
 --lua function that generates a terra type that are function objects. these wrap
 --a function in the 'apply' metamethod and store any captured variables in the struct
 --as entries
-local lambda_generator = function(fun, ...)
-    --get the captured variables
-    local captures = {...}
-    --wrapper struct
+
+local template = require("template")
+
+local function new(captures_t)
     local lambda = terralib.types.newstruct("lambda")
     --add captured variable types as entries to the wrapper struct
-    for i, sym in ipairs(captures) do
-        lambda.entries:insert({field = "_"..tostring(i-1), type = sym.tree.type})
+    for i,tp in ipairs(captures_t) do
+        lambda.entries:insert({field = "_"..tostring(i-1), type = tp})
     end
-    lambda:complete()
+    lambda:setconvertible("tuple")
+    return lambda
+end
+
+local function printtable(tab)
+    for k,v in pairs(tab) do
+        print(k)
+        print(v)
+        print()
+    end
+end
+
+local lambda_generator = function(fun, ...)
+    --get the captured variables
+    local captures = terralib.newlist{...}
+    local captures_t = captures:map(function(v) return v:gettype() end)
+    --get struct with captures
+    local lambda = new(captures_t)
     --overloading the call operator - making 'lambda' a function object
     lambda.metamethods.__apply = macro(terralib.memoize(function(self, ...)
         local args = terralib.newlist{...}
-        local capt = terralib.newlist()
-        for i,v in ipairs(self.tree.type.entries) do
-            local field = "_"..tostring(i-1)
-            capt:insert(quote in self.[field] end)
-        end
-        return `fun([args], [capt])
+        return `fun([args], unpacktuple(self))
     end))
+    --return the method used in dispatch given the types of the input arguments
+    function lambda:dispatch(...)
+        local ftp = fun.tree.type
+        local argstypes = terralib.newlist{...} 
+        if template.isfunctiontemplate(ftp) then
+            local foo = fun.tree.value
+            return foo:dispatch(...,unpack(captures_t)) and true or false
+        elseif ftp.type:isfunction() then
+            for k,v in ipairs{...} do
+                if ftp.type.parameters[k] ~= v then
+                    return false
+                end
+                return true
+            end
+        end
+    end
     --return function object
     return lambda
 end

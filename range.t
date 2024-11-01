@@ -50,6 +50,11 @@ local function getvalue_t(iterator_t)
     return iterator_t.methods.getvalue.type.returntype
 end
 
+local IteratorBase = function(Iterator)
+    --type trait value type
+    Iterator.value_t = getvalue_t(Iterator)
+end
+
 --an iterator implements the following macros:
 --  methods.getfirst :: (self) -> (state, value)
 --  methods.getnext :: (self, state) -> (value)
@@ -60,9 +65,13 @@ end
 --that satsifies the 'Stacker(T)' interface
 local RangeBase = function(Range, iterator_t)
 
+    --set base functionality for iterators
+    IteratorBase(iterator_t)
+
     --set the value type and iterator type of the range
     Range.isrange = true
     Range.iterator_t = iterator_t
+    Range.value_t = iterator_t.value_t
 
     --overloading '>>' operator
     Range.metamethods.__rshift = macro(function(self, adapter)
@@ -246,7 +255,19 @@ local TransformedRange = function(Range, Function)
     base.AbstractBase(transform)
 
     local iterator_t = Range.iterator_t
+    local T = Range.value_t
 
+    local eval = macro(function(self, value) 
+        --first try by reference
+        if Function:dispatch(&T) then
+            return `self.f(&value)
+        --otherwise try by value
+        elseif Function:dispatch(T) then
+            return `self.f(value)
+        end
+        error("No implementation found.")
+    end)
+    
     local struct iterator{
         adapter : &transform
         state : iterator_t
@@ -258,7 +279,7 @@ local TransformedRange = function(Range, Function)
 
     terra iterator:getvalue()
         var value = self.state:getvalue()
-        return self.adapter.f(value)
+        return eval(self.adapter, value)
     end
 
     terra iterator:isvalid()
@@ -285,12 +306,20 @@ local FilteredRange = function(Range, Function)
     --allowing concept-based function overloading at compile-time
     base.AbstractBase(filter)
 
+    local iterator_t = Range.iterator_t
+    local T = Range.value_t
+
     --evaluate predicate
     local pred = macro(function(self, value)
-        return `self.predicate(value)
+        --first try by reference
+        if Function:dispatch(&T) then
+            return `self.predicate(&value)
+        --otherwise try by value
+        elseif Function:dispatch(T) then
+            return `self.predicate(value)
+        end
+        error("No implementation found.")
     end)
-
-    local iterator_t = Range.iterator_t
 
     local struct iterator{
         adapter : &filter
@@ -421,12 +450,20 @@ local TakeWhileRange = function(Range, Function)
     --allowing concept-based function overloading at compile-time
     base.AbstractBase(takewhile)
 
+    local iterator_t = Range.iterator_t
+    local T = Range.value_t
+
     --evaluate predicate
     local pred = macro(function(self, value)
-        return `self.predicate(value)
+        --first try by reference
+        if Function:dispatch(&T) then
+            return `self.predicate(&value)
+        --otherwise try by value
+        elseif Function:dispatch(T) then
+            return `self.predicate(value)
+        end
+        error("No implementation found.")
     end)
-
-    local iterator_t = Range.iterator_t
 
     local struct iterator{
         adapter : &takewhile
@@ -465,13 +502,20 @@ local DropWhileRange = function(Range, Function)
     --allowing concept-based function overloading at compile-time
     base.AbstractBase(dropwhile)
 
-    --select by value or by reference
+    local iterator_t = Range.iterator_t
+    local T = Range.value_t
+
     --evaluate predicate
     local pred = macro(function(self, value)
-        return `self.predicate(value)
+        --first try by reference
+        if Function:dispatch(&T) then
+            return `self.predicate(&value)
+        --otherwise try by value
+        elseif Function:dispatch(T) then
+            return `self.predicate(value)
+        end
+        error("No implementation found.")
     end)
-
-    local iterator_t = Range.iterator_t
 
     local struct iterator{
         adapter : &dropwhile
@@ -699,9 +743,8 @@ local ZipRange = function(Ranges)
     local state_t = terralib.newlist{}
     local value_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        local iter_t = gettype(rn).iterator_t
-        state_t:insert(iter_t)
-        value_t:insert(getvalue_t(iter_t))
+        state_t:insert(rn.iterator_t)
+        value_t:insert(rn.value_t)
     end
     local iterator_t = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
@@ -777,9 +820,8 @@ local ProductRange = function(Ranges)
     local state_t = terralib.newlist{}
     local value_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        local iter_t = gettype(rn).iterator_t
-        state_t:insert(iter_t)
-        value_t:insert(getvalue_t(iter_t))
+        state_t:insert(rn.iterator_t)
+        value_t:insert(rn.value_t)
     end
     local iterator_t = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
