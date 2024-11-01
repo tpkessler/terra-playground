@@ -26,19 +26,6 @@ local lambda_generator = function(fun, ...)
         end
         return `fun([args], [capt])
     end))
-    --determine return-type from lambda expression
-    lambda.returntype = fun.tree.type.type.returntype
-    --determine parameter types and captured types
-    local params = fun.tree.type.type.parameters
-    local N, M = #params, #captures
-    local K = N-M
-    lambda.parameters, lambda.captures = terralib.newlist{}, terralib.newlist{}
-    for k=1,K do
-        lambda.parameters:insert(params[k])
-    end
-    for k=K+1,N do
-        lambda.captures:insert(params[k])
-    end
     --return function object
     return lambda
 end
