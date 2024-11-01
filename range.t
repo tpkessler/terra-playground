@@ -257,8 +257,16 @@ local TransformedRange = function(Range, Function)
     local iterator_t = Range.iterator_t
     local T = Range.value_t
 
-    local eval = macro(function(self, value) 
-        return `self.f(value)
+    local eval = macro(function(self, value)
+        if T.convertible=="tuple" then --we always unpack tuples
+            return quote 
+                var v = value
+            in
+                self.f(unpacktuple(v))
+            end
+        else
+            return `self.f(value)
+        end
     end)
     
     local struct iterator{
@@ -303,7 +311,15 @@ local FilteredRange = function(Range, Function)
 
     --evaluate predicate
     local pred = macro(function(self, value)
-        return `self.predicate(value)
+        if T.convertible=="tuple" then --we always unpack tuples
+            return quote 
+                var v = value
+            in
+                self.predicate(unpacktuple(v))
+            end
+        else
+            return `self.predicate(value)
+        end
     end)
 
     local struct iterator{
@@ -440,7 +456,15 @@ local TakeWhileRange = function(Range, Function)
 
     --evaluate predicate
     local pred = macro(function(self, value)
-        return `self.predicate(value)
+        if T.convertible=="tuple" then --we always unpack tuples
+            return quote 
+                var v = value
+            in
+                self.predicate(unpacktuple(v))
+            end
+        else
+            return `self.predicate(value)
+        end
     end)
 
     local struct iterator{
@@ -485,7 +509,15 @@ local DropWhileRange = function(Range, Function)
 
     --evaluate predicate
     local pred = macro(function(self, value)
-        return `self.predicate(value)
+        if T.convertible=="tuple" then --we always unpack tuples
+            return quote 
+                var v = value
+            in
+                self.predicate(unpacktuple(v))
+            end
+        else
+            return `self.predicate(value)
+        end
     end)
 
     local struct iterator{
@@ -862,57 +894,6 @@ local ProductRange = function(Ranges)
     return product
 end
 
-local operator_table = {
-    ["+"] = macro(function(x,y) return `x + y end);
-    ["*"] = macro(function(x,y) return `x * y end);
-    ["/"] = macro(function(x,y) return `x / y end);
-}
-
---factory function for range adapters that don't cary state
-local adapter_reduction_factory = function(Adapter)
-    local factory = macro(function(op)
-        --wrapper struct
-        local struct reduction{
-        }
-        reduction.metamethods.__getmethod = function(self, methodname)
-            return self.methods[methodname] or reduction.staticmethods[methodname]
-        end
-        reduction.generator = Adapter
-        reduction.staticmethods.binary_operation = operator_table[op]
-
-        --create and return simple object by value
-        return quote
-            var v = reduction{}
-        in
-            v
-        end
-    end)
-    return factory
-end
-
-local ReductionRange = function(Range, Operator)
-    
-    --check that input value type is a tuple
-    assert(gettype(Range.value_t).convertible=="tuple")
-    
-    local binary_operation = operator_table[Operator]
-    local N = #Range.value_t.entries
-    local f = terra(t : Range.value_t)
-        var v = t._0
-        escape
-            for k=1,N-1 do
-                local s = "_"..k
-                emit quote 
-                    v = binary_operation(v,t.[s])
-                end
-            end
-        end
-        return v
-    end
-    --return the reduction range
-    TransformedRange(Range, f)
-end
-
 --generate user api macro's for adapters
 local transform = adapter_lambda_factory(TransformedRange)
 local filter = adapter_lambda_factory(FilteredRange)
@@ -925,7 +906,34 @@ local enumerate = combiner_factory(Enumerator)
 local join = combiner_factory(JoinRange)
 local product = combiner_factory(ProductRange)
 local zip = combiner_factory(ZipRange)
-local reduce = adapter_reduction_factory(ReductionRange)
+
+--define reduction as a transform
+local operator_table = {
+    ["+"] = macro(function(x,y) return `x + y end);
+    ["*"] = macro(function(x,y) return `x * y end);
+    ["/"] = macro(function(x,y) return `x / y end);
+}
+
+local reduce = macro(function(op) 
+    --select binary operation
+    local operator = op.tree.value
+    local binary_operation = operator_table[operator] or error("Not a valid operator. Pick \"*\", \"+\" or \"\\\".")
+    --reduction vararg template function
+    local terraform tuplereduce(args ...)
+        var res = args._0
+        escape
+            local n = #args.type.entries
+            for i = 2, n do
+                local s = "_" .. tostring(i-1)
+                emit quote
+                    res = binary_operation(res, args.[s])
+                end
+            end
+        end
+        return res
+    end
+    return `transform(tuplereduce)
+end)
 
 --export functionality for developing new ranges
 local develop = {
