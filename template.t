@@ -297,10 +297,9 @@ end
 
 local functiontemplate = function(name, methods)
     local T = terralib.types.newstruct(name)
-    base.AbstractBase(T) --adding table 'staticmethods', 'templates' and 'varargtemplates'
+    base.AbstractBase(T) --adding table 'staticmethods', 'templates'
 	T.templates.eval = Template:new("eval")
-	T.varargtemplates.eval = Template:new("varargeval")
-    T.metamethods.__apply = macro(function(self, ...)
+	T.metamethods.__apply = macro(function(self, ...)
         local args = terralib.newlist{...}
         local types = args:map(function(a) return a:gettype() end)
         local sig, func = dispatch(T, unpack(types))
