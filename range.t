@@ -258,14 +258,7 @@ local TransformedRange = function(Range, Function)
     local T = Range.value_t
 
     local eval = macro(function(self, value) 
-        --first try by reference
-        if Function:dispatch(&T) then
-            return `self.f(&value)
-        --otherwise try by value
-        elseif Function:dispatch(T) then
-            return `self.f(value)
-        end
-        error("No implementation found.")
+        return `self.f(value)
     end)
     
     local struct iterator{
@@ -278,8 +271,7 @@ local TransformedRange = function(Range, Function)
     end
 
     terra iterator:getvalue()
-        var value = self.state:getvalue()
-        return eval(self.adapter, value)
+        return eval(self.adapter, self.state:getvalue())
     end
 
     terra iterator:isvalid()
@@ -311,14 +303,7 @@ local FilteredRange = function(Range, Function)
 
     --evaluate predicate
     local pred = macro(function(self, value)
-        --first try by reference
-        if Function:dispatch(&T) then
-            return `self.predicate(&value)
-        --otherwise try by value
-        elseif Function:dispatch(T) then
-            return `self.predicate(value)
-        end
-        error("No implementation found.")
+        return `self.predicate(value)
     end)
 
     local struct iterator{
@@ -455,14 +440,7 @@ local TakeWhileRange = function(Range, Function)
 
     --evaluate predicate
     local pred = macro(function(self, value)
-        --first try by reference
-        if Function:dispatch(&T) then
-            return `self.predicate(&value)
-        --otherwise try by value
-        elseif Function:dispatch(T) then
-            return `self.predicate(value)
-        end
-        error("No implementation found.")
+        return `self.predicate(value)
     end)
 
     local struct iterator{
@@ -507,14 +485,7 @@ local DropWhileRange = function(Range, Function)
 
     --evaluate predicate
     local pred = macro(function(self, value)
-        --first try by reference
-        if Function:dispatch(&T) then
-            return `self.predicate(&value)
-        --otherwise try by value
-        elseif Function:dispatch(T) then
-            return `self.predicate(value)
-        end
-        error("No implementation found.")
+        return `self.predicate(value)
     end)
 
     local struct iterator{

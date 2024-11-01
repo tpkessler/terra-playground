@@ -254,6 +254,7 @@ for _, T in ipairs{int, double} do
     end
 end -- for _, T in ipairs{int, double} do
 
+local Integer = concept.Integer
 local stack = Stack.DynamicStack(int)
 local unitrange = rn.Unitrange(int)
 local steprange = rn.Steprange(int)
@@ -374,8 +375,41 @@ testenv "range composition" do
         test s:get(1)==6
         test s:get(2)==12
     end
-
 end
+
+testenv "range composition - terraform" do
+
+    terracode
+        var alloc : DefaultAllocator
+        var s = stack.new(&alloc, 10)
+    end
+
+    local terraform foo(i : T, x : T) where {T : Integer}
+        return i % 2 == x
+    end
+
+    local terraform bar(i : T, y : T) where {T : Integer}
+        return y * i 
+    end
+
+    testset "compose transform and filter - lvalues" do
+        terracode
+            var r = unitrange{0, 5}
+            var x = 0
+            var y = 3
+            var g = rn.filter(foo, x)
+            var h = rn.transform(bar, y)
+            var range = r >> g >> h
+            range:collect(&s)
+        end
+        test s:size()==3
+        test s:get(0)==0
+        test s:get(1)==6
+        test s:get(2)==12
+    end
+end
+
+
 
 testenv "range combiners" do
 
