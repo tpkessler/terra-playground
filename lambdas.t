@@ -19,14 +19,6 @@ local function new(captures_t)
     return lambda
 end
 
-local function printtable(tab)
-    for k,v in pairs(tab) do
-        print(k)
-        print(v)
-        print()
-    end
-end
-
 local lambda_generator = function(fun, ...)
     --get the captured variables
     local captures = terralib.newlist{...}
@@ -38,22 +30,6 @@ local lambda_generator = function(fun, ...)
         local args = terralib.newlist{...}
         return `fun([args], unpacktuple(self))
     end))
-    --return the method used in dispatch given the types of the input arguments
-    function lambda:dispatch(...)
-        local ftp = fun.tree.type
-        local argstypes = terralib.newlist{...} 
-        if template.isfunctiontemplate(ftp) then
-            local foo = fun.tree.value
-            return foo:dispatch(...,unpack(captures_t)) and true or false
-        elseif ftp.type:isfunction() then
-            for k,v in ipairs{...} do
-                if ftp.type.parameters[k] ~= v then
-                    return false
-                end
-                return true
-            end
-        end
-    end
     --return function object
     return lambda
 end
