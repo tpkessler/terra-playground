@@ -89,6 +89,21 @@ testenv "terraforming free functions" do
         test foo(&i, &j) == 5.0
     end
 
+    testset "global method dispatch mixed parametric concrete/reference types" do
+        terraform foo(a : T, b : &T) where {T : Real}
+            return a + @b
+        end
+        terraform foo(a : &T, b : T) where {T : Real}
+            return @a + b + 1
+        end
+        terracode
+            var x = 1.
+            var y = 2.
+        end
+        test foo(x, &y) == 3.0
+        test foo(&x, y) == 4.0
+    end
+
     testset "local method dispatch parametric reference types" do
         local terraform foo(a : &T, b : &T) where {T : Real}
             return @a * @b
@@ -335,6 +350,21 @@ testenv "terraforming class methods" do
         test mybar:foo(&i, &y) == 4.0
         test mybar:foo(&x, &j) == 5.0
         test mybar:foo(&i, &j) == 6.0
+    end
+
+    testset "method dispatch mixed parametric concrete/reference types" do
+        terraform bar:foo(a : T, b : &T) where {T : Real}
+            return a + @b + self.index
+        end
+        terraform bar:foo(a : &T, b : T) where {T : Real}
+            return @a + b + 1 + self.index
+        end
+        terracode
+            var x = 1.
+            var y = 2.
+        end
+        test mybar:foo(x, &y) == 4.0
+        test mybar:foo(&x, y) == 5.0
     end
 
     testset "nested reference types" do
