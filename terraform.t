@@ -11,6 +11,14 @@ local generate_terrafun, parse_terraform_statement, process_free_function_statem
 local namespace, process_method_name, process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing
 local isclasstemplate, isnamespacedfunctiontemplate, isfreefunctiontemplate, isstaticmethod, isvarargstemplate
 
+local printtable = function(tab)
+	for k,v in pairs(tab) do
+		print(k)
+		print(v)
+		print()
+	end
+end
+
 local conceptlang = {
 	name = "conceptlang";
 	entrypoints = {"terraform"};
@@ -205,7 +213,7 @@ local function dereference(v)
 end
 
 function get_template_parameter_list(localenv, params, constraints)
-	local uniqueparams, pos = terralib.newlist(), terralib.newlist()
+	local uniqueparams, pos, ref = terralib.newlist(), terralib.newlist(), terralib.newlist()
 	local counter = 1
 	local ctrs = table.shallow_copy(constraints)
 	for i,param in ipairs(params) do
@@ -217,31 +225,28 @@ function get_template_parameter_list(localenv, params, constraints)
 				--already treated in uniqueparams, so insert number 'c' and do not
 				--change uniqueparams
 				pos:insert(c)
+				ref:insert(param.nref)
 			else
 				--get concept type
 				tp = localenv[c.path] or error("Concept " .. tostring(c.name) .. " not found in current scope.")
 				ctrs[param.typename] = counter --update to a number in uniqueparams
-				--add '&' to get reference to 'tp'
-				for k=1,param.nref do
-					tp = &tp
-				end
+				--update tables defining template parameter list
 				uniqueparams:insert(tp)
 				pos:insert(counter)
+				ref:insert(param.nref)
 				counter = counter + 1
 			end
 		else 
 			--get concrete type from 'env' or primitives
 			tp = localenv[param.typename] or terralib.types[param.typename] or error("Could not find " .. param.typename)
-			--add '&' to get reference to 'tp'
-			for k=1,param.nref do
-				tp = &tp
-			end
+			--update tables defining template parameter list
 			uniqueparams:insert(tp)
 			pos:insert(counter)
+			ref:insert(param.nref)
 			counter = counter + 1
 		end
 	end
-	return template.paramlist.new(uniqueparams, pos)
+	return template.paramlist.new(uniqueparams, pos, ref)
 end
 
 function process_method_name(lex, path)

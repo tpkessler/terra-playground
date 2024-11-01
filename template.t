@@ -23,6 +23,20 @@ local function sgn(x)
 	return x > 0 and 1 or x < 0 and -1 or 0
 end
 
+local function nref(tp,n)
+	for k=1,n do
+		tp = &tp
+	end
+	return tp
+end
+
+local function getunderlyingtype(tp)
+	while tp:ispointer() do
+		tp = tp.type
+	end
+	return tp
+end
+
 --representation of signature in terms of two tables,
 --unique types and 
 --{{T,S},{1,2,1}} = {T, S, T}
@@ -34,26 +48,27 @@ end
 --accessing values
 paramlist.__index = function(t,k)
 	if type(k)=="number" then
-		return t.keys[t.pos[k]]
+		return nref(t.keys[t.pos[k]], t.ref[k]) 
 	else
 		return paramlist[k] or rawget(t, k)
 	end
 end
 --create a new parameter list from unique keys and position array
 --{{T,S},{1,2,1}} = {T, S, T}
-paramlist.new = function(keys, pos)
-	local t = {keys=keys, pos=pos}
+paramlist.new = function(keys, pos, ref)
+	local t = {keys=keys, pos=pos, ref=ref}
 	return setmetatable(t, paramlist)
 end
 --return parameter-list {Any,Any,...}
 paramlist.init = function(n)
 	assert(type(n) == "number")
-	local keys, pos = terralib.newlist(), terralib.newlist()
+	local keys, pos, ref = terralib.newlist(), terralib.newlist(), terralib.newlist()
 	for i = 1, n do
 		keys:insert(concept.Any)
 		pos:insert(i)
+		ref:insert(0)
 	end
-	return paramlist.new(keys, pos)
+	return paramlist.new(keys, pos, ref)
 end
 --return iterator
 function paramlist:iter(maxlen) --padd until maxlen with Any
@@ -87,7 +102,8 @@ end
 function paramlist:serialize()
 	local s1 = tostring(self.keys)
 	local s2 = tostring(self.pos)
-	return s1 ..":" .. s2
+	local s3 = tostring(self.ref)
+	return s1 ..":" .. s2 .. ":" .. s3
 end
 function paramlist:collect(maxlen)
 	local s = {}
@@ -196,7 +212,7 @@ function Template:new()
 		--concrete types against the 'pos' array
 		local function requirescast(args, sig)
 			for i,v in ipairs(sig.pos) do
-				if args[i]~=args[v] then
+				if getunderlyingtype(args[i])~=getunderlyingtype(args[v]) then
 					return true
 				end
 			end
