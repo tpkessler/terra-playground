@@ -42,7 +42,6 @@ local AbstractBase = Base:new("AbstractBase",
 		Self.methods = T.methods
 		Self.staticmethods = T.staticmethods
 		Self.templates = T.templates
-		Self.varargtemplates = T.varargtemplates
 
 		T.metamethods.__getmethod = function(self, methodname)
 		    local fnlike = self.methods[methodname]
@@ -50,9 +49,9 @@ local AbstractBase = Base:new("AbstractBase",
 			if not fnlike then
 				fnlike = T.staticmethods[methodname]
 				--detect name collisions with T.tempplates
-				if fnlike and (T.templates[methodname] or T.varargtemplates[methodname]) then
+				if fnlike and T.templates[methodname] then
 					return error("NameCollistion: Function " .. methodname .. " defined in ".. 
-									tostring(T) .. "(varargs)templates and " .. tostring(T) ..".staticmethods.")
+									tostring(T) .. ".templates and " .. tostring(T) ..".staticmethods.")
 				end
 			end
 			--if no implementation is found try __methodmissing
@@ -65,7 +64,8 @@ local AbstractBase = Base:new("AbstractBase",
 		end
 
 		T.metamethods.__methodmissing = macro(function(name, obj, ...)
-			assert(obj.tree.type == T)
+			assert(obj.tree.type == T) --__methodmissing should only be called for 
+			--class methods, not for static methods
 			local args = terralib.newlist{...}
 			local types = args:map(function(t) return t.tree.type end)
 			types:insert(1, &T)
