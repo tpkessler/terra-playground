@@ -309,7 +309,7 @@ local functiontemplate = function(name, methods)
         		return `func([args])
 			else
 				local newargs, varargs = terralib.newlist(), terralib.newlist()
-				local m = sig:len()-1
+				local m = sig:len()-1 --sig includes concept Vararg. Therefore we subtract 1.
 				for k = 1, m do
 					newargs:insert(args[k])
 				end 

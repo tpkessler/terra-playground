@@ -79,7 +79,7 @@ local AbstractBase = Base:new("AbstractBase",
 					else
 						--variable argument dispatch
 						local newargs, varargs = terralib.newlist(), terralib.newlist()
-						local m = sig:len()-2
+						local m = sig:len()-2 --sig includes concept Vararg and Self. Therefore we subtract 2.
 						for k = 1, m do
 							newargs:insert(args[k])
 						end 
