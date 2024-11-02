@@ -23,6 +23,20 @@ local function sgn(x)
 	return x > 0 and 1 or x < 0 and -1 or 0
 end
 
+local function nref(tp,n)
+	for k=1,n do
+		tp = &tp
+	end
+	return tp
+end
+
+local function getunderlyingtype(tp)
+	while tp:ispointer() do
+		tp = tp.type
+	end
+	return tp
+end
+
 --representation of signature in terms of two tables,
 --unique types and 
 --{{T,S},{1,2,1}} = {T, S, T}
@@ -34,29 +48,31 @@ end
 --accessing values
 paramlist.__index = function(t,k)
 	if type(k)=="number" then
-		return t.keys[t.pos[k]]
+		return nref(t.keys[t.pos[k]], t.ref[k]) 
 	else
 		return paramlist[k] or rawget(t, k)
 	end
 end
 --create a new parameter list from unique keys and position array
 --{{T,S},{1,2,1}} = {T, S, T}
-paramlist.new = function(keys, pos)
-	local t = {keys=keys, pos=pos}
+paramlist.new = function(keys, pos, ref)
+	local t = {keys=keys, pos=pos, ref=ref}
 	return setmetatable(t, paramlist)
 end
 --return parameter-list {Any,Any,...}
 paramlist.init = function(n)
 	assert(type(n) == "number")
-	local keys, pos = terralib.newlist(), terralib.newlist()
+	local keys, pos, ref = terralib.newlist(), terralib.newlist(), terralib.newlist()
 	for i = 1, n do
 		keys:insert(concept.Any)
 		pos:insert(i)
+		ref:insert(0)
 	end
-	return paramlist.new(keys, pos)
+	return paramlist.new(keys, pos, ref)
 end
 --return iterator
-function paramlist:iter()
+function paramlist:iter(maxlen) --padd until maxlen with Any
+	maxlen = maxlen or 0
 	local i = 0
 	local n = #rawget(self,"pos")
 	return function()
@@ -64,10 +80,17 @@ function paramlist:iter()
 			i = i + 1
 			return i, self[i]
 		end
+		if i < maxlen then
+			i = i + 1
+			return i, concept.Any
+		end
 	end
 end
 function paramlist:len()
 	return #rawget(self,"pos")
+end
+function paramlist:isvararg()
+	return self.keys[#self.keys] == concept.Vararg
 end
 paramlist.__tostring = function(t)
 	local s = {}
@@ -79,11 +102,12 @@ end
 function paramlist:serialize()
 	local s1 = tostring(self.keys)
 	local s2 = tostring(self.pos)
-	return s1 ..":" .. s2
+	local s3 = tostring(self.ref)
+	return s1 ..":" .. s2 .. ":" .. s3
 end
-function paramlist:collect()
+function paramlist:collect(maxlen)
 	local s = {}
-	for k,v in self:iter() do
+	for k,v in self:iter(maxlen) do
 		table.insert(s, v)
 	end
 	return s
@@ -105,12 +129,23 @@ function Template:new()
     -- Check if method signature satisfies method concepts.
     -- This is used to rule out methods, such that only admissable methods remain.
     local function concepts_check(sig, args)
-		if sig:len()~=#args then
-			return false
+		--input argument length needs to match the signature
+		--unless we have a variable argument template
+		if sig:isvararg() then
+			if sig:len()>#args then
+				return false
+			end
+		else
+			if sig:len()~=#args then
+				return false
+			end
 		end
+		--get the expanded signature
+		local expandedsig = sig:collect(#args)
+		--check which methods are admissible
 		local res = fun.all(function(C, T)
 								return concept.has_implementation(C, T)
-							end, fun.zip(sig:collect(), args))
+							end, fun.zip(expandedsig, args))
 		return res
 	end
 
@@ -146,53 +181,53 @@ function Template:new()
 						)
 						-- For later comparison we only return the function
 						-- parameters but not its return type.
-						:map(function(sig, func) return sig, func end)
 						:tomap()
 	end
 
-	function template:select_method(...)
-		local args = {...}
-		local admissible = self:get_methods(...)
-		--find minimal 
+	local function select_most_specialized(args, admissible)
+		--if there is only one method then we are done
+		if fun.length(admissible) == 1 then
+			return admissible
+		end
+		--signature length used to expand variable argument definitions
+		local siglength = #args
+		-- Find minimal, most specialized implementation
 		local function minimal(acc, sig, func)
-			local s = compare_two_methods(sig:collect(), acc:collect())
+			local s = compare_two_methods(sig:collect(siglength), acc:collect(siglength))
 			if s > 0 then -- sig is more specialized
 				return sig
 			else
 				return acc
 			end
 		end
-		-- Find minimal, most specialized implementation
 		local saved = paramlist.init(#args)
 		saved = fun.foldl(minimal, saved, admissible)
 		--find all methods that reach same minimum
 		local function ambiguous(sig, func)
-			return 0 == compare_two_methods(sig:collect(), saved:collect())
+			return 0 == compare_two_methods(sig:collect(siglength), saved:collect(siglength))
 		end
 		local methods = fun.filter(ambiguous, admissible):tomap()
 		--there may still be some ambiguous methods, but some of these may
-		--lead to casts
-		local function nocasts(args, sig)
+		--lead to casts. Try reducing the methods to one candidate by comparing 
+		--concrete types against the 'pos' array
+		local function requirescast(args, sig)
 			for i,v in ipairs(sig.pos) do
-				if args[i]~=args[v] then
-					return false
+				if getunderlyingtype(args[i])~=getunderlyingtype(args[v]) then
+					return true
 				end
 			end
-			return true
+			return false
 		end
-		--if there are still ambiguous methods try reducing the methods 
-		--to one candidate by comparing concrete types against the 'pos' array
-		--evaluate to true if: args[i] == args[pos[i]] for all arguments
+		--remove candidate functions that lead to casts
 		if fun.length(methods) > 1 then
 			for sig,func in pairs(methods) do
-				if not nocasts(args, sig) then
+				if requirescast(args, sig) then
 					methods[sig] = nil
 				end
 			end
 		end
 		--remaining methods are all valid methods that do not lead 
-		--to casts
-		--now select the method with minimal unique constraint list
+		--to casts. Now select the method with minimal unique constraint list
 		if fun.length(methods) > 1 then
 			local sig, func = next(methods)
 			for s,f in pairs(methods) do
@@ -209,6 +244,12 @@ function Template:new()
 		return methods
 	end
 
+	function template:select_method(...)
+		local args = {...}
+		local admissible = self:get_methods(...)
+		return select_most_specialized(args, admissible)
+	end
+
 	local mt = {}
 	function mt:__newindex(key, value)
 		--assert(terralib.types.istype(key) and key:ispointertofunction(),
@@ -221,12 +262,10 @@ function Template:new()
 		local args = terralib.newlist{...}
 		local methods = self:select_method(unpack(args))
 		local n_methods = fun.length(methods)
-		if n_methods==0 then
-			error("No implemementation found that satisfies the concept check.", 2)
-		elseif n_methods == 1 then
+		if n_methods == 1 then
 			local sig, func = next(methods)
-			return (func or self.default)(...)
-		else
+			return sig, (func or self.default)(...)
+		elseif n_methods > 1 then
 			--throw an ambiguity error
 			local err_str = ""
 			err_str = err_str
@@ -264,19 +303,38 @@ local function istemplate(T)
 	return type(T) == "table" and T.type == "template"
 end
 
+local function isvarargtemplatefun(sig, func)
+	return sig.keys[#sig.keys] == concept.Vararg
+end
+
 local function dispatch(T, ...)
     return T.templates.eval(...)
 end
 
 local functiontemplate = function(name, methods)
     local T = terralib.types.newstruct(name)
-    base.AbstractBase(T)
-    T.templates.eval = Template:new("eval")
-    T.metamethods.__apply = macro(function(self, ...)
-        local args = terralib.newlist({...})
-        local typs = args:map(function(a) return a:gettype() end)
-        local func = dispatch(T, unpack(typs))
-        return `func([args])
+    base.AbstractBase(T) --adding table 'staticmethods', 'templates'
+	T.templates.eval = Template:new("eval")
+	T.metamethods.__apply = macro(function(self, ...)
+        local args = terralib.newlist{...}
+        local types = args:map(function(a) return a:gettype() end)
+        local sig, func = dispatch(T, unpack(types))
+		if func then
+			if not sig:isvararg() then
+        		return `func([args])
+			else
+				local newargs, varargs = terralib.newlist(), terralib.newlist()
+				local m = sig:len()-1 --sig includes concept Vararg. Therefore we subtract 1.
+				for k = 1, m do
+					newargs:insert(args[k])
+				end 
+				for k = m+1,#args do
+					varargs:insert(args[k])
+				end 
+				return `func([newargs],{[varargs]})
+			end
+		end
+		error("No implemementation found that satisfies the concept check.", 2)
     end)
 
     local t = constant(T)
@@ -291,11 +349,12 @@ local functiontemplate = function(name, methods)
 				end
 			end
 			--otherwise add new definition with new key
-            T.templates.eval[sig] = func
+			T.templates.eval[sig] = func
         end
     end
     function t:dispatch(...)
-        return dispatch(T, ...)
+		local sig, func = dispatch(T, ...)
+        return func
     end
 
 	t:adddefinition(methods)

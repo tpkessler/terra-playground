@@ -22,19 +22,8 @@ testenv "terraforming free functions" do
         end
         test foo(1., 2.) == 4.0
         test foo(float(1), 2.) == 5.0
-    end    
-
-    testset "duck-typing" do
-        terraform foo(a, b)
-            return a * b + 1
-        end
-        terraform foo(a, b, c : T) where {T : Integer}
-            return a * b + c
-        end
-        test foo(2, 3) == 7
-        test foo(2, 3, 2) == 8
-    end    
-
+    end
+    
     testset "global method dispatch parametric concrete types" do
         terraform foo(a : T, b : T) where {T : Real}
             return a * b
@@ -100,6 +89,21 @@ testenv "terraforming free functions" do
         test foo(&i, &j) == 5.0
     end
 
+    testset "global method dispatch mixed parametric concrete/reference types" do
+        terraform foo(a : T, b : &T) where {T : Real}
+            return a + @b
+        end
+        terraform foo(a : &T, b : T) where {T : Real}
+            return @a + b + 1
+        end
+        terracode
+            var x = 1.
+            var y = 2.
+        end
+        test foo(x, &y) == 3.0
+        test foo(&x, y) == 4.0
+    end
+
     testset "local method dispatch parametric reference types" do
         local terraform foo(a : &T, b : &T) where {T : Real}
             return @a * @b
@@ -146,6 +150,38 @@ testenv "terraforming free functions" do
         test foo(&ri, &ry) == 3.0
         test foo(&rx, &rj) == 4.0
         test foo(&ri, &rj) == 5.0
+    end
+
+    testset "duck-typing" do
+        terraform foo(a, b)
+            return a * b + 1
+        end
+        terraform foo(a, b, c : T) where {T : Integer}
+            return a * b + c
+        end
+        test foo(2, 3) == 7
+        test foo(2, 3, 2) == 8
+    end
+
+    testset "varargs" do
+        terraform foo(a : int)
+            return a + 1
+        end
+        terraform foo(args ...)
+            var res = 1
+            escape
+                for i,v in ipairs(args.type.entries) do
+                    local s = "_" .. tostring(i-1)
+                    emit quote
+                        res = res * args.[s] 
+                    end
+                end
+            end
+            return res
+        end
+        test foo(2) == 3
+        test foo(2, 3) == 6
+        test foo(2, 3, 4) == 24
     end
 
     testset "nearly ambiguous calls" do
@@ -213,6 +249,38 @@ testenv "terraforming class methods" do
         var mybar = bar{1}
     end
 
+    testset "duck-typing" do
+        terraform bar:foo(a, b)
+            return a * b + self.index
+        end
+        terraform bar:foo(a, b, c : T) where {T : Integer}
+            return a * b + c + self.index
+        end
+        test mybar:foo(2, 3) == 7
+        test mybar:foo(2, 3, 2) == 9
+    end
+
+    testset "varargs" do
+        terraform bar:foo(a : int)
+            return a + self.index
+        end
+        terraform bar:foo(args ...)
+            var res = self.index
+            escape
+                for i,v in ipairs(args.type.entries) do
+                    local s = "_" .. tostring(i-1)
+                    emit quote
+                        res = res * args.[s] 
+                    end
+                end
+            end
+            return res
+        end
+        test mybar:foo(2) == 3
+        test mybar:foo(2, 3) == 6
+        test mybar:foo(2, 3, 4) == 24
+    end
+
     testset "static methods" do
         terraform bar.sin(a : T) where {T : Real}
             return a + 2
@@ -220,8 +288,12 @@ testenv "terraforming class methods" do
         terraform bar:foo(a : T) where {T : Real}
             return a + self.index
         end
+        terraform bar.sin(a : T, b ...) where {T : Real}
+            return a + b._0 + 2
+        end
         test bar.sin(2) == 4
         test mybar:foo(2) == 3
+        test bar.sin(2,3) == 7
     end
 
     testset "concrete types" do
@@ -233,18 +305,7 @@ testenv "terraforming class methods" do
         end
         test mybar:foo(1., 2.) == 3.0
         test mybar:foo(float(1), 2.) == 4.0
-    end    
-
-    testset "duck-typing" do
-        terraform bar:foo(a, b)
-            return a * b + self.index
-        end
-        terraform bar:foo(a, b, c : T)  where {T : Integer}
-            return a * b + self.index + c
-        end
-        test mybar:foo(2, 3) == 7
-        test mybar:foo(2, 3, 1) == 8
-    end   
+    end
 
     testset "method dispatch parametric concrete types" do
         terraform bar:foo(a : T, b : T) where {T : Real}
@@ -289,6 +350,21 @@ testenv "terraforming class methods" do
         test mybar:foo(&i, &y) == 4.0
         test mybar:foo(&x, &j) == 5.0
         test mybar:foo(&i, &j) == 6.0
+    end
+
+    testset "method dispatch mixed parametric concrete/reference types" do
+        terraform bar:foo(a : T, b : &T) where {T : Real}
+            return a + @b + self.index
+        end
+        terraform bar:foo(a : &T, b : T) where {T : Real}
+            return @a + b + 1 + self.index
+        end
+        terracode
+            var x = 1.
+            var y = 2.
+        end
+        test mybar:foo(x, &y) == 4.0
+        test mybar:foo(&x, y) == 5.0
     end
 
     testset "nested reference types" do

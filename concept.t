@@ -63,6 +63,11 @@ local function isconcept(C)
 end
 
 local Any = Concept:new("Any", function(...) return true end)
+local Vararg = Concept:new("Vararg", 
+	function(...) 
+		return true
+	end
+)
 
 local function is_specialized_over(C1, C2)
 	for _, C in pairs({C1, C2}) do
@@ -284,6 +289,7 @@ local M = {
 }
 
 M.Any = Any
+M.Vararg = Vararg
 M.Bool = Concept:new("Bool")
 M.Bool:addimplementations{bool}
 M.RawString = Concept:new("RawString")

@@ -34,7 +34,7 @@ local AbstractBase = Base:new("AbstractBase",
 		assert(T:isstruct())
 		local Self = concept.Concept:new("Self" .. tostring(T))
 		Self:addimplementations{T}
-		for key, val in pairs({staticmethods = {}, templates = {}, Self = Self}) do
+		for key, val in pairs({staticmethods = {}, templates = {}, varargtemplates = {}, Self = Self}) do
 			if T.key == nil then
 				rawset(T, key, val)
 			end
@@ -63,18 +63,34 @@ local AbstractBase = Base:new("AbstractBase",
 		    return fnlike
 		end
 
-		T.metamethods.__methodmissing = macro(function(methodname, obj, ...)
+		T.metamethods.__methodmissing = macro(function(name, obj, ...)
+			assert(obj.tree.type == T) --__methodmissing should only be called for 
+			--class methods, not for static methods
 			local args = terralib.newlist{...}
 			local types = args:map(function(t) return t.tree.type end)
-			local method = T.templates[methodname]
-			if not method then
-				error("No template method exists with name " .. methodname)
+			types:insert(1, &T)
+			local method = T.templates[name]
+			if method then
+				local sig, func = method(unpack(types))
+				if func then
+					if not sig:isvararg() then
+						--regular template dispatch
+						return `[func](&obj, [args])
+					else
+						--variable argument dispatch
+						local newargs, varargs = terralib.newlist(), terralib.newlist()
+						local m = sig:len()-2 --sig includes concept Vararg and Self. Therefore we subtract 2.
+						for k = 1, m do
+							newargs:insert(args[k])
+						end 
+						for k = m+1,#args do
+							varargs:insert(args[k])
+						end
+						return `[func](&obj, [newargs], {[varargs]})
+					end
+				end
 			end
-			if obj.tree.type == T then
-				types:insert(1, &T)
-				local func = method(unpack(types))
-				return `[func](&obj, [args])
-			end
+			error("No implemementation found that satisfies the concept check.", 2)
 		end)
 	end
 )
