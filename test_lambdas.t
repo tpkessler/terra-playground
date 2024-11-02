@@ -17,6 +17,8 @@ testenv "lambda's" do
 	end
 
     testset "with captured vars" do
+        --the capture is an anonymous struct. the order of the variables needs 
+        --to match the function signature. 
         terracode
             var x, y = 2, 3
             var p = lambda.new(
