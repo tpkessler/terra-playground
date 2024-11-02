@@ -238,26 +238,8 @@ function get_template_parameter_list(localenv, params, constraints)
 			end
 		else 
 			--get concrete type from 'env' or primitives
-<<<<<<< HEAD
-			tp = localenv[param.typename] or terralib.types[param.typename]
-			--if not in the current localenv, check broader using 'serde.get_local_vars' 
-			--and add to current local environment
-			if not tp then
-				--local localvars = serde.get_local_vars()
-				--tp = localvars[param.typename]
-				if not tp then
-					error("Type " .. tostring(param.typename) .. " not found in current scope.")
-				end
-			--	localenv[param.typename] = tp
-			end
-			--add '&' to get reference to 'tp'
-			for k=1,param.nref do
-				tp = &tp
-			end
-=======
 			tp = localenv[param.typename] or terralib.types[param.typename] or error("Could not find " .. param.typename)
 			--update tables defining template parameter list
->>>>>>> terraform
 			uniqueparams:insert(tp)
 			pos:insert(counter)
 			ref:insert(param.nref)
