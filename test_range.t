@@ -269,7 +269,7 @@ testenv "range adapters" do
     testset "transform" do
         terracode
             var x = 2
-            var g = rn.transform([terra(i : int, x : int) return x * i end], x)
+            var g = rn.transform([terra(i : int, x : int) return x * i end], {x = x})
             var range = unitrange.new(1, 4) >> g
             range:collect(&s)
         end
@@ -282,7 +282,7 @@ testenv "range adapters" do
     testset "filter" do
         terracode
             var x = 1
-            var range = unitrange{1, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
+            var range = unitrange{1, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], {x = x})
             range:collect(&s)
         end
         test s:size()==3
@@ -349,8 +349,8 @@ testenv "range composition" do
             var r = unitrange{0, 5}
             var x = 0
             var y = 3
-            var g = rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
-            var h = rn.transform([terra(i : int, y : int) return y * i end], y)
+            var g = rn.filter([terra(i : int, x : int) return i % 2 == x end], {x = x})
+            var h = rn.transform([terra(i : int, y : int) return y * i end], {y = y})
             var range = r >> g >> h
             range:collect(&s)
         end
@@ -365,8 +365,8 @@ testenv "range composition" do
             var x = 0
             var y = 3
             for v in unitrange{0, 5} >> 
-                        rn.filter([terra(i : int, x : int) return i % 2 == x end], x) >>
-                            rn.transform([terra(i : int, y : int) return y * i end], y) do
+                        rn.filter([terra(i : int, x : int) return i % 2 == x end], {x = x}) >>
+                            rn.transform([terra(i : int, y : int) return y * i end], {y = y}) do
                 s:push(v)
             end
         end
@@ -397,8 +397,8 @@ testenv "range composition - terraform" do
             var r = unitrange{0, 5}
             var x = 0
             var y = 3
-            var g = rn.filter(foo, x)
-            var h = rn.transform(bar, y)
+            var g = rn.filter(foo, {x = x})
+            var h = rn.transform(bar, {y = y})
             var range = r >> g >> h
             range:collect(&s)
         end

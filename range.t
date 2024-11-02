@@ -554,18 +554,14 @@ end
 --factory function for range adapters that carry a lambda
 local adapter_lambda_factory = function(Adapter)
     local factory = macro(
-        function(fun, ...)
+        function(fun, capture)
             --get the captured variables
-            local captures = {...}
-            local p = lambda.newstruct(fun, ...)
+            local p = lambda.makelambda(fun, capture or `{})
             --set the generator (FilteredRange or TransformedRange, etc)
-            p.generator = Adapter
+            local lambda_t = p:gettype()
+            lambda_t.generator = Adapter
             --create and return lambda object by value
-            return quote
-                var f = p{[captures]}
-            in
-                f
-            end
+            return `p
         end)
     return factory
 end
