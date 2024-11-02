@@ -910,16 +910,13 @@ local product = combiner_factory(ProductRange)
 local zip = combiner_factory(ZipRange)
 
 --define reduction as a transform
-local operator_table = {
-    ["+"] = macro(function(x,y) return `x + y end);
-    ["*"] = macro(function(x,y) return `x * y end);
-    ["/"] = macro(function(x,y) return `x / y end);
+local binaryoperation = {
+    add = macro(function(x,y) return `x + y end),
+    mul = macro(function(x,y) return `x * y end),
+    div = macro(function(x,y) return `x / y end)
 }
 
-local reduce = macro(function(op) 
-    --select binary operation
-    local operator = op.tree.value
-    local binary_operation = operator_table[operator] or error("Not a valid operator. Pick \"*\", \"+\" or \"\\\".")
+local reduce = macro(function(binaryop) 
     --reduction vararg template function
     local terraform tuplereduce(args ...)
         var res = args._0
@@ -928,7 +925,7 @@ local reduce = macro(function(op)
             for i = 2, n do
                 local s = "_" .. tostring(i-1)
                 emit quote
-                    res = binary_operation(res, args.[s])
+                    res = binaryop(res, args.[s])
                 end
             end
         end
@@ -956,6 +953,7 @@ return {
     Unitrange = Unitrange,
     Steprange = Steprange,
     reduce = reduce,
+    op = binaryoperation,
     transform = transform,    
     filter = filter,
     take = take,

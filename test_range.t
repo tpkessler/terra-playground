@@ -547,7 +547,7 @@ testenv "range combiners" do
     testset "zip - 3 - reduction '+'" do
         terracode
             var W = stack.new(&alloc, 10)
-            for w in rn.zip(unitrange{1, 4}, unitrange{2, 6}, unitrange{3, 7}) >> rn.reduce("+") do
+            for w in rn.zip(unitrange{1, 4}, unitrange{2, 6}, unitrange{3, 7}) >> rn.reduce(rn.op.add) do
                 W:push(w)
             end
         end
@@ -560,7 +560,7 @@ testenv "range combiners" do
     testset "product - 2 - reduction '*'" do
         terracode
             var W = stack.new(&alloc, 10)
-            for w in rn.product(unitrange{1, 4}, unitrange{2, 4}) >> rn.reduce("*") do
+            for w in rn.product(unitrange{1, 4}, unitrange{2, 4}) >> rn.reduce(rn.op.mul) do
                 W:push(w)
             end
         end
@@ -576,7 +576,7 @@ testenv "range combiners" do
     testset "product - 3 - reduction '*'" do
         terracode
             var W = stack.new(&alloc, 16)
-            for w in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3, 5}) >> rn.reduce("*") do
+            for w in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3, 5}) >> rn.reduce(rn.op.mul) do
                 W:push(w)
             end
         end

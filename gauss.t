@@ -610,7 +610,7 @@ local productrule = macro(function(...)
     --return quadrature rule
     return quote
         var x = range.product([xargs])
-        var w = range.product([wargs]) >> range.reduce("*")
+        var w = range.product([wargs]) >> range.reduce(range.op.mul)
         escape
             QuadruleBase(quadrule, x.type, w.type)
         end
