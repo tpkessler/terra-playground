@@ -6,7 +6,7 @@
 local base = require("base")
 local concept = require("concept")
 local template = require("template")
-local lambdas = require("lambdas")
+local lambda = require("lambdas")
 local err = require("assert")
 
 import "terraform"
@@ -557,7 +557,7 @@ local adapter_lambda_factory = function(Adapter)
         function(fun, ...)
             --get the captured variables
             local captures = {...}
-            local p = lambdas.lambda_generator(fun, ...)
+            local p = lambda.newstruct(fun, ...)
             --set the generator (FilteredRange or TransformedRange, etc)
             p.generator = Adapter
             --create and return lambda object by value
