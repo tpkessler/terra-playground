@@ -746,8 +746,8 @@ local ZipRange = function(Ranges)
     local state_t = terralib.newlist{}
     local value_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        state_t:insert(rn.iterator_t)
-        value_t:insert(rn.value_t)
+        state_t:insert(gettype(rn).iterator_t)
+        value_t:insert(gettype(rn).value_t)
     end
     local iterator_t = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
@@ -823,8 +823,8 @@ local ProductRange = function(Ranges)
     local state_t = terralib.newlist{}
     local value_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        state_t:insert(rn.iterator_t)
-        value_t:insert(rn.value_t)
+        state_t:insert(gettype(rn).iterator_t)
+        value_t:insert(gettype(rn).value_t)
     end
     local iterator_t = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
@@ -841,8 +841,10 @@ local ProductRange = function(Ranges)
         escape
             for k=0, D-1 do
                 local s = "_"..tostring(k)
-                emit quote iter.state.[s] = self.[s]:getiterator() end
-                emit quote iter.value.[s] = iter.state.[s]:getvalue() end
+                emit quote 
+                    iter.state.[s] = self.[s]:getiterator() 
+                    iter.value.[s] = iter.state.[s]:getvalue()
+                end
             end
         end
         return iter

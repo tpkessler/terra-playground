@@ -87,7 +87,7 @@ local DynamicStack = terralib.memoize(function(T)
     end
     
     stack.iterator = iterator
-    range.Base(stack, iterator, T)
+    range.Base(stack, iterator)
 
     return stack
 end)
