@@ -232,7 +232,7 @@ local function Integrand(args)
             local quadrature_kernel_imp
             if K==0 then
                 terraform quadrature_kernel_imp(self : &integral, mapping, kernel, npts : int)
-                    var alloc : Default
+                    var alloc : DefaultAllocator
                     var alpha = kernel.alpha + 2*N - K - 1
                     var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
                     var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})

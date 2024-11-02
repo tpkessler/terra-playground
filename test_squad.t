@@ -25,7 +25,7 @@ testenv "singular quadrature - smooth kernel" do
         --create coordinate functions
         var mapping : coordinatemapping
         --create lambda
-        var kernel = lambda.new([terra(x : T[3], y : T[3], alpha : double) return 1.0 end], 0.0)
+        var kernel = lambda.new([terra(x : T[3], y : T[3], alpha : double) return 1.0 end], {alpha = 0.0})
     end
  
     testset "3D intersection" do
@@ -90,16 +90,16 @@ testenv "singular quadrature - smooth kernel" do
         terracode
             var G : integrand
             var s = { 
-                G:eval(mapping, lambda.new([f1], 0.0), 4),
-                G:eval(mapping, lambda.new([f2], 0.0), 4),
-                G:eval(mapping, lambda.new([f3], 0.0), 4),
-                G:eval(mapping, lambda.new([f4], 0.0), 4)
+                G:eval(mapping, lambda.new([f1], {alpha = 0.0}), 4),
+                G:eval(mapping, lambda.new([f2], {alpha = 0.0}), 4),
+                G:eval(mapping, lambda.new([f3], {alpha = 0.0}), 4),
+                G:eval(mapping, lambda.new([f4], {alpha = 0.0}), 4)
             }
         end
         test tmath.isapprox(s._0, 2.0, 1e-12)
         test tmath.isapprox(s._1, 2.0, 1e-12)
-        test tmath.isapprox(s._2, 2.0, 1e-12)
-        test tmath.isapprox(s._3, 2.0, 1e-12)
+        test tmath.isapprox(s._2, 1.0, 1e-12)
+        test tmath.isapprox(s._3, 1.0, 1e-12)
     end
 
 end
@@ -158,7 +158,7 @@ testenv "singular quadrature - rough kernel" do
             }
             terracode
                 var G : integrand
-                var s = G:eval(mapping, lambda.new(kernel, alpha), 8)
+                var s = G:eval(mapping, lambda.new(kernel, {alpha = alpha}), 8)
             end
             test tmath.isapprox(s, precomputedval, 1e-8)
         end
