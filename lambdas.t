@@ -7,47 +7,34 @@
 --a function in the 'apply' metamethod and store any captured variables in the struct
 --as entries
 
+local io = terralib.includec("stdio.h")
 local template = require("template")
 
-local generatetype = function(captures_t)
-    local lambda = terralib.types.newstruct("lambda")
-    --add captured variable types as entries to the wrapper struct
-    for i,tp in ipairs(captures_t) do
-        lambda.entries:insert({field = "_"..tostring(i-1), type = tp})
+local ckecklambdaexpr = function(expr)
+    if not (expr.tree and expr.tree.type and expr.tree.type:isstruct()) then
+        error("Not a valid capture. The capture syntax uses named arguments as follows: {x = xvalue, ...}.", 2)
     end
-    lambda:setconvertible("tuple")
-    return lambda
 end
 
-local newstruct = function(fun, ...)
-    --get the captured variables
-    local captures = terralib.newlist{...}
-    local captures_t = captures:map(function(v) return v:gettype() end)
-    --get struct with captures
-    local lambda = generatetype(captures_t)
-    --overloading the call operator - making 'lambda' a function object
-    lambda.metamethods.__apply = macro(terralib.memoize(function(self, ...)
+local makelambda = function(fun, lambdaobj)
+    --check capture object
+    ckecklambdaexpr(lambdaobj)
+    local lambdatype = lambdaobj:gettype()
+    --overloading the call operator - making 'lambdaobj' a function object
+    lambdatype.metamethods.__apply = macro(terralib.memoize(function(self, ...)
         local args = terralib.newlist{...}
-        return `fun([args], unpacktuple(self))
+        return `fun([args], unpackstruct(self))
     end))
-    --return function object
-    return lambda
+    return lambdaobj
 end
 
 --return a function object with captured variables in ...
-local new = macro(function(fun, ...)
-    --get the captured variables
-    local captures = {...}
-    local p = newstruct(fun, ...)
-    --create and return lambda object by value
-    return quote
-        var f = p{[captures]}
-    in
-        f
-    end
+local new = macro(function(fun, capture)
+    local lambda = makelambda(fun, capture or `{})
+    return `lambda
 end)
 
 return {
     new = new,
-    newstruct = newstruct
+    makelambda = makelambda
 }
