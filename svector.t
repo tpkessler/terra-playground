@@ -3,6 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
+import "terraform"
 local err = require("assert")
 local base = require("base")
 local vecbase = require("vector")
@@ -114,34 +115,22 @@ local StaticVector = terralib.memoize(function(T, N)
     vecbase.VectorBase(V)
 
     if T:isprimitive() then
-        V.templates.fill[{&V.Self, concept.Number} -> {}] = function(Self, S)
-            local terra fill(self: Self, a: S)
-                self.simd = a
-            end
-            return fill
+
+        terraform V:fill(a : S) where {S : concept.Number}
+            self.simd = a
         end
 
-        V.templates.copy[{&V.Self, &V.Self} -> {}] = function(V1, V2)
-            local terra copy(self: V1, other: V2)
-                self.simd = other.simd
-            end
-            return copy
+        terraform V:copy(other : &V2) where {V2 : V.Self}
+            self.simd = other.simd
         end
 
-        V.templates.scal[{&V.Self, concept.Number} -> {}] = function(Self, S)
-            local terra scal(self: Self, a: S)
-                self.simd = a * self.simd
-            end
-            return scal
+        terraform V:scal(a : S) where {S : concept.Number}
+            self.simd = a * self.simd
         end
 
-        V.templates.axpy[{&V.Self, concept.Number, &V.Self} -> {}] =
-            function(V1, S, V2)
-                local terra axpy(y: V1, a: S, x: V2)
-                    y.simd = y.simd + a * x.simd
-                end
-                return axpy
-            end
+        terraform V:axpy(a : S, x : V2) where {S : concept.Number, V2 : V.Self}
+            self.simd = self.simd + a * x.simd
+        end
         -- dot impletation doesn't profit from a vectorized implementation
         -- as the operation works vertically and thus requires synchronization
         -- of the vector registers.
