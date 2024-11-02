@@ -9,7 +9,7 @@
 
 local template = require("template")
 
-local function new(captures_t)
+local newtype = function(captures_t)
     local lambda = terralib.types.newstruct("lambda")
     --add captured variable types as entries to the wrapper struct
     for i,tp in ipairs(captures_t) do
@@ -19,12 +19,12 @@ local function new(captures_t)
     return lambda
 end
 
-local lambda_generator = function(fun, ...)
+local generate = function(fun, ...)
     --get the captured variables
     local captures = terralib.newlist{...}
     local captures_t = captures:map(function(v) return v:gettype() end)
     --get struct with captures
-    local lambda = new(captures_t)
+    local lambda = newtype(captures_t)
     --overloading the call operator - making 'lambda' a function object
     lambda.metamethods.__apply = macro(terralib.memoize(function(self, ...)
         local args = terralib.newlist{...}
@@ -35,10 +35,10 @@ local lambda_generator = function(fun, ...)
 end
 
 --return a function object with captured variables in ...
-local lambda = macro(function(fun, ...)
+local new = macro(function(fun, ...)
     --get the captured variables
     local captures = {...}
-    local p = lambda_generator(fun, ...)
+    local p = generate(fun, ...)
     --create and return lambda object by value
     return quote
         var f = p{[captures]}
@@ -48,6 +48,6 @@ local lambda = macro(function(fun, ...)
 end)
 
 return {
-    lambda = lambda,
-    lambda_generator = lambda_generator 
+    new = new,
+    generate = generate
 }

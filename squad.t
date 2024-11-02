@@ -1,13 +1,11 @@
 import "terraform"
 
-local io = terralib.includec("stdio.h")
 local base = require("base")
 local alloc = require('alloc')
 local tmath = require('mathfuns')
 local geo = require("geometry")
 local vec = require("luavector")
 local gauss = require("gauss")
-local lambda = require("lambda")
 local range = require("range")
 
 local DefaultAllocator =  alloc.DefaultAllocator()
@@ -15,7 +13,6 @@ local DefaultAllocator =  alloc.DefaultAllocator()
 local Allocator = alloc.Allocator
 local size_t = uint64
 local T = double
-
 
 --return a terra tuple type of length N: {T, T, ..., T}
 local ntuple = function(T, N)
@@ -235,7 +232,7 @@ local function Integrand(args)
             local quadrature_kernel_imp
             if K==0 then
                 terraform quadrature_kernel_imp(self : &integral, mapping, kernel, npts : int)
-                    var alloc : DefaultAllocator
+                    var alloc : Default
                     var alpha = kernel.alpha + 2*N - K - 1
                     var gausrule = gauss.legendre(&alloc, npts, interval{0.0, 1.0})
                     var S_1 = gauss.jacobi(&alloc, npts, 0.0, alpha, interval{0.0, 1.0})
