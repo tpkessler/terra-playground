@@ -17,12 +17,18 @@ testenv "lambda's" do
 	end
 
     testset "with captured vars" do
+        --the capture is an anonymous struct. the order of the variables needs 
+        --to match the function signature. 
         terracode
             var x, y = 2, 3
-            var p = lambda.new([terra(i : int, x : int, y : int) return i * i * x * y end], {z = x, y = y}) 
+            var p = lambda.new(
+                [terra(i : int, x : int, y : int) return i * i * x * y end]
+                , {x = 2, y = 3}
+            ) 
         end
         test p(1) == 6
         test p(2) == 24
+        test p.x == 2 and p.y == 3
 	end
 
 end
