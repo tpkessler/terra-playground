@@ -128,7 +128,7 @@ local StaticVector = terralib.memoize(function(T, N)
             self.simd = a * self.simd
         end
 
-        terraform V:axpy(a : S, x : V2) where {S : concept.Number, V2 : V.Self}
+        terraform V:axpy(a : S, x : &V2) where {S : concept.Number, V2 : V.Self}
             self.simd = self.simd + a * x.simd
         end
         -- dot impletation doesn't profit from a vectorized implementation
