@@ -45,6 +45,16 @@ local byvalue = function(t)
     end
 end
 
+--return the value-type of an iterator type
+local function getvalue_t(iterator_t)
+    return iterator_t.methods.getvalue.type.returntype
+end
+
+local IteratorBase = function(Iterator)
+    --type trait value type
+    Iterator.value_t = getvalue_t(Iterator)
+end
+
 --an iterator implements the following macros:
 --  methods.getfirst :: (self) -> (state, value)
 --  methods.getnext :: (self, state) -> (value)
@@ -53,12 +63,15 @@ end
 --and adds the '__for' metamethod, and adds a 'collect' 
 --method that collects all elements in the range in a container
 --that satsifies the 'Stacker(T)' interface
-local RangeBase = function(Range, iterator_t, T)
+local RangeBase = function(Range, iterator_t)
+
+    --set base functionality for iterators
+    IteratorBase(iterator_t)
 
     --set the value type and iterator type of the range
     Range.isrange = true
     Range.iterator_t = iterator_t
-    Range.value_t = T
+    Range.value_t = iterator_t.value_t
 
     --overloading '>>' operator
     Range.metamethods.__rshift = macro(function(self, adapter)
@@ -167,7 +180,7 @@ local Unitrange = function(T)
     end
 
     --add metamethods
-    RangeBase(range, iterator, T)
+    RangeBase(range, iterator)
 
     return range
 end
@@ -226,7 +239,7 @@ local Steprange = function(T)
     end
 
     --add metamethods
-    RangeBase(range, iterator, T)
+    RangeBase(range, iterator)
 
     return range
 end
@@ -242,19 +255,20 @@ local TransformedRange = function(Range, Function)
     base.AbstractBase(transform)
 
     local iterator_t = Range.iterator_t
-    local T = Function.returntype
+    local T = Range.value_t
 
-    --select by value or by reference
-    Function.byreference = Function.parameters[1]:ispointer()
-    --valuate transform
     local eval = macro(function(self, value)
-        if Function.byreference then
-            return `self.f(&value)
+        if T.convertible=="tuple" then --we always unpack tuples
+            return quote 
+                var v = value
+            in
+                self.f(unpacktuple(v))
+            end
         else
             return `self.f(value)
         end
     end)
-
+    
     local struct iterator{
         adapter : &transform
         state : iterator_t
@@ -265,8 +279,7 @@ local TransformedRange = function(Range, Function)
     end
 
     terra iterator:getvalue()
-        var value = self.state:getvalue()
-        return eval(self.adapter, value)
+        return eval(self.adapter, self.state:getvalue())
     end
 
     terra iterator:isvalid()
@@ -278,15 +291,12 @@ local TransformedRange = function(Range, Function)
     end
 
     --add metamethods
-    RangeBase(transform, iterator, T)
+    RangeBase(transform, iterator)
 
     return transform
 end
 
 local FilteredRange = function(Range, Function)
-
-    --check that function is a predicate
-    assert(Function.returntype == bool)
 
     local struct filter{
         range : Range
@@ -296,19 +306,21 @@ local FilteredRange = function(Range, Function)
     --allowing concept-based function overloading at compile-time
     base.AbstractBase(filter)
 
-    --select by value or by reference
-    Function.byreference = Function.parameters[1]:ispointer()
+    local iterator_t = Range.iterator_t
+    local T = Range.value_t
+
     --evaluate predicate
     local pred = macro(function(self, value)
-        if Function.byreference then
-            return `self.predicate(&value)
+        if T.convertible=="tuple" then --we always unpack tuples
+            return quote 
+                var v = value
+            in
+                self.predicate(unpacktuple(v))
+            end
         else
             return `self.predicate(value)
         end
     end)
-
-    local iterator_t = Range.iterator_t
-    local T = Range.value_t
 
     local struct iterator{
         adapter : &filter
@@ -338,7 +350,7 @@ local FilteredRange = function(Range, Function)
     end
 
     --add metamethods
-    RangeBase(filter, iterator, T)
+    RangeBase(filter, iterator)
 
     return filter
 end
@@ -354,7 +366,6 @@ local TakeRange = function(Range)
     base.AbstractBase(take)
 
     local iterator_t = Range.iterator_t
-    local T = Range.value_t
 
     local struct iterator{
         adapter : &take
@@ -380,7 +391,7 @@ local TakeRange = function(Range)
     end
 
     --add metamethods
-    RangeBase(take, iterator, T)
+    RangeBase(take, iterator)
 
     return take
 end
@@ -396,7 +407,6 @@ local DropRange = function(Range)
     base.AbstractBase(drop)
 
     local iterator_t = Range.iterator_t
-    local T = Range.value_t
 
     local struct iterator{
         adapter : &drop
@@ -426,15 +436,12 @@ local DropRange = function(Range)
     end
 
     --add metamethods
-    RangeBase(drop, iterator, T)
+    RangeBase(drop, iterator)
 
     return drop
 end
 
 local TakeWhileRange = function(Range, Function)
-
-    --check that function is a predicate
-    assert(Function.returntype == bool)
 
     local struct takewhile{
         range : Range
@@ -444,19 +451,21 @@ local TakeWhileRange = function(Range, Function)
     --allowing concept-based function overloading at compile-time
     base.AbstractBase(takewhile)
 
-    --select by value or by reference
-    Function.byreference = Function.parameters[1]:ispointer()
+    local iterator_t = Range.iterator_t
+    local T = Range.value_t
+
     --evaluate predicate
     local pred = macro(function(self, value)
-        if Function.byreference then
-            return `self.predicate(&value)
+        if T.convertible=="tuple" then --we always unpack tuples
+            return quote 
+                var v = value
+            in
+                self.predicate(unpacktuple(v))
+            end
         else
             return `self.predicate(value)
         end
     end)
-
-    local iterator_t = Range.iterator_t
-    local T = Range.value_t
 
     local struct iterator{
         adapter : &takewhile
@@ -480,7 +489,7 @@ local TakeWhileRange = function(Range, Function)
     end
 
     --add metamethods
-    RangeBase(takewhile, iterator, T)
+    RangeBase(takewhile, iterator)
 
     return takewhile
 end
@@ -495,19 +504,21 @@ local DropWhileRange = function(Range, Function)
     --allowing concept-based function overloading at compile-time
     base.AbstractBase(dropwhile)
 
-    --select by value or by reference
-    Function.byreference = Function.parameters[1]:ispointer()
+    local iterator_t = Range.iterator_t
+    local T = Range.value_t
+
     --evaluate predicate
     local pred = macro(function(self, value)
-        if Function.byreference then
-            return `self.predicate(&value)
+        if T.convertible=="tuple" then --we always unpack tuples
+            return quote 
+                var v = value
+            in
+                self.predicate(unpacktuple(v))
+            end
         else
             return `self.predicate(value)
         end
     end)
-
-    local iterator_t = Range.iterator_t
-    local T = Range.value_t
 
     local struct iterator{
         adapter : &dropwhile
@@ -535,7 +546,7 @@ local DropWhileRange = function(Range, Function)
     end
 
     --add metamethods
-    RangeBase(dropwhile, iterator, T)
+    RangeBase(dropwhile, iterator)
 
     return dropwhile
 end
@@ -724,7 +735,6 @@ local JoinRange = function(Ranges)
     return joiner
 end
 
-
 local ZipRange = function(Ranges)
   
     local zipper = newcombiner(Ranges, "zip")
@@ -734,11 +744,11 @@ local ZipRange = function(Ranges)
     local D = #Ranges
 
     --get range types
-    local value_t = terralib.newlist{}
     local state_t = terralib.newlist{}
+    local value_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        value_t:insert(gettype(rn).value_t)
         state_t:insert(gettype(rn).iterator_t)
+        value_t:insert(gettype(rn).value_t)
     end
     local iterator_t = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
@@ -798,7 +808,7 @@ local ZipRange = function(Ranges)
     end
     
     --add metamethods
-    RangeBase(zipper, iterator, T)
+    RangeBase(zipper, iterator)
 
     return zipper
 end
@@ -811,11 +821,11 @@ local ProductRange = function(Ranges)
     base.AbstractBase(product)
     local D = #Ranges
 
-    local value_t = terralib.newlist{}
     local state_t = terralib.newlist{}
+    local value_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        value_t:insert(gettype(rn).value_t)
         state_t:insert(gettype(rn).iterator_t)
+        value_t:insert(gettype(rn).value_t)
     end
     local iterator_t = tuple(unpack(state_t))
     local T = tuple(unpack(value_t))
@@ -832,8 +842,10 @@ local ProductRange = function(Ranges)
         escape
             for k=0, D-1 do
                 local s = "_"..tostring(k)
-                emit quote iter.state.[s] = self.[s]:getiterator() end
-                emit quote iter.value.[s] = iter.state.[s]:getvalue() end
+                emit quote 
+                    iter.state.[s] = self.[s]:getiterator() 
+                    iter.value.[s] = iter.state.[s]:getvalue()
+                end
             end
         end
         return iter
@@ -880,60 +892,9 @@ local ProductRange = function(Ranges)
     end
 
     --add metamethods
-    RangeBase(product, iterator, T)
+    RangeBase(product, iterator)
 
     return product
-end
-
-local operator_table = {
-    ["+"] = macro(function(x,y) return `x + y end);
-    ["*"] = macro(function(x,y) return `x * y end);
-    ["/"] = macro(function(x,y) return `x / y end);
-}
-
---factory function for range adapters that don't cary state
-local adapter_reduction_factory = function(Adapter)
-    local factory = macro(function(op)
-        --wrapper struct
-        local struct reduction{
-        }
-        reduction.metamethods.__getmethod = function(self, methodname)
-            return self.methods[methodname] or reduction.staticmethods[methodname]
-        end
-        reduction.generator = Adapter
-        reduction.staticmethods.binary_operation = operator_table[op]
-
-        --create and return simple object by value
-        return quote
-            var v = reduction{}
-        in
-            v
-        end
-    end)
-    return factory
-end
-
-local ReductionRange = function(Range, Operator)
-    
-    --check that input value type is a tuple
-    assert(gettype(Range.value_t).convertible=="tuple")
-    
-    local binary_operation = operator_table[Operator]
-    local N = #Range.value_t.entries
-    local f = terra(t : Range.value_t)
-        var v = t._0
-        escape
-            for k=1,N-1 do
-                local s = "_"..k
-                emit quote 
-                    v = binary_operation(v,t.[s])
-                end
-            end
-        end
-        return v
-    end
-    --return the reduction range
-    TransformedRange(Range, f)
 end
 
 --generate user api macro's for adapters
@@ -948,7 +909,31 @@ local enumerate = combiner_factory(Enumerator)
 local join = combiner_factory(JoinRange)
 local product = combiner_factory(ProductRange)
 local zip = combiner_factory(ZipRange)
-local reduce = adapter_reduction_factory(ReductionRange)
+
+--define reduction as a transform
+local binaryoperation = {
+    add = macro(function(x,y) return `x + y end),
+    mul = macro(function(x,y) return `x * y end),
+    div = macro(function(x,y) return `x / y end)
+}
+
+local reduce = macro(function(binaryop) 
+    --reduction vararg template function
+    local terraform tuplereduce(args ...)
+        var res = args._0
+        escape
+            local n = #args.type.entries
+            for i = 2, n do
+                local s = "_" .. tostring(i-1)
+                emit quote
+                    res = binaryop(res, args.[s])
+                end
+            end
+        end
+        return res
+    end
+    return `transform(tuplereduce)
+end)
 
 --export functionality for developing new ranges
 local develop = {
@@ -969,6 +954,7 @@ return {
     Unitrange = Unitrange,
     Steprange = Steprange,
     reduce = reduce,
+    op = binaryoperation,
     transform = transform,    
     filter = filter,
     take = take,

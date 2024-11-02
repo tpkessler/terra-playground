@@ -592,28 +592,6 @@ gauss.jacobi = terralib.overloadedfunction("jacobi",
     end
 })
 
-local prod = {}
-
-terra prod.reduce_1d(w : &tuple(double))
-    return w._0
-end
-
-terra prod.reduce_2d(w : &tuple(double, double))
-    return w._0 * w._1
-end
-
-terra prod.reduce_3d(w : &tuple(double, double, double))
-    return w._0 * w._1 * w._2
-end
-
-terra prod.reduce_4d(w : &tuple(double, double, double, double))
-    return w._0 * w._1 * w._2 * w._3
-end
-
-terra prod.reduce_5d(w : &tuple(double, double, double, double, double))
-    return w._0 * w._1 * w._2 * w._3 * w._4
-end
-
 local productrule = macro(function(...)
     local args = terralib.newlist{...}
     local D = #args
@@ -629,12 +607,10 @@ local productrule = macro(function(...)
     end
     --quadrule type
     local quadrule = terralib.types.newstruct("tensorquadrule")
-    --get reduction method
-    local reduction = prod["reduce_" ..tostring(D) .."d"]
     --return quadrature rule
     return quote
         var x = range.product([xargs])
-        var w = range.product([wargs]) >> range.transform([reduction])
+        var w = range.product([wargs]) >> range.reduce(range.op.mul)
         escape
             QuadruleBase(quadrule, x.type, w.type)
         end

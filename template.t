@@ -303,6 +303,13 @@ local function istemplate(T)
 	return type(T) == "table" and T.type == "template"
 end
 
+local function isfunctiontemplate(T)
+	if not (T.templates and T.templates.eval) then
+		return false
+	end
+	return istemplate(T.templates.eval)
+end
+
 local function isvarargtemplatefun(sig, func)
 	return sig.keys[#sig.keys] == concept.Vararg
 end
@@ -367,5 +374,6 @@ return {
 	Template = Template,
 	functiontemplate = functiontemplate,
 	istemplate = istemplate,
+	isfunctiontemplate = isfunctiontemplate
 }
 
