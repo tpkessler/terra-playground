@@ -63,6 +63,51 @@ local binary_math = {
     "pow",
 }
 
+--concept for all fixed high precision floating point types
+local NFloat = concept.Concept:new("NFloat")
+
+--extract the exponent of an nfloat
+local exponent = macro(function(value)
+    return quote
+        var tmp = [&uint32](&value.data.head)
+    in
+        @tmp
+    end
+end)
+
+--extract the sign of an nfloat
+local sign = macro(function(value)
+    return quote
+        var sign = [&uint32](&value.data.head[1])
+        var s = 1
+        if @sign % 2 == 1 then s = -1 end
+    in
+        s
+    end
+end)
+
+--extract the significant 64-bit part of the mantissa of an nfloat
+local significant_part_mantissa = macro(function(value)
+    local M = value:gettype().type.precision / 64
+    return quote
+        var n = [&uint64](&value.data.d[M-1])
+    in
+        @n
+    end
+end)
+
+--shift significat 64-bit part of mantissa
+local terra shiftandscale(n : uint64, e : int)
+    var res = n
+    var k = 0
+    while n > 0 do
+        k = k + 1
+        n = n << 1
+    end
+    return mathfun.ldexp(double(res >> 64 - k), e-k)
+end
+
+
 local FixedFloat = terralib.memoize(function(N)
     local ctype = float_type[N]
     assert(ctype, "No support for precision " .. N .. " in FixedFloat")
@@ -71,6 +116,9 @@ local FixedFloat = terralib.memoize(function(N)
     local struct nfloat {
         data: ctype
     }
+
+    --type traits
+    nfloat.precision = N
 
     function nfloat.metamethods.__typename()
         return string.format("FixedFloat(%d)", N)
@@ -133,6 +181,20 @@ local FixedFloat = terralib.memoize(function(N)
         end
     end
 
+    local terra fmod(value : nfloat, modulus : nfloat)
+        var tmp = new()
+        flint.nfloat_div(&tmp.data, &value.data, &modulus.data, ctx)
+        flint.nfloat_floor(&tmp, &tmp, ctx)
+        flint.nfloat_mul(&tmp.data, &tmp.data, &modulus.data, ctx)
+        flint.nfloat_sub(&tmp.data, &value.data, &tmp.data, ctx)
+        return tmp
+    end
+    mathfun["fmod"]:adddefinition(fmod)
+
+    nfloat.metamethods.__mod = terra(self: nfloat, other: nfloat)
+        return fmod(self, other)
+    end
+
     local unary = {
         __unm = flint.nfloat_neg,
     }
@@ -174,10 +236,24 @@ local FixedFloat = terralib.memoize(function(N)
         return self > other or self == other
     end
 
+    local terra round(value : nfloat)
+        value = value + 0.5
+        flint.nfloat_floor(&value, &value, ctx)
+        return value
+    end
+    mathfun["round"]:adddefinition(round)
+
     local terra pi()
         var res = new()
         flint.nfloat_pi(&res, ctx)
         return res
+    end
+
+    terra nfloat:truncatetodouble()
+        var m = significant_part_mantissa(self)
+        var e = exponent(self)
+        var s = sign(self)
+        return s * shiftandscale(m, e)
     end
 
     for _, func in pairs(unary_math) do
@@ -227,6 +303,7 @@ local FixedFloat = terralib.memoize(function(N)
         return staticmethods[methodname] or nfloat.methods[methodname]
     end
 
+    NFloat:addimplementations{nfloat}
     concept.Real:addimplementations{nfloat}
     concept.Float:addimplementations{nfloat}
     concept.Number:addimplementations{nfloat}
@@ -246,6 +323,7 @@ local terra clean_context()
 end
 
 return {
+    NFloat = NFloat,
     FixedFloat = FixedFloat,
     clean_context = clean_context
 }

@@ -114,8 +114,8 @@ testenv "concepts" do
 		F.templates = {}
 
 		F.templates.axpy = template.Template:new("axpy")
-		F.templates.axpy[template.paramlist.new({concept.Any, concept.Int8, concept.Float32},{1,2,3})] = true
-		F.templates.axpy[template.paramlist.new({concept.Any, concept.Real, &Vec},{1,2,3})] = true
+		F.templates.axpy[template.paramlist.new({concept.Any, concept.Int8, concept.Float32},{1,2,3},{1,0,0})] = true
+		F.templates.axpy[template.paramlist.new({concept.Any, concept.Real, Vec},{1,2,3},{1,0,1})] = true
 		test[Vec(F)]
 
 		local struct E {}
@@ -131,7 +131,8 @@ testenv "concepts" do
 		local struct H {}
 		G.templates = {}
 		G.templates.axpy = template.Template:new("axpy")
-		G.templates.axpy[template.paramlist.new({concept.Any, concept.Int8, concept.Float32},{1,2,3})] = true
+		G.templates.axpy[template.paramlist.new({concept.Any, concept.Int8, concept.Float32},{1,2,3},{1,0,0})] = true
 		test [Vec(G) == false]
+
 	end
 end

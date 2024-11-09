@@ -268,17 +268,15 @@ function Template:new()
 		elseif n_methods > 1 then
 			--throw an ambiguity error
 			local err_str = ""
-			err_str = err_str
-				.. "The following method calls are ambiguous:\n"
 			-- terralist has a nice tostring method
 			local arg = terralib.newlist({...})
 			err_str = err_str
 				.. string.format("For signature %s there's\n", tostring(arg))
 			for sig, func in pairs(methods) do
 				err_str = err_str
-					.. tostring(terralib.newlist(sig)) .. "\n"
+					.. tostring(sig) .. "\n"
 			end
-        	return error("Method call is ambiguous.\n" .. err_str, 2)
+        	return error("The following method calls are ambiguous:\n" .. err_str, 2)
 		end
 	end
 

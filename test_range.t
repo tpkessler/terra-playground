@@ -9,13 +9,15 @@ import "terraform"
 local io = terralib.includec("stdio.h")
 local Alloc = require("alloc")
 local concept = require("concept")
+local nfloat = require("nfloat")
 local rn = require("range")
 local Stack = require("example_stack_heap")
 
 local DefaultAllocator =  Alloc.DefaultAllocator()
+local float256 = nfloat.FixedFloat(256)
 
-for _, T in ipairs{int, double} do
-    local T = int
+for _, T in ipairs{int, double, float256} do
+
     local stack = Stack.DynamicStack(T)
     local unitrange = rn.Unitrange(T)
     local steprange = rn.Steprange(T)
@@ -514,7 +516,7 @@ testenv "range combiners" do
         terracode
             var U = stack.new(&alloc, 10)
             var V = stack.new(&alloc, 10)
-            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}) do
+            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}, {perm={1,2}}) do
                 U:push(t._0)
                 V:push(t._1)
             end
@@ -533,7 +535,7 @@ testenv "range combiners" do
             var U = stack.new(&alloc, 16)
             var V = stack.new(&alloc, 16)
             var W = stack.new(&alloc, 16)
-            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3, 5}) do
+            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3, 5}, {perm={1,2,3}}) do
                 U:push(t._0)
                 V:push(t._1)
                 W:push(t._2)
@@ -560,7 +562,7 @@ testenv "range combiners" do
     testset "product - 2 - reduction '*'" do
         terracode
             var W = stack.new(&alloc, 10)
-            for w in rn.product(unitrange{1, 4}, unitrange{2, 4}) >> rn.reduce(rn.op.mul) do
+            for w in rn.product(unitrange{1, 4}, unitrange{2, 4}, {perm={1,2}}) >> rn.reduce(rn.op.mul) do
                 W:push(w)
             end
         end
@@ -576,7 +578,7 @@ testenv "range combiners" do
     testset "product - 3 - reduction '*'" do
         terracode
             var W = stack.new(&alloc, 16)
-            for w in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3, 5}) >> rn.reduce(rn.op.mul) do
+            for w in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3,5}, {perm={1,2,3}}) >> rn.reduce(rn.op.mul) do
                 W:push(w)
             end
         end
@@ -585,5 +587,20 @@ testenv "range combiners" do
         test W:get(11) == 36
     end
 
+    testset "product - 3 - reverse" do
+        terracode
+            var U = stack.new(&alloc, 16)
+            var V = stack.new(&alloc, 16)
+            var W = stack.new(&alloc, 16)
+            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3,5}, {perm={1,2,3}}) >> rn.reverse() do
+                U:push(t._0)
+                V:push(t._1)
+                W:push(t._2)
+            end
+        end
+        test U:size()==12 and V:size()==12 and W:size()==12
+        test W:get(0)==1 and V:get(0)==2 and U:get(0)==3
+        test W:get(11)==3 and V:get(11)==3 and U:get(11)==4
+    end
 
 end

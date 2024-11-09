@@ -40,13 +40,15 @@ local funs_single_var = {
     abs = "fabs",
     floor = "floor",
     ceil = "ceil",
+    round = "round"
 }
 
 local funs_two_var = {
     pow = "pow",
     atan2 = "atan2",
     hypot = "hypot",
-    dist = "fdim"
+    dist = "fdim",
+    fmod = "fmod"
 }
 
 local funs_three_var = {
@@ -93,10 +95,12 @@ end
 math.abs:adddefinition(terra(x : int) return C.abs(x) end)
 math.abs:adddefinition(terra(x : int64) return C.labs(x) end)
 
+
 --convenience functions
 local cotf = terra(x : float) return math.cos(x) / math.sin(x) end
 local cot  = terra(x : double) return math.cos(x) / math.sin(x) end
 math.cot = terralib.overloadedfunction("cot", {cotf, cot})
+math.ldexp = terralib.overloadedfunction("ldexp", {C.ldexp, C.ldexpf})
 
 --min and max
 math.min = terralib.overloadedfunction("min")
