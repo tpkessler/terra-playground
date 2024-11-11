@@ -119,6 +119,8 @@ local function deserialize_pointertofunction(str)
 end
 
 return {
+  get_local_vars = get_local_vars,
+  get_terra_types = get_terra_types,
 	serialize_table = serialize_table,
 	deserialize_table = deserialize_table,
 	serialize_pointertofunction = serialize_pointertofunction,

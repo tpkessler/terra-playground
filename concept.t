@@ -63,6 +63,11 @@ local function isconcept(C)
 end
 
 local Any = Concept:new("Any", function(...) return true end)
+local Vararg = Concept:new("Vararg", 
+	function(...) 
+		return true
+	end
+)
 
 local function is_specialized_over(C1, C2)
 	for _, C in pairs({C1, C2}) do
@@ -92,6 +97,15 @@ local function is_specialized_over(C1, C2)
 		return true
 	end
 
+	--if C1 is a concrete type then return the concept check
+	if not isconcept(C1) and isconcept(C2) then
+		return C2(C1)
+	end
+	--if C2 is a concrete type then C2 is always more specialized
+	if not isconcept(C2) and isconcept(C1) then
+		return false
+	end
+
 	if C1:ispointer() and C2:ispointer() then
 		return is_specialized_over(C1.type, C2.type)
 	elseif C1:ispointer() or C2:ispointer() then
@@ -119,11 +133,14 @@ end
 local function has_implementation(C, T)
 	assert(terralib.types.istype(C) and terralib.types.istype(T))
 	if C:ispointer() and T:ispointer() then
+		--dereference pointer types
 		return has_implementation(C.type, T.type)
 	elseif isconcept(C) then
+		--in case C is a concept
 		return C(T)
 	else
-		error("Argument " .. tostring(C) .. " has to be a concept")
+		--in case C is a concrete type
+		return C==T
 	end
 end
 
@@ -189,7 +206,6 @@ function AbstractInterface:new(name, ref_methods)
 		if not T:isstruct() then
 			return false
 		end
-
 		local function has_implementation(C, S)
 			if isconcept(C) and isconcept(S) then
 				return is_specialized_over(S, C)
@@ -240,9 +256,9 @@ function AbstractInterface:new(name, ref_methods)
 				if T.templates[name] then
 					local methods = T.templates[name].methods
 					local res = fun.any(function(sig)
-											return is_implemented(sig, ref_sig.type)
+											return is_implemented(sig.type, ref_sig.type)
 										end,
-										fun.map(function(k, v) return k end,
+										fun.map(function(k, v) return k:signature() end,
 												methods)
 										)
 					return res
@@ -273,6 +289,7 @@ local M = {
 }
 
 M.Any = Any
+M.Vararg = Vararg
 M.Bool = Concept:new("Bool")
 M.Bool:addimplementations{bool}
 M.RawString = Concept:new("RawString")

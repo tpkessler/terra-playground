@@ -4,15 +4,20 @@
 -- SPDX-License-Identifier: MIT
 
 import "terratest/terratest"
+import "terraform"
 
+local io = terralib.includec("stdio.h")
 local Alloc = require("alloc")
+local concept = require("concept")
+local nfloat = require("nfloat")
 local rn = require("range")
 local Stack = require("example_stack_heap")
 
 local DefaultAllocator =  Alloc.DefaultAllocator()
+local float256 = nfloat.FixedFloat(256)
 
-for _, T in ipairs{int, double} do
-    local T = int
+for _, T in ipairs{int, double, float256} do
+
     local stack = Stack.DynamicStack(T)
     local unitrange = rn.Unitrange(T)
     local steprange = rn.Steprange(T)
@@ -251,6 +256,7 @@ for _, T in ipairs{int, double} do
     end
 end -- for _, T in ipairs{int, double} do
 
+local Integer = concept.Integer
 local stack = Stack.DynamicStack(int)
 local unitrange = rn.Unitrange(int)
 local steprange = rn.Steprange(int)
@@ -265,7 +271,7 @@ testenv "range adapters" do
     testset "transform" do
         terracode
             var x = 2
-            var g = rn.transform([terra(i : int, x : int) return x * i end], x)
+            var g = rn.transform([terra(i : int, x : int) return x * i end], {x = x})
             var range = unitrange.new(1, 4) >> g
             range:collect(&s)
         end
@@ -278,7 +284,7 @@ testenv "range adapters" do
     testset "filter" do
         terracode
             var x = 1
-            var range = unitrange{1, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
+            var range = unitrange{1, 7} >> rn.filter([terra(i : int, x : int) return i % 2 == x end], {x = x})
             range:collect(&s)
         end
         test s:size()==3
@@ -345,8 +351,8 @@ testenv "range composition" do
             var r = unitrange{0, 5}
             var x = 0
             var y = 3
-            var g = rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
-            var h = rn.transform([terra(i : int, y : int) return y * i end], y)
+            var g = rn.filter([terra(i : int, x : int) return i % 2 == x end], {x = x})
+            var h = rn.transform([terra(i : int, y : int) return y * i end], {y = y})
             var range = r >> g >> h
             range:collect(&s)
         end
@@ -361,8 +367,8 @@ testenv "range composition" do
             var x = 0
             var y = 3
             for v in unitrange{0, 5} >> 
-                        rn.filter([terra(i : int, x : int) return i % 2 == x end], x) >>
-                            rn.transform([terra(i : int, y : int) return y * i end], y) do
+                        rn.filter([terra(i : int, x : int) return i % 2 == x end], {x = x}) >>
+                            rn.transform([terra(i : int, y : int) return y * i end], {y = y}) do
                 s:push(v)
             end
         end
@@ -371,7 +377,38 @@ testenv "range composition" do
         test s:get(1)==6
         test s:get(2)==12
     end
+end
 
+testenv "range composition - terraform" do
+
+    terracode
+        var alloc : DefaultAllocator
+        var s = stack.new(&alloc, 10)
+    end
+
+    local terraform foo(i : T, x : T) where {T : Integer}
+        return i % 2 == x
+    end
+
+    local terraform bar(i : T, y : T) where {T : Integer}
+        return y * i 
+    end
+
+    testset "compose transform and filter - lvalues" do
+        terracode
+            var r = unitrange{0, 5}
+            var x = 0
+            var y = 3
+            var g = rn.filter(foo, {x = x})
+            var h = rn.transform(bar, {y = y})
+            var range = r >> g >> h
+            range:collect(&s)
+        end
+        test s:size()==3
+        test s:get(0)==0
+        test s:get(1)==6
+        test s:get(2)==12
+    end
 end
 
 testenv "range combiners" do
@@ -434,7 +471,6 @@ testenv "range combiners" do
         test j:get(2)==2 and s:get(2)==3
     end
 
-
     testset "zip - 1" do
         terracode
             var U = stack.new(&alloc, 10)
@@ -463,23 +499,6 @@ testenv "range combiners" do
         test U:get(2)==3 and V:get(2)==4
     end
 
-    testset "zip - 3" do
-        terracode
-            var U = stack.new(&alloc, 10)
-            var V = stack.new(&alloc, 10)
-            var W = stack.new(&alloc, 10)
-            for t in rn.zip(unitrange{1, 4}, unitrange{2, 6}, unitrange{3, 7}) do
-                U:push(t._0)
-                V:push(t._1)
-                W:push(t._2)
-            end
-        end
-        test U:size()==3 and V:size()==3 and W:size()==3
-        test U:get(0)==1 and V:get(0)==2 and W:get(0)==3
-        test U:get(1)==2 and V:get(1)==3 and W:get(1)==4
-        test U:get(2)==3 and V:get(2)==4 and W:get(2)==5
-    end
-
     testset "product - 1" do
         terracode
             var U = stack.new(&alloc, 10)
@@ -493,12 +512,11 @@ testenv "range combiners" do
         test U:get(2)==3
     end
 
-
     testset "product - 2" do
         terracode
             var U = stack.new(&alloc, 10)
             var V = stack.new(&alloc, 10)
-            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}) do
+            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}, {perm={1,2}}) do
                 U:push(t._0)
                 V:push(t._1)
             end
@@ -517,7 +535,7 @@ testenv "range combiners" do
             var U = stack.new(&alloc, 16)
             var V = stack.new(&alloc, 16)
             var W = stack.new(&alloc, 16)
-            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3, 5}) do
+            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3, 5}, {perm={1,2,3}}) do
                 U:push(t._0)
                 V:push(t._1)
                 W:push(t._2)
@@ -528,46 +546,61 @@ testenv "range combiners" do
         test U:get(11)==3 and V:get(11)==3 and W:get(11)==4
     end
 
-end
-
-
-testenv "range composition" do
-
-    terracode
-        var alloc : DefaultAllocator
-        var s = stack.new(&alloc, 10)
-    end
-
-    testset "compose transform and filter - lvalues" do
+    testset "zip - 3 - reduction '+'" do
         terracode
-            var r = unitrange{0, 5}
-            var x = 0
-            var y = 3
-            var g = rn.filter([terra(i : int, x : int) return i % 2 == x end], x)
-            var h = rn.transform([terra(i : int, y : int) return y * i end], y)
-            var range = r >> g >> h
-            range:collect(&s)
-        end
-        test s:size()==3
-        test s:get(0)==0
-        test s:get(1)==6
-        test s:get(2)==12
-    end
-
-    testset "compose transform and filter - rvalues" do
-        terracode
-            var x = 0
-            var y = 3
-            for v in unitrange{0, 5} >> 
-                        rn.filter([terra(i : int, x : int) return i % 2 == x end], x) >>
-                            rn.transform([terra(i : int, y : int) return y * i end], y) do
-                s:push(v)
+            var W = stack.new(&alloc, 10)
+            for w in rn.zip(unitrange{1, 4}, unitrange{2, 6}, unitrange{3, 7}) >> rn.reduce(rn.op.add) do
+                W:push(w)
             end
         end
-        test s:size()==3
-        test s:get(0)==0
-        test s:get(1)==6
-        test s:get(2)==12
+        test W:size() == 3
+        test W:get(0) == 6
+        test W:get(1) == 9
+        test W:get(2) == 12
+    end
+
+    testset "product - 2 - reduction '*'" do
+        terracode
+            var W = stack.new(&alloc, 10)
+            for w in rn.product(unitrange{1, 4}, unitrange{2, 4}, {perm={1,2}}) >> rn.reduce(rn.op.mul) do
+                W:push(w)
+            end
+        end
+        test W:size() == 6
+        test W:get(0) == 2
+        test W:get(1) == 4
+        test W:get(2) == 6
+        test W:get(3) == 3
+        test W:get(4) == 6
+        test W:get(5) == 9
+    end
+
+    testset "product - 3 - reduction '*'" do
+        terracode
+            var W = stack.new(&alloc, 16)
+            for w in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3,5}, {perm={1,2,3}}) >> rn.reduce(rn.op.mul) do
+                W:push(w)
+            end
+        end
+        test W:size() == 12
+        test W:get(0) == 6
+        test W:get(11) == 36
+    end
+
+    testset "product - 3 - reverse" do
+        terracode
+            var U = stack.new(&alloc, 16)
+            var V = stack.new(&alloc, 16)
+            var W = stack.new(&alloc, 16)
+            for t in rn.product(unitrange{1, 4}, unitrange{2, 4}, unitrange{3,5}, {perm={1,2,3}}) >> rn.reverse() do
+                U:push(t._0)
+                V:push(t._1)
+                W:push(t._2)
+            end
+        end
+        test U:size()==12 and V:size()==12 and W:size()==12
+        test W:get(0)==1 and V:get(0)==2 and U:get(0)==3
+        test W:get(11)==3 and V:get(11)==3 and U:get(11)==4
     end
 
 end
