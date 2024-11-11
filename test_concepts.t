@@ -75,7 +75,7 @@ testenv "concepts" do
 		
 		SimpleInterface:addmethod{cast = concept.Integer -> concept.Real}
 		local struct B {}
-		terra B:cast(x: int8): float end
+		terra B:cast(x: int8) : float end
 		test [SimpleInterface(B)]
 	end
 
@@ -112,9 +112,10 @@ testenv "concepts" do
 
 		local struct F {}
 		F.templates = {}
+
 		F.templates.axpy = template.Template:new("axpy")
-		F.templates.axpy[{concept.Any, concept.Int8, concept.Float32} -> {}] = true
-		F.templates.axpy[{concept.Any, concept.Real, &Vec} -> {}] = true
+		F.templates.axpy[template.paramlist.new({concept.Any, concept.Int8, concept.Float32},{1,2,3},{1,0,0})] = true
+		F.templates.axpy[template.paramlist.new({concept.Any, concept.Real, Vec},{1,2,3},{1,0,1})] = true
 		test[Vec(F)]
 
 		local struct E {}
@@ -130,7 +131,8 @@ testenv "concepts" do
 		local struct H {}
 		G.templates = {}
 		G.templates.axpy = template.Template:new("axpy")
-		G.templates.axpy[{concept.Any, concept.Int8, concept.Float32} -> {}] = true
+		G.templates.axpy[template.paramlist.new({concept.Any, concept.Int8, concept.Float32},{1,2,3},{1,0,0})] = true
 		test [Vec(G) == false]
+
 	end
 end
