@@ -4,15 +4,15 @@
 -- SPDX-License-Identifier: MIT
 import "terraform"
 local blas = require("blas")
-local concept = require("concept")
+local concept = require("concept-new")
 local veccont = require("vector_contiguous")
 local err = require("assert")
 
-local VectorBLAS = concept.AbstractInterface:new("VectorBLAS")
-VectorBLAS:inheritfrom(veccont.VectorContiguous)
-VectorBLAS:addmethod{
-    getblasinfo = {} -> {concept.UInteger, &concept.BLASNumber, concept.UInteger},
-}
+local struct VectorBLAS(concept.Base) {}
+VectorBLAS:inherit(veccont.VectorContiguous)
+local Integral = concept.Integral
+local BLASNumber = concept.BLASNumber
+VectorBLAS.methods.getblasinfo = {&VectorBLAS} -> {Integral, BLASNumber, Integral}
 
 local function VectorBLASBase(V)
     assert(VectorBLAS(V), 
@@ -44,14 +44,12 @@ local function VectorBLASBase(V)
         blas.axpy(ny, a, xdata, incx, ydata, incy)      
     end
 
-    terraform V:axpy(x : &X) where {X : VectorBLAS}
+    terraform V:dot(x : &X) where {X : VectorBLAS}
         var ny, ydata, incy = self:getblasinfo()
         var nx, xdata, incx = x:getblasinfo()
         err.assert(ny == nx)
         return blas.dot(ny, xdata, incx, ydata, incy)        
     end
-
-    VectorBLAS:addimplementations{V}
 end
 
 return {

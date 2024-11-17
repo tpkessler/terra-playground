@@ -9,9 +9,9 @@ local io = terralib.includec("stdio.h")
 terralib.linklibrary("libgomp.so")
 
 terra main()
-	var sw = time.default_timer.new()
+	var sw : time.default_timer
 	sw:start()
-	uni.usleep(5e3)
+	uni.usleep(2124)
 	var t = sw:stop()
 	io.printf("Sleep took %g s\n", t)
 end

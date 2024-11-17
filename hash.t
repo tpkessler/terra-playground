@@ -3,75 +3,52 @@
 --
 -- SPDX-License-Identifier: MIT
 
+import "terraform"
+
 local C = terralib.includec("./hashmap/hashmap.h")
 local err = require("assert")
 local template = require("template")
-local concept = require("concept")
+local concept = require("concept-new")
 local string = terralib.includec("string.h")
 terralib.linklibrary("./libhash.so")
 
 local M = {}
 
-local primitive_compare = template.Template:new()
-primitive_compare[concept.Primitive -> {}] = function(T)
-	local terra impl(a: &T, b: &T)
-		if @a > @b then
-			return 1
-		elseif @a < @b then
-			return -1
-		else
-			return 0
-		end
+terraform primitive_compare(a: &T, b: &T) where {T: concept.Primitive}
+	if @a > @b then
+		return 1
+	elseif @a < @b then
+		return -1
+	else
+		return 0
 	end
-
-	return impl
 end
 
-local Pointer = concept.Concept:new("Pointer")
-Pointer:addimplementations{&opaque}
-
-primitive_compare[Pointer -> {}] = function(T)
-	local impl64 = primitive_compare(int64)
-	local terra impl(a: &T, b: &T)
-		var ae = [int64](@a)
-		var be = [int64](@b)
-		return impl64(&ae, &be)
+terraform primitive_compare(a: &&opaque, b: &&opaque)
+	var ae = [int64](@a)
+	var be = [int64](@b)
+	escape
+		local impl = primitive_compare:dispatch(&int64, &int64)
+		emit quote return impl(&ae, &be) end
 	end
-
-	return impl
 end
 
-primitive_compare[concept.RawString -> {}] = function(T)
-	local terra impl(a: &rawstring, b: &rawstring)
-		return string.strcmp(@a, @b)
-	end
-
-	return impl
+terraform primitive_compare(a: &rawstring, b: &rawstring)
+	return string.strcmp(@a, @b)
 end
 
-local primitive_length = template.Template:new()
-
-primitive_length[concept.Primitive -> {}] = function(T)
-	local terra impl(a: &T)
-		var size: int64 = sizeof(T)
-		return size
-	end
-	return impl
+terraform primitive_length(a: &T) where {T: concept.Primitive}
+	var size: int64 = [sizeof(a.type.type)]
+	return size
 end
 
-primitive_length[Pointer -> {}] = function(T)
-	local terra impl(a: &T)
-		return 8l -- 64 bit platform
-	end
-	return impl
+terraform primitive_length(a: &&opaque)
+	return 8l -- 64 bit platform
 end
 
-primitive_length[concept.RawString -> {}] = function(T)
-	local terra impl(a: &rawstring)
-		var size: int64 = string.strlen(@a)
-		return size
-	end
-	return impl
+terraform primitive_length(a: &rawstring)
+	var size: int64 = string.strlen(@a)
+	return size
 end
 
 local get_types = terralib.memoize(function(I, T)
@@ -88,13 +65,13 @@ local get_types = terralib.memoize(function(I, T)
 end)
 
 M.HashMap = function(I, T, length, compare)
-	length = length or primitive_length(I)
+	length = length or primitive_length:dispatch(&I)
 	assert(length, "Need to pass custom length function")
 	local ref_length = &I -> int64
 	assert(length.type == ref_length.type,
 		"Custom length has wrong type")
 
-	compare = compare or primitive_compare(I)
+	compare = compare or primitive_compare:dispatch(&I, &I)
 	assert(compare, "Need to pass custom comparison function")
 	local ref_compare = {&I, &I} -> int32
 	assert(compare.type == ref_compare.type,

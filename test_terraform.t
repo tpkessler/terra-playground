@@ -2,7 +2,7 @@ import "terraform"
 
 local io = terralib.includec("stdio.h")
 local base = require("base")
-local concept = require("concept")
+local concept = require("concept-new")
 
 import "terratest/terratest"
 

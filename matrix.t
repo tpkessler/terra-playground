@@ -5,30 +5,28 @@
 
 import "terraform"
 local operator = require("operator")
-local concept = require("concept")
+local concept = require("concept-new")
 local template = require("template")
 local err = require("assert")
 local vecbase = require("vector")
 
 local Bool = concept.Bool
-local UInteger = concept.UInteger
+local Integral = concept.Integral
 local Number = concept.Number
 local Vector = vecbase.Vector
 
-local Matrix = concept.AbstractInterface:new("Matrix")
-Matrix:inheritfrom(operator.Operator)
-Matrix:addmethod{
-    set = {UInteger, UInteger, Number} -> {},
-    get = {UInteger, UInteger} -> {Number},
-    fill = Number -> {},
-    clear = {} -> {},
-    copy = {Bool, &Matrix} -> {},
-    swap = {Bool, &Matrix} -> {},
-    scal = Number -> {},
-    axpy = {Number, Bool, &Matrix} -> {},
-    dot = {Bool, &Matrix} -> Number,
-    mul = {Number, Number, Bool, &Matrix, Bool, &Matrix} -> {},
-}
+local struct Matrix(concept.Base) {}
+Matrix:inherit(operator.Operator)
+Matrix.methods.set = {&Matrix, Integral, Integral, Number} -> {}
+Matrix.methods.get = {&Matrix, Integral, Integral} -> {Number}
+Matrix.methods.fill = {&Matrix, Number} -> {}
+Matrix.methods.clear = {&Matrix} -> {}
+Matrix.methods.copy = {&Matrix, Bool, &Matrix} -> {}
+Matrix.methods.swap = {&Matrix, Bool, &Matrix} -> {}
+Matrix.methods.scal = {&Matrix, Number} -> {}
+Matrix.methods.axpy = {&Matrix, Number, Bool, &Matrix} -> {}
+Matrix.methods.dot = {&Matrix, Bool, &Matrix} -> Number
+Matrix.methods.mul = {&Matrix, Number, Number, Bool, &Matrix, Bool, &Matrix} -> {}
 
 local function MatrixBase(M)
     local T = M.eltype
@@ -76,7 +74,6 @@ local function MatrixBase(M)
     end
 
     assert(operator.Operator(M))
-    operator.Operator:addimplementations{M}
     
     terraform M:fill(a : S) where {S : Number}
         var rows = self:rows()
@@ -251,7 +248,6 @@ local function MatrixBase(M)
     end
 
     assert(Matrix(M))
-    Matrix:addimplementations{M}
 end
 
 return {

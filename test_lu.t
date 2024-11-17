@@ -7,7 +7,7 @@ import "terratest/terratest"
 
 local lu = require("lu")
 local alloc = require("alloc")
-local concept = require("concept")
+local concept = require("concept-new")
 local random = require("random")
 local complex = require("complex")
 local nfloat = require("nfloat")
@@ -88,7 +88,7 @@ for _, Ts in pairs({float, double, float128, float1024}) do
                 end
                 a:apply(false, [T](1), &x, [T](0), &y)
                 a:apply(true, [T](1), &x, [T](0), &yt)
-                var p = PVec.new(&alloc, n)
+                var p = PVec.zeros(&alloc, n)
                 var tol: Ts = [ tol[tostring(Ts)] ]
                 var lu = LUDense.new(&a, &p, tol)
                 lu:factorize()

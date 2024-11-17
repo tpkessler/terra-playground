@@ -10,7 +10,7 @@ local dvector = require("dvector")
 local alloc = require("alloc")
 local complex = require("complex")
 local nfloat = require("nfloat")
-local concept = require("concept")
+local concept = require("concept-new")
 
 local cfloat = complex.complex(float)
 local cdouble = complex.complex(double)

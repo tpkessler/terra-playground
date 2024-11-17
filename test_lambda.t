@@ -134,24 +134,38 @@ testenv "Multiple arguments with capture" do
     end
 end
 
--- local Foo = lambda.lambda(int -> double, struct {y: int, alpha: double})
--- local io = terralib.includec("stdio.h")
 
--- terra ev(foo: Foo, x: int)
---     io.printf("y = %d, alpha = %g\n", foo.y, foo.alpha)
---     return foo(x)
--- end
+local LAMBDIFY = function(sig, func)
+    return macro(function(...)
+        local args = {...}
+        local lambda = {}
+        for i = 1, #sig do
+            lambda[i] = args[i]
+        end
+        local func_args = {}
+        for i = #sig + 1, #args do
+            func_args[i - #sig] = args[i]
+        end
+        local impl = func(unpack(lambda))
+        impl:printpretty()
+        return `impl([func_args])
+    end)
+end
 
--- terra main()
---     var foo = Foo.new(
---         [
---             terra(x: int, y: int, alpha: double, z: int)
---                 return alpha * x + y + z
---             end
---         ], 10, 1.2, 2)
---     io.printf("%g %d\n", foo(72), foo.y)
---     io.printf("%g\n", ev(&foo, 72))
--- end
--- main()
+local L1 = double
+local L2 = double
+local prod = LAMBDIFY(
+    {L1, L2},
+    function(f, g)
+        return terra(x: double, y: int)
+            return f(x) * g(y)
+        end
+    end
+)
 
-
+local io = terralib.includec("stdio.h")
+terra main()
+    var res = prod([terra(x: double) return x end], [terra(y: int) return y end], 2, 3)
+    io.printf("res = %g\n", res)
+end
+main()

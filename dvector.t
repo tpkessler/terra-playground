@@ -5,7 +5,7 @@
 
 local alloc = require("alloc")
 local base = require("base")
-local concept = require("concept")
+local concept = require("concept-new")
 local vecbase = require("vector")
 local veccont = require("vector_contiguous")
 local vecblas = require("vector_blas")
@@ -54,8 +54,6 @@ local DynamicVector = terralib.memoize(function(T)
         err.assert(self.inc == 1)
         return self:size(), self.data.ptr 
     end
-
-    veccont.VectorContiguous:addimplementations{V}
 
     V.staticmethods.new = terra(alloc: Allocator, size: size_t)
         var vec : V

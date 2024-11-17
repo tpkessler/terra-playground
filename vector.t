@@ -6,25 +6,23 @@
 import "terraform"
 local stack = require("stack")
 local err = require("assert")
-local template = require("template")
-local concept = require("concept")
+local concept = require("concept-new")
 local mathfun = require("mathfuns")
 
-local Vector = concept.AbstractInterface:new("Vector")
+local Number = concept.Number
 local Stack = stack.Stack
-Vector:inheritfrom(Stack)
-Vector:addmethod{
-	fill = concept.Number -> {},
-	clear = {} -> {},
-	sum  = {} -> concept.Number,
-	-- BLAS operations
-	copy = &Stack -> {},
-	swap = &Stack -> {},
-	scal = concept.Number -> {},
-	axpy = {concept.Number, &Stack} -> {},
-	dot = &Stack -> concept.Number,
-	--norm = {} -> concept.Number, 
-}
+local struct Vector(concept.Base) {}
+Vector:inherit(Stack)
+Vector.methods.fill = {&Vector, Number} -> {}
+Vector.methods.clear = {&Vector} -> {}
+Vector.methods.sum = {&Vector} -> Number
+-- BLAS operations
+Vector.methods.copy = {&Vector, &Stack} -> {}
+Vector.methods.swap = {&Vector, &Stack} -> {}
+Vector.methods.scal = {&Vector, Number} -> {}
+Vector.methods.axpy = {&Vector, Number, &Stack} -> {}
+Vector.methods.dot = {&Vector, &Stack} -> {Number}
+-- Vector.methods.norm = {&Vector} -> {Number}
 
 local VectorBase = function(V)
 	assert(Stack(V),
@@ -110,13 +108,12 @@ local VectorBase = function(V)
 	end
 
 	if concept.Float(T) then
-		terra V:norm()
-			return mathfun.sqrt(mathfun.real(self:dot(self)))
-		end
+		-- terra V:norm()
+		-- 	return mathfun.sqrt(mathfun.real(self:dot(self)))
+		-- end
 	end
 
 	assert(Vector(V), "Incomplete implementation of vector base class")
-	Vector:addimplementations{V}
 end
 
 return {

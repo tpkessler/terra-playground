@@ -3,18 +3,16 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept")
+local concept = require("concept-new")
 local vecbase = require("vector")
 local operator = require("operator")
 
 local Bool = concept.Bool
 local Vector = vecbase.Vector
-local Factorization = concept.AbstractInterface:new("Factorization")
-Factorization:inheritfrom(operator.Operator)
-Factorization:addmethod{
-    factorize = {} -> {},
-    solve = {Bool, &Vector} -> {},
-}
+local struct Factorization(concept.Base) {}
+Factorization:inherit(operator.Operator)
+Factorization.methods.factorize = {&Factorization} -> {}
+Factorization.methods.solve = {&Factorization, Bool, &Vector} -> {}
 
 return {
     Factorization = Factorization
