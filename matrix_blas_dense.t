@@ -5,7 +5,7 @@
 
 import "terraform"
 local matrix = require("matrix")
-local concept = require("concept")
+local concept = require("concept-new")
 local blas = require("blas")
 local vecblas = require("vector_blas")
 local err = require("assert")
@@ -14,13 +14,11 @@ local BLASVector = vecblas.VectorBLAS
 local BLASNumber = concept.BLASNumber
 local Complex = concept.Complex
 local Bool = concept.Bool
-local UInteger = concept.UInteger
+local Integral = concept.Integral
 
-local BLASDenseMatrix = concept.AbstractInterface:new("BLASDenseMatrix")
-BLASDenseMatrix:inheritfrom(matrix.Matrix)
-BLASDenseMatrix:addmethod{
-    getblasdenseinfo = {} -> {UInteger, UInteger, &BLASNumber, UInteger},
-}
+local struct BLASDenseMatrix(concept.Base) {}
+BLASDenseMatrix:inherit(matrix.Matrix)
+BLASDenseMatrix.methods.getblasdenseinfo = {&BLASDenseMatrix} -> {Integral, Integral, &BLASNumber, Integral}
 
 local function BLASDenseMatrixBase(M)
     assert(BLASDenseMatrix(M))
@@ -63,7 +61,6 @@ local function BLASDenseMatrixBase(M)
             where {S1 : BLASNumber, S2 : BLASNumber, M1 : BLASDenseMatrix, M2 : BLASDenseMatrix}
         escape
             local T = M.eltype
-            print(T)
             assert(T == a.type.type.eltype)
             assert(T == b.type.type.eltype)
         end

@@ -6,7 +6,7 @@
 local C = terralib.includec("math.h")
 
 local base = require("base")
-local concept = require("concept")
+local concept = require("concept-new")
 local mathfun = require("mathfuns")
 
 local complex = terralib.memoize(function(T)
@@ -101,12 +101,12 @@ local complex = terralib.memoize(function(T)
     end
 
     if concept.Number(T) then
-        concept.Number:addimplementations{complex}
-        concept.Complex:addimplementations{complex}
+        concept.Number.friends[complex] = true
+        concept.Complex.friends[complex] = true
     end
 
-    if concept.BLASNumber(T) then
-        concept.BLASNumber:addimplementations{complex}
+    if concept.Float(T) and concept.BLASNumber(T) then
+        concept.BLASNumber.friends[complex] = true
     end
 
     return complex

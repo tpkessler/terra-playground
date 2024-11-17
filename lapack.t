@@ -39,8 +39,9 @@ elseif uname == "Linux\n" then
         #include <openblas/lapacke.h>
     ]], {"-Dlapack_complex_float=terra_complex_float",
         "-Dlapack_complex_double=terra_complex_double"})
-    terralib.linklibrary("liblapack.so")
-    terralib.linklibrary("libcblas.so")
+    -- terralib.linklibrary("liblapack.so")
+    -- terralib.linklibrary("libcblas.so")
+    terralib.linklibrary("libopenblas.so")
 else
     error("Not implemented for this OS.")
 end

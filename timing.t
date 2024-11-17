@@ -5,76 +5,55 @@
 
 local time = terralib.includec("time.h")
 local omp = terralib.includec("omp.h")
+local interface = require("interface")
 
-local timer = function()
-	local struct timer{
-		old: double
-	}
+local Timer = interface.Interface:new{
+	start = {} -> {},
+	stop = {} -> double
+}
 
-	local function now()
-		return quote
-				var now: time.timespec
-				var res = time.clock_gettime(time.CLOCK_REALTIME, &now)
-			in
-				1.0 * now.tv_sec + 1e-9 * now.tv_nsec
-		end
-				
-	end
+local struct default {
+	old: double
+}
 
-	terra timer:start()
-		self.old = [now()]
-	end
-
-	terra timer:stop(): double
-		var cur = [now()]
-		return cur - self.old
-	end
-
-	local S = {}
-	S.type = timer
-	S.new = macro(function()
-		return quote
-				var sw: timer
-			in
-				sw
-		end
-	end)
-
-	return S
-end
-
-local omp = function()
-	local struct timer{
-		old: double
-	}
-
-	local function now()
-		return `omp.omp_get_wtime()
-	end
-
-	terra timer:start()
-		self.old = [now()]
-	end
-
-	terra timer:stop(): double
-		var cur = [now()]
-		return cur - self.old
-	end
-
-	local S = {}
-	S.type = timer
-	S.new = macro(function()
-		return quote
-			var sw: timer
+do
+	local now = quote
+			var now: time.timespec
+			var res = time.clock_gettime(time.CLOCK_REALTIME, &now)
 		in
-			sw
+			1.0 * now.tv_sec + 1e-9 * now.tv_nsec
 		end
-	end)
 
-	return S
+	terra default:start()
+		self.old = [now]
+	end
+
+	terra default:stop()
+		var cur = [now]
+		return cur - self.old
+	end
 end
+assert(Timer:isimplemented(default))
 
-local default_timer = timer()
-local omp_timer = omp()
+local struct omp_timer {
+	old: double
+}
 
-return {default_timer = default_timer, parallel_timer = omp_timer}
+do
+	local now = `omp.omp_get_wtime()
+	terra omp_timer:start()
+		self.old = [now]
+	end
+
+	terra omp_timer:stop()
+		var cur = [now]
+		return cur - self.old
+	end
+end
+assert(Timer:isimplemented(omp_timer))
+
+return {
+	default_timer = default,
+	parallel_timer = omp_timer,
+	Timer = Timer,
+}

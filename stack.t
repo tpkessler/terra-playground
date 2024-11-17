@@ -4,13 +4,15 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept")
+local concept = require("concept-new")
 
-local Stack = concept.AbstractInterface:new("Stack", {
-  size = {} -> concept.UInteger,
-  get = concept.UInteger -> concept.Number,
-  set = {concept.UInteger, concept.Number} -> {},
-})
+local struct Stack(concept.Base) {}
+local Integral = concept.Integral
+local Any  = concept.Any
+
+Stack.methods.size = {&Stack} -> Integral
+Stack.methods.get = {&Stack, Integral} -> Any
+Stack.methods.set = {&Stack, Integral, Any} -> {}
 
 return {
     Stack = Stack,

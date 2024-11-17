@@ -9,7 +9,7 @@ local base = require("base")
 local vecbase = require("vector")
 local veccont = require("vector_contiguous")
 local vecblas = require("vector_blas")
-local concept = require("concept")
+local concept = require("concept-new")
 
 local StaticVector = terralib.memoize(function(T, N)
     local function create_static_vector(T, N)
@@ -64,13 +64,9 @@ local StaticVector = terralib.memoize(function(T, N)
         return self:size(), &self.data[0]
     end
 
-    veccont.VectorContiguous:addimplementations{V}
-
     terra V:getblasinfo()
         return self:size(), &self.data, 1
     end
-
-    vecblas.VectorBLAS:addimplementations{V}
 
     V.staticmethods.new = terra()
         return V {}

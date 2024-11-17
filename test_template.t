@@ -4,14 +4,9 @@
 -- SPDX-License-Identifier: MIT
 
 local template = require("template")
-local concept = require("concept")
+local concept = require("concept-new")
 
 import "terratest/terratest"
-
--- lua function to create a concept.
--- A concept defines defines a compile-time predicate that defines an equivalence
--- relation on a set.
-local Concept = concept.Concept
 
 --primitive number concepts
 local Float32 = concept.Float32
@@ -30,11 +25,11 @@ local Integer = concept.Integer
 --test foo template implementation
 local foo = template.Template:new()
 
-foo[Integer -> {}] = function(T)
+foo[Integer] = function(T)
 	return true
 end
 
-foo[Float -> Float] = function(T)
+foo[Float] = function(T)
 	return true
 end
 
@@ -67,6 +62,7 @@ testenv "templates" do
 	for _, T in pairs({double, float, int32}) do
 		testset(T) "Single arguments" do
 			local ok, ret = pcall(function(Tprime) return foo(Tprime) end, T)
+			print(ok, ret)
 			test ok == true
 			test ret == true
 		end

@@ -3,20 +3,18 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept")
+local concept = require("concept-new")
 local vecbase = require("vector")
 
 local Bool = concept.Bool
-local UInteger = concept.UInteger
+local Integral = concept.Integral
 local Number = concept.Number
 local Vector = vecbase.Vector
 
-local Operator = concept.AbstractInterface:new("Operator")
-Operator:addmethod{
-    rows = {} -> UInteger,
-    cols = {} -> UInteger,
-    apply = {Bool, Number, &Vector, Number, &Vector} -> {},
-}
+local struct Operator(concept.Base) {}
+Operator.methods.rows = {&Operator} -> Integral
+Operator.methods.cols = {&Operator} -> Integral
+Operator.methods.apply = {&Operator, Bool, Number, &Vector, Number, &Vector} -> {}
 
 return {
     Operator = Operator,

@@ -15,7 +15,7 @@ elseif uname == "Linux\n" then
     C = terralib.includecstring[[
         #include <openblas/cblas.h>
     ]]
-    terralib.linklibrary("libcblas.so")
+    terralib.linklibrary("libopenblas.so")
 else
     error("Not implemented for this OS.")
 end

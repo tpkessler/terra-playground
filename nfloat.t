@@ -24,7 +24,7 @@ end
 
 local io = terralib.includec("stdio.h")
 local mathfun = require("mathfuns")
-local concept = require("concept")
+local concept = require("concept-new")
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
 local float_type = {}
@@ -63,8 +63,9 @@ local binary_math = {
     "pow",
 }
 
---concept for all fixed high precision floating point types
-local NFloat = concept.Concept:new("NFloat")
+concept.NFloat = terralib.types.newstruct("NFloat")
+concept.Base(concept.NFloat)
+concept.NFloat.traits.precision = concept.traittag
 
 --extract the exponent of an nfloat
 local exponent = macro(function(value)
@@ -303,10 +304,9 @@ local FixedFloat = terralib.memoize(function(N)
         return staticmethods[methodname] or nfloat.methods[methodname]
     end
 
-    NFloat:addimplementations{nfloat}
-    concept.Real:addimplementations{nfloat}
-    concept.Float:addimplementations{nfloat}
-    concept.Number:addimplementations{nfloat}
+    for _, C in pairs({"NFloat", "Real", "Float", "Number"}) do
+        concept[C].friends[nfloat] = true
+    end
 
     return nfloat
 end)
@@ -323,7 +323,6 @@ local terra clean_context()
 end
 
 return {
-    NFloat = NFloat,
     FixedFloat = FixedFloat,
     clean_context = clean_context
 }

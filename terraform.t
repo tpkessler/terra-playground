@@ -5,7 +5,7 @@
 
 local base = require("base")
 local template = require("template")
-local concept = require("concept")
+local concept = require("concept-new")
 
 local generate_terrafun, parse_terraform_statement, process_free_function_statement, process_class_method_statement
 local namespace, process_method_name, process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing

@@ -3,7 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept")
+local concept = require("concept-new")
 
 local Base = {}
 
@@ -32,9 +32,10 @@ local AbstractBase = Base:new("AbstractBase",
 	function(T)
 		assert(terralib.types.istype(T))
 		assert(T:isstruct())
-		local Self = concept.Concept:new("Self" .. tostring(T))
-		Self:addimplementations{T}
-		for key, val in pairs({staticmethods = {}, templates = {}, varargtemplates = {}, Self = Self}) do
+		local Self = terralib.types.newstruct("Self" .. tostring(T))
+		concept.Base(Self)
+		Self.friends[T] = true
+		for key, val in pairs({staticmethods = {}, templates = {}, varargtemplates = {}, Self = Self, traits = {}}) do
 			if T.key == nil then
 				rawset(T, key, val)
 			end

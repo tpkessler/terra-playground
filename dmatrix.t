@@ -5,7 +5,7 @@
 
 local alloc = require("alloc")
 local base = require("base")
-local concept = require("concept")
+local concept = require("concept-new")
 local matrix = require("matrix")
 local err = require("assert")
 local fun = require("fun")

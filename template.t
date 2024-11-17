@@ -3,7 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept")
+local concept = require("concept-new")
 local base = require("base")
 local fun = require("fun")
 local serde = require("serde")
@@ -144,7 +144,7 @@ function Template:new()
 		local expandedsig = sig:collect(#args)
 		--check which methods are admissible
 		local res = fun.all(function(C, T)
-								return concept.has_implementation(C, T)
+								return concept.is_specialized_over(T, C)
 							end, fun.zip(expandedsig, args))
 		return res
 	end
@@ -252,9 +252,6 @@ function Template:new()
 
 	local mt = {}
 	function mt:__newindex(key, value)
-		--assert(terralib.types.istype(key) and key:ispointertofunction(),
-		--	"Need to pass function pointer but got " .. tostring(key))
-		--key = key.type
 		self.methods[key] = value
 	end
 

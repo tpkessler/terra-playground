@@ -6,7 +6,7 @@
 import "terraform"
 
 local base = require("base")
-local concept = require("concept")
+local concept = require("concept-new")
 local template = require("template")
 local lambda = require("lambdas")
 local tmath = require("mathfuns")
@@ -17,15 +17,15 @@ local size_t = uint64
 
 --collect requires a stacker interface or a setter interface
 --stacker interface
-local Stacker = concept.AbstractInterface:new("Stacker")
-Stacker:addmethod{push = {concept.Any} -> {}}
+local struct Stacker(concept.Base) {}
+Stacker.methods.push = concept.Any -> {}
 --setter interface
-local Setter = concept.AbstractInterface:new("Setter")
-Setter:addmethod{set = {concept.Integral, concept.Any} -> {}}
+local struct Setter(concept.Base) {}
+Stacker.methods.set = {concept.Integral, concept.Any} -> {}
 --arraylike implements both the setter and the stacker interface
-local Sequence = concept.AbstractInterface:new("Sequence")
-Sequence:inheritfrom(Stacker)
-Sequence:inheritfrom(Setter)
+local struct Sequence(concept.Base) {}
+Sequence:inherit(Stacker)
+Sequence:inherit(Setter)
 
 --get the terra-type of a pointer or type
 local gettype = function(t)
@@ -139,7 +139,7 @@ terraform floor(v : T) where {T : concept.Float}
     return [size_t](tmath.floor(v))
 end
 
-terraform floor(v : T) where {T : nfloat.NFloat}
+terraform floor(v : T) where {T : concept.NFloat}
     return [size_t](v:truncatetodouble())
 end
 
@@ -148,7 +148,7 @@ terraform truncate(v : T) where {T}
     return [size_t](v)
 end
 
-terraform truncate(v : T) where {T : nfloat.NFloat}
+terraform truncate(v : T) where {T : concept.NFloat}
     return [size_t](v:truncatetodouble())
 end
 
