@@ -186,12 +186,11 @@ local SmartBlock = terralib.memoize(function(T)
                 [&to.type](blk)
             end
         end
-        print("trying cast")
     end --__cast
 
     function block.metamethods.__staticinitialize(self)
 
-        --add methods, staticmethods and templates tablet and template fallback mechanism 
+        --add methods, staticmethods and templates table and template fallback mechanism 
         --allowing concept-based function overloading at compile-time
         base.AbstractBase(block)
 
@@ -216,6 +215,16 @@ local SmartBlock = terralib.memoize(function(T)
                 self.ptr[i]
             end
         end)
+
+        block.staticmethods.frombuffer = terra(size: size_t, ptr: &T)
+            var nbytes = size * sizeof(T)
+            var b: block
+            b.ptr = ptr
+            b.nbytes = nbytes
+            b.alloc.data = nil
+            b.alloc.tab = nil
+            return b
+        end
 
         --iterator - behaves like a pointer and can be passed
         --around like a value, convenient for use in ranges.
