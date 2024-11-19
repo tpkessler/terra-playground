@@ -51,7 +51,7 @@ local AbstractBase = Base:new("AbstractBase",
 				fnlike = T.staticmethods[methodname]
 				--detect name collisions with T.tempplates
 				if fnlike and T.templates[methodname] then
-					return error("NameCollistion: Function " .. methodname .. " defined in ".. 
+					return error("NameCollision: Function " .. methodname .. " defined in ".. 
 									tostring(T) .. ".templates and " .. tostring(T) ..".staticmethods.")
 				end
 			end
@@ -91,7 +91,11 @@ local AbstractBase = Base:new("AbstractBase",
 					end
 				end
 			end
-			error("No implemementation found that satisfies the concept check.", 2)
+			error(
+				(
+					"Cannot find implementation for method %s on type %s"
+				):format(name, tostring(T))
+			)
 		end)
 	end
 )
