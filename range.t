@@ -18,10 +18,10 @@ local size_t = uint64
 --collect requires a stacker interface or a setter interface
 --stacker interface
 local struct Stacker(concept.Base) {}
-Stacker.methods.push = concept.Any -> {}
+Stacker.methods.push = {&Stacker, concept.Any} -> {}
 --setter interface
 local struct Setter(concept.Base) {}
-Stacker.methods.set = {concept.Integral, concept.Any} -> {}
+Setter.methods.set = {&Setter, concept.Integral, concept.Any} -> {}
 --arraylike implements both the setter and the stacker interface
 local struct Sequence(concept.Base) {}
 Sequence:inherit(Stacker)
