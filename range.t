@@ -636,6 +636,17 @@ local adapter_simple_factory = function(Adapter)
     return factory
 end
 
+local function getunderlyingtype(t)
+    if not terralib.types.istype(t) then
+        t = t:gettype()
+    end
+    if t:ispointer() then
+        return t.type
+    else
+        return t
+    end
+end
+
 --factory function for range combiners
 local combiner_factory = function(Combiner)
     local combiner = macro(function(...)
@@ -643,7 +654,7 @@ local combiner_factory = function(Combiner)
         local args = terralib.newlist{...}
         local N = #args
         --filter between ranges and options
-        local ranges = args:filter(function(v) return v:gettype().isrange end)
+        local ranges = args:filter(function(v) return getunderlyingtype(v).isrange end)
         local options
         if not args[N]:gettype().isrange then
             options = args[N]:asvalue()
