@@ -592,14 +592,29 @@ gauss.jacobi = terralib.overloadedfunction("jacobi",
     end
 })
 
+local function getunderlyingtype(t)
+    if not terralib.types.istype(t) then
+        if t.tree then
+            t = t:gettype()
+        elseif t.type then
+            t = t.type
+        end
+    end
+    if t:ispointer() then
+        return t.type
+    else
+        return t
+    end
+end
+
 local productrule = macro(function(...)
     local args = terralib.newlist{...}
     local D = #args
     local xargs, wargs = terralib.newlist(), terralib.newlist()
     for k,v in pairs(args) do
-        local tp = v.tree.type
-        local x, w = tp.entries[1], tp.entries[2]
-        assert(x.type.isrange and w.type.isrange)
+        local tp = getunderlyingtype(v)
+        local x, w = getunderlyingtype(tp.entries[1]), getunderlyingtype(tp.entries[2])
+        assert(x.isrange and w.isrange)
     end
     for i,qr in ipairs(args) do
         xargs:insert(quote in &qr.x end)
