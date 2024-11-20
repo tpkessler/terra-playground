@@ -32,7 +32,7 @@ math.isapprox:adddefinition(terra(v : dvec, w : dvec, atol : double)
     end
     return false
 end)
---[[
+
 testenv "gauss Legendre quadrature" do
 
     terracode
@@ -234,7 +234,6 @@ testenv "gauss Jacobi quadrature" do
     end
 
 end
---]]
 
 local struct interval{
     _0 : double
