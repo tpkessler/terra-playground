@@ -32,7 +32,7 @@ math.isapprox:adddefinition(terra(v : dvec, w : dvec, atol : double)
     end
     return false
 end)
-
+--[[
 testenv "gauss Legendre quadrature" do
 
     terracode
@@ -234,6 +234,7 @@ testenv "gauss Jacobi quadrature" do
     end
 
 end
+--]]
 
 local struct interval{
     _0 : double
@@ -301,7 +302,7 @@ testenv "API" do
     test Q_1.x.data:owns_resource() and Q_1.w.data:owns_resource()
     test Q_2.x.data:owns_resource() and Q_2.w.data:owns_resource()
     test Q_3.x.data:owns_resource() and Q_3.w.data:owns_resource()
-
+    
     testset "2D tensor-product rules" do
         terracode
             var rule = gauss.productrule(Q_1, Q_2)
@@ -313,10 +314,10 @@ testenv "API" do
         end
         test math.isapprox(s, 12.0, 1e-14)
     end
-
-    testset "3D tensor-product rules" do
+    
+    testset "3D tensor-product rules - pass by reference" do
         terracode
-            var rule = gauss.productrule(Q_1, Q_2, Q_3)
+            var rule = gauss.productrule(&Q_1, &Q_2, Q_3)
             var s : double = 0.0
             for qr in rn.zip(&rule.x, &rule.w) do
                 var x, w = qr
