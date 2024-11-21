@@ -20,7 +20,7 @@ end
 
 local base = require("base")
 local mathfun = require("mathfuns")
-local concept = require("concept-new")
+local concept = require("concept")
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
 local float_type = {}

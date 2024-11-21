@@ -1,3 +1,10 @@
+<!--
+SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+
+SPDX-License-Identifier: CC0-1.0
+-->
+
 # Method dispatch based on concepts
 Concepts are compile-time predicates (functions that evaluate to true/false) given a concrete type as input. We use them to constrain template parameters in order to dispatch to the "right" template method. Our implementation is similar in scope to concepts in C++20.
 

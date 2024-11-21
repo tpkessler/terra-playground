@@ -7,7 +7,7 @@ import "terratest/terratest"
 
 local lu = require("lu")
 local alloc = require("alloc")
-local concept = require("concept-new")
+local concept = require("concept")
 local random = require("random")
 local complex = require("complex")
 local nfloat = require("nfloat")

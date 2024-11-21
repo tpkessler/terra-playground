@@ -4,7 +4,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept-new")
+local concept = require("concept")
 
 local struct Stack(concept.Base) {}
 local Integral = concept.Integral

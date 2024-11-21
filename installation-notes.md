@@ -1,3 +1,10 @@
+<!--
+SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+
+SPDX-License-Identifier: CC0-1.0
+-->
+
 # Here are some installation notes
 The required libraries are
 1. Blas

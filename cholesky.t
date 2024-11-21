@@ -8,7 +8,7 @@ import "terraform"
 local factorization = require("factorization")
 local base = require("base")
 local err = require("assert")
-local concept = require("concept-new")
+local concept = require("concept")
 local matbase = require("matrix")
 local vecbase = require("vector")
 local veccont = require("vector_contiguous")
@@ -81,7 +81,7 @@ local CholeskyFactory = terralib.memoize(function(M)
                               .. " does not implement the matrix interface")
     local T = M.eltype
     local Ts = T
-    local Ts = concept.Complex(T) and T.eltype or T
+    local Ts = concept.Complex(T) and T.traits.eltype or T
     local struct cho{
         a: &M
         tol: Ts

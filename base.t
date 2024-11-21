@@ -3,7 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept-new")
+local concept = require("concept")
 
 local Base = {}
 
@@ -36,9 +36,7 @@ local AbstractBase = Base:new("AbstractBase",
 		concept.Base(Self)
 		Self.friends[T] = true
 		for key, val in pairs({staticmethods = {}, templates = {}, varargtemplates = {}, Self = Self, traits = {}}) do
-			if T.key == nil then
-				rawset(T, key, val)
-			end
+			T[key] = val
 		end
 		Self.methods = T.methods
 		Self.staticmethods = T.staticmethods

@@ -3,7 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept-new")
+local concept = require("concept")
 local vecbase = require("vector")
 
 local Bool = concept.Bool

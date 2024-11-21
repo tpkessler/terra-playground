@@ -3,7 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept-new")
+local concept = require("concept")
 local base = require("base")
 local fun = require("fun")
 local serde = require("serde")

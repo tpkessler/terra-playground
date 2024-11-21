@@ -1,7 +1,9 @@
-# SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
-# SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
-#
-# SPDX-License-Identifier: CC0-1.0
+<!--
+SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+
+SPDX-License-Identifier: CC0-1.0
+-->
 
 # Design of allocators in terra
 I briefly outline the design of the allocator class in 'alloc.t'
