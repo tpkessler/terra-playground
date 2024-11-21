@@ -9,7 +9,7 @@ local base = require("base")
 local vecbase = require("vector")
 local veccont = require("vector_contiguous")
 local vecblas = require("vector_blas")
-local concept = require("concept-new")
+local concept = require("concept")
 
 local StaticVector = terralib.memoize(function(T, N)
     local function create_static_vector(T, N)

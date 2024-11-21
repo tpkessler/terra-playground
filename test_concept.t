@@ -3,12 +3,13 @@
 --
 -- SPDX-License-Identifier: MIT
 
+local base = require("base")
 local concept = require("concept")
-local template = require("template")
 
 import "terratest/terratest"
+import "terraform"
 
-testenv "concepts" do
+testenv "Collections" do
 
     testset "Floats" do
         --concrete float
@@ -29,13 +30,23 @@ testenv "concepts" do
         test [concept.Int32(int)]
         test [concept.Int32(int16) == false]
         test [concept.is_specialized_over(concept.Int32, concept.Int32)]
-        --abstract floats
+        --abstract signed integers
         test [concept.is_specialized_over(concept.Integer, concept.Integer)]
         test [concept.Integer(int)]
         test [concept.Integer(int32)]
         test [concept.Integer(int64)]
+        test [concept.Integer(uint) == false]
         test [concept.Integer(float) == false]
         test [concept.Integer(rawstring) == false]
+		-- abstract integers
+        test [concept.is_specialized_over(concept.Integral, concept.Integral)]
+        test [concept.Integral(int)]
+        test [concept.Integral(int32)]
+        test [concept.Integral(int64)]
+        test [concept.Integral(uint)]
+        test [concept.Integral(uint64)]
+        test [concept.Integral(float) == false]
+        test [concept.Integral(rawstring) == false]
     end
 
     testset "Real numbers" do
@@ -45,6 +56,7 @@ testenv "concepts" do
         test [concept.is_specialized_over(concept.Float, concept.Real)]
         test [concept.Real(float)]
         test [concept.Real(double)]
+        test [concept.Real(uint) == false]
     end
 
     testset "Numbers" do
@@ -61,28 +73,25 @@ testenv "concepts" do
 		test [concept.RawString(concept.Primitive) == false]
 	end
 
-	testset "Pointers" do
-	end
-
 	testset "Empty abstract interface" do
-		local EmptyInterface = concept.AbstractInterface:new("Empty")
+		local struct EmptyInterface(concept.Base) {}
 		test [concept.isconcept(EmptyInterface)]
 	end
 
 	testset "Abstract interface" do
-		local SimpleInterface = concept.AbstractInterface:new("SimpleAbs")
+		local struct SimpleInterface(concept.Base) {}
+		SimpleInterface.methods.cast = {&SimpleInterface, concept.Integer} -> concept.Real
 		test [concept.isconcept(SimpleInterface)]
 		
-		SimpleInterface:addmethod{cast = concept.Integer -> concept.Real}
 		local struct B {}
 		terra B:cast(x: int8) : float end
 		test [SimpleInterface(B)]
 	end
 
 	testset "Self-referencing interface on methods" do
-		local Vec = concept.AbstractInterface:new("Vec")
+		local struct Vec(concept.Base) {}
 		test [concept.isconcept(Vec)]
-		Vec:addmethod{axpy = {concept.Real, &Vec} -> {}}
+		Vec.methods.axpy = {&Vec, concept.Real, &Vec} -> {}
 
 		local struct V {}
 		terra V:axpy(x: double, v: &V): {} end
@@ -105,34 +114,92 @@ testenv "concepts" do
 		test [Vec(P) == false]
 	end
 
-	testset "Self-referencing interface on templates" do
-		local Vec = concept.AbstractInterface:new("Vec2")
-		test [concept.isconcept(Vec)]
-		Vec:addmethod{axpy = {concept.Real, &Vec} -> {}}
+	testset "Self-referencing interface on terraform methods" do
+		local struct Vec3(concept.Base) {}
+		test [concept.isconcept(Vec3)]
+		Vec3.methods.axpy = {&Vec3, concept.Real, &Vec3} -> {}
 
-		local struct F {}
-		F.templates = {}
+		local struct F(base.AbstractBase) {}
+		terraform F:axpy(a: I, x: &F) where {I: concept.Int8, F: concept.Float32}
+		end
+		terraform F:axpy(a: I, x: &V) where {I: concept.Real, V: Vec3}
+		end
+		test[Vec3(F)]
 
-		F.templates.axpy = template.Template:new("axpy")
-		F.templates.axpy[template.paramlist.new({concept.Any, concept.Int8, concept.Float32},{1,2,3},{1,0,0})] = true
-		F.templates.axpy[template.paramlist.new({concept.Any, concept.Real, Vec},{1,2,3},{1,0,1})] = true
-		test[Vec(F)]
+		local struct E(base.AbstractBase) {}
+		terraform E:axpy(x: float)
+		end
+		test [Vec3(E) == false]
+	end
 
-		local struct E {}
-		E.templates = {}
-		E.templates.aypx = template.Template:new("aypx")
-		test [Vec(E) == false]
+	testset "Traits - unconstrained" do
+		local struct Trai(concept.Base) {}
+		Trai.traits.iscool = concept.traittag
+		test [concept.isconcept(Trai)]
 
-		local struct G {}
-		G.templates = {}
-		G.templates.axpy = template.Template:new("axpy")
-		test [Vec(G) == false]
+		local struct T1(base.AbstractBase) {}
+		T1.traits.iscool = true
+		test [Trai(T1)]
 
-		local struct H {}
-		G.templates = {}
-		G.templates.axpy = template.Template:new("axpy")
-		G.templates.axpy[template.paramlist.new({concept.Any, concept.Int8, concept.Float32},{1,2,3},{1,0,0})] = true
-		test [Vec(G) == false]
+		local struct T2(base.AbstractBase) {}
+		T2.traits.iscool = false
+		test [Trai(T2)]
+	end
 
+	testset "Traits - constrained" do
+		local struct Trai(concept.Base) {}
+		Trai.traits.elsize = 10
+		test [concept.isconcept(Trai)]
+
+		local struct T1(base.AbstractBase) {}
+		T1.traits.elsize = 10
+		test [Trai(T1)]
+
+		local struct T2(base.AbstractBase) {}
+		T2.traits.elsize = 20
+		test [Trai(T2) == false]
+	end
+
+	testset "Entries" do
+		local struct Ent(concept.Base) {
+			x: concept.Float
+			y: concept.Integer
+		}
+		test [concept.isconcept(Ent)]
+
+		local struct T1(base.AbstractBase) {
+			x: double
+			y: int8
+			z: rawstring
+		}
+		test [Ent(T1)]
+
+		local struct T2(base.AbstractBase) {
+			x: int
+			y: int8
+		}
+		test [Ent(T2) == false]
+	end
+
+	testset "Full Example" do
+		local struct C(concept.Base) {
+			x: concept.Float
+			n: concept.Integral
+			a: concept.RawString
+		}
+		C.traits.super_important = concept.traittag
+		C.metamethods.__apply = concept.methodtag
+		C.methods.scale = {&C, concept.Float} -> {}
+		test [concept.isconcept(C)]
+
+		local struct T1(base.AbstractBase) {
+			x: float
+			n: uint64
+			a: rawstring
+		}
+		T1.traits.super_important = 3.14
+		terra T1.metamethods.__apply(self: &T1, x: float) end
+		terra T1:scale(a: float) end
+		test [C(T1)]
 	end
 end

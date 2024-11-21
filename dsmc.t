@@ -5,7 +5,7 @@
 
 local alloc = require("alloc")
 local base = require("base")
-local concept = require("concept-new")
+local concept = require("concept")
 local template = require("template")
 local random = require("random")
 local dvector = require("dvector")

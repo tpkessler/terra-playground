@@ -6,7 +6,7 @@
 import "terraform"
 local stack = require("stack")
 local err = require("assert")
-local concept = require("concept-new")
+local concept = require("concept")
 local mathfun = require("mathfuns")
 
 local Number = concept.Number

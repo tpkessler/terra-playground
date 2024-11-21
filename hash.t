@@ -8,7 +8,7 @@ import "terraform"
 local C = terralib.includec("./hashmap/hashmap.h")
 local err = require("assert")
 local template = require("template")
-local concept = require("concept-new")
+local concept = require("concept")
 local string = terralib.includec("string.h")
 terralib.linklibrary("./libhash.so")
 

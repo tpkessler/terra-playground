@@ -8,7 +8,7 @@ import "terraform"
 local factorization = require("factorization")
 local base = require("base")
 local err = require("assert")
-local concept = require("concept-new")
+local concept = require("concept")
 local template = require("template")
 local matbase = require("matrix")
 local vecbase = require("vector")
@@ -204,7 +204,7 @@ local LUFactory = terralib.memoize(function(M, P)
 
     local T = M.eltype
     local Ts = T
-    local Ts = concept.Complex(T) and T.eltype or T
+    local Ts = concept.Complex(T) and T.traits.eltype or T
     local struct lu{
         a: &M
         p: &P

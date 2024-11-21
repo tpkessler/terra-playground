@@ -6,8 +6,13 @@
 local C = terralib.includec("math.h")
 
 local base = require("base")
-local concept = require("concept-new")
+local concept = require("concept")
 local mathfun = require("mathfuns")
+
+concept.Complex = terralib.types.newstruct("Complex")
+concept.Base(concept.Complex)
+concept.Complex.traits.iscomplex = true
+concept.Complex.traits.eltype = concept.traittag
 
 local complex = terralib.memoize(function(T)
 
@@ -15,7 +20,6 @@ local complex = terralib.memoize(function(T)
         re: T
         im: T
     }
-    complex.eltype = T
 
     function complex.metamethods.__cast(from, to, exp)
         if to == complex then
@@ -33,6 +37,10 @@ local complex = terralib.memoize(function(T)
     -- struct declaration already defines it.
     -- Hence we can only call it _after_ __typename is defined.  
     base.AbstractBase(complex)
+    complex.traits.iscomplex = true
+    complex.traits.eltype = T
+    assert(concept.Complex(complex))
+    -- concept.Complex.friends[complex] = true
 
     terra complex.metamethods.__add(self: complex, other: complex)
         return complex {self.re + other.re, self.im + other.im}

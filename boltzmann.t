@@ -1,8 +1,13 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
 import "terraform"
 
 local alloc = require("alloc")
 local base = require("base")
-local concept = require("concept-new")
+local concept = require("concept")
 local vecbase = require("vector")
 local svector = require("svector")
 local dvector = require("dvector")

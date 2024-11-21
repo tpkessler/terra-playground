@@ -4,7 +4,7 @@
 -- SPDX-License-Identifier: MIT
 
 local base = require("base")
-local concept = require("concept-new")
+local concept = require("concept")
 local mathfun = require("mathfuns")
 
 local DualNumber = terralib.memoize(function(T)

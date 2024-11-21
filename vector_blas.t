@@ -2,9 +2,10 @@
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
+
 import "terraform"
 local blas = require("blas")
-local concept = require("concept-new")
+local concept = require("concept")
 local veccont = require("vector_contiguous")
 local err = require("assert")
 

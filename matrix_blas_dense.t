@@ -5,7 +5,7 @@
 
 import "terraform"
 local matrix = require("matrix")
-local concept = require("concept-new")
+local concept = require("concept")
 local blas = require("blas")
 local vecblas = require("vector_blas")
 local err = require("assert")
