@@ -8,21 +8,17 @@ require "terralibext"
 local uname = io.popen("uname", "r"):read("*a")
 
 -- Wrap FLINT without inlines
-local flint, gr
+local flint = terralib.includec("flint/nfloat.h", {"-DNFLOAT_INLINES_C=1"})
+local gr = terralib.includec("flint/gr.h", {"-DGR_INLINES_C=1"})
 if uname == "Darwin\n" then
-    --terralib.includepath = terralib.includepath .."/opt/homebrew/Cellar/flint/HEAD-02d4e5d/include;/opt/homebrew/Cellar/gmp/6.3.0/include"
-    flint = terralib.includec("flint/nfloat.h", {"-DNFLOAT_INLINES_C=1"})
-    gr = terralib.includec("flint/gr.h", {"-DGR_INLINES_C=1"})
     terralib.linklibrary("libflint.dylib")
 elseif uname == "Linux\n" then
-    flint = terralib.includec("flint/nfloat.h", {"-DNFLOAT_INLINES_C=1"})
-    gr = terralib.includec("flint/gr.h", {"-DGR_INLINES_C=1"})
     terralib.linklibrary("libflint.so")
 else
     error("Not implemented for this OS.")
 end
 
-local io = terralib.includec("stdio.h")
+local base = require("base")
 local mathfun = require("mathfuns")
 local concept = require("concept-new")
 
@@ -89,7 +85,7 @@ end)
 
 --extract the significant 64-bit part of the mantissa of an nfloat
 local significant_part_mantissa = macro(function(value)
-    local M = value:gettype().type.precision / 64
+    local M = value:gettype().type.traits.precision / 64
     return quote
         var n = [&uint64](&value.data.d[M-1])
     in
@@ -118,12 +114,14 @@ local FixedFloat = terralib.memoize(function(N)
         data: ctype
     }
 
-    --type traits
-    nfloat.precision = N
-
     function nfloat.metamethods.__typename()
         return string.format("FixedFloat(%d)", N)
     end
+
+    base.AbstractBase(nfloat)
+
+    --type traits
+    nfloat.traits.precision = N
 
     local terra new()
         var data: ctype
@@ -294,14 +292,8 @@ local FixedFloat = terralib.memoize(function(N)
         mathfun.fusedmuladd:adddefinition(impl)
     end
 
-    local staticmethods = {
-        from = from,
-        tostr = to_str,
-        pi = pi,
-    }
-
-    nfloat.metamethods.__getmethod = function(self, methodname)
-        return staticmethods[methodname] or nfloat.methods[methodname]
+    for k, v in pairs({from = from, tostr = to_str, pi = pi}) do
+        nfloat.staticmethods[k] = v
     end
 
     for _, C in pairs({"NFloat", "Real", "Float", "Number"}) do
