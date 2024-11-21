@@ -1,0 +1,49 @@
+--local prefix = terralib and terralib.terrahome and terralib.terrahome .."/bin/terra" or "../terra"
+local prefix = "terra"
+
+--is this a testfile?
+local function istestfile(filename)
+    return string.sub(filename, 1, 4) == "test" and filename~="testrunner.t"
+end
+
+--turn list into a set
+local function dictionary(list)
+    local dict = {}
+    for i,v in ipairs(list) do
+        dict[v] = true 
+    end
+    return dict
+end
+
+--define colors for printing test-statistics
+format = terralib.newlist()
+format.normal = "\27[0m"
+format.bold = "\27[1m"
+format.red = "\27[31m"
+format.green = "\27[32m"
+format.yellow = "\27[33m"
+format.header = format.bold..format.yellow
+
+--print the header
+print(format.header)
+print(string.format("%-15s%-50s%-30s", "Filename", "Test-environment", "Test-result"))
+print(format.normal)
+
+--list files to be skipped
+local files_to_skip = dictionary{
+    "test1.t",
+    "test3.t",
+    "test5.t",
+}
+
+--print teststatistics for test environments
+for filename in io.popen("ls -p"):lines() do
+    if istestfile(filename) and not files_to_skip[filename] then
+        local execstring = prefix .. " " .. filename .. " --test --silent"
+        --&> /dev/null
+        local handle = io.popen(execstring)
+        local result = handle:read("*a")
+        handle:close()
+        io.write(result) 
+    end
+end
