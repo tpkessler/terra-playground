@@ -81,19 +81,24 @@ end
 
 --process the parameters in a parameterized 'testset' or 'testenv'
 local function process_env_parameters(lex)
-    local isparametric = false                                   
-    local params = terralib.newlist()         
+    local isparametric = false                                  
+    local params = terralib.newlist()
+    local skipenv = false         
     if lex:matches("(") then
         lex:expect("(")
-        repeat      
-            local name = lex:expect(lex.name).value              
-            lex:ref(name)                                     
-            params:insert(name)                                  
+        repeat
+            if lex:nextif("skip") then
+                skipenv = true
+            else
+                local name = lex:expect(lex.name).value              
+                lex:ref(name)                                     
+                params:insert(name)
+            end                                  
         until not lex:nextif(",")                                
         lex:expect(")")                                          
         isparametric = true                                      
     end        
-    return isparametric, params
+    return skipenv, isparametric, params
 end
 
 --get the paramtric name of a 'testset' or 'testenv'
@@ -121,7 +126,7 @@ local function process_testenv(self, lex)
     --open the testenv environment
     lex:expect("testenv")
     -- treat case of parameterized testenv                       
-    local isparametric, params = process_env_parameters(lex)
+    local skiptestenv, isparametric, params = process_env_parameters(lex)
     --generate testset name and parse code  
     local testenvname = lex:expect(lex.string).value
     lex:expect("do")
@@ -133,7 +138,7 @@ local function process_testenv(self, lex)
     --return env-function
     return function(envfun)
         --return if tests need not be run
-        if not runtests then
+        if not runtests or skiptestenv then
  	        return
 	    end
         --reinitialize global variables
@@ -170,7 +175,7 @@ end
 local function process_testset(self, lex)
     lex:expect("testset") --open the testset environment
     -- treat case of parameterized testset
-    local isparametric, params = process_env_parameters(lex)
+    local skiptestset, isparametric, params = process_env_parameters(lex)
     --generate testset name and parse code
     local testsetname = lex:expect(lex.string).value
     lex:expect("do")
@@ -178,6 +183,10 @@ local function process_testset(self, lex)
     lex:expect("end")
     --return env-function
     return function(envfun)
+        --return if tests need not be run
+        if skiptestset then
+ 	        return
+	    end
         -- check current scope
         if self.scopelevel~=1 then
             error("ParseError: cannot use a `testset` block outside of a `testenv`.") 
@@ -297,7 +306,7 @@ end
 local testlang = {
     name = "unittestlang";
     entrypoints = {"testenv","testset","test","terracode"};
-    keywords = {};
+    keywords = {"skip"};
     scopelevel = 0;
     tests = terralib.newlist();
     env = {scope0 = terralib.newlist(), scope1 = terralib.newlist(), scope2 = terralib.newlist()};
