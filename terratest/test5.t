@@ -1,3 +1,9 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
+
 --local SVector = {}
  
 SVector = terralib.memoize(function(T,N)
@@ -72,5 +78,4 @@ for _,T in pairs{int32,int64} do
     end --testenv
 
   end --N
-end --T 
-
+end --T
