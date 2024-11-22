@@ -28,9 +28,13 @@ local makelambda = function(fun, lambdaobj)
     return lambdaobj
 end
 
+local function genempty()
+    return terralib.types.newstruct()
+end
+
 --return a function object with captured variables in ...
 local new = macro(function(fun, capture)
-    local lambda = makelambda(fun, capture or `{})
+    local lambda = makelambda(fun, capture or quote var c: genempty() in c end)
     return `lambda
 end)
 
