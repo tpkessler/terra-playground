@@ -3,41 +3,70 @@
 --
 -- SPDX-License-Identifier: MIT
 
+import "terratest/terratest"
+
 local nfloat = require("nfloat")
 local mathfun = require("mathfuns")
-local io = terralib.includec("stdio.h")
 
-local myFloat = nfloat.FixedFloat(256)
-print(mathfun.log)
-print(myFloat.metamethods.__eq)
+local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
+for _, N in pairs(suffix) do
+    testenv(N) "Float" do
+        local T = nfloat.FixedFloat(N)
+        testset "from" do
+            terracode
+                var asdouble = T.from(3.5)
+                var asstr = T.from("3.5")
+            end
+            test asdouble == asstr
+        end
+        testset "cast" do
+            terracode
+                var asstr = T.from("-3.5")
+                var ascast: T = -3.5
+                var one = T.from(1)
+                var onecast: T = 1
+                var exp = T.from(2.5e3)
+                var expcast: T = 2.5e3
+            end
+            test asstr == ascast
+            test one == onecast
+            test exp == expcast
+        end
 
-if not __silent__ then
+        testset "add" do
+            terracode
+                var one: T = 1
+                var two: T = 2
+                var three:T = 3
+            end
+            test one + two == three
+        end
 
-    terra main()
-        var x: myFloat = 2.0
-        var y: myFloat = "3.5"
-        var z = x / y
-        var mypi = myFloat.pi()
-        io.printf("%s\n", z:tostr())
-        io.printf("%s\n", mypi:tostr())
-        var sq = mathfun.log(mypi)
-        io.printf("%s\n", sq:tostr())
-        io.printf("Are x and y equal? %s\n", terralib.select(x == y, "True", "False"))
-        io.printf("Is x smaller than y? %s\n", terralib.select(x < y, "True", "False"))
-        io.printf("Is x greater than y? %s\n", terralib.select(x > y, "True", "False"))
-        
-        --taking the modulus
-        var z2 = y % 2
-        io.printf("%s = %s mod %d\n", z2:tostr(), y:tostr(), 2)
+        testset "sub" do
+            terracode
+                var one: T = 1
+                var two: T = 2
+                var three:T = 3
+            end
+            test three - two == one
+        end
 
-        --truncating to a double
-        var y2 : myFloat = myFloat.pi()
-        var x2 = y2:truncatetodouble()
-        io.printf("y = %s\n", y2:tostr())
-        io.printf("x = %0.16f\n", x2)
-        nfloat.clean_context()
+        testset "mul" do
+            terracode
+                var a: T = 4.5
+                var b: T = 10.0
+                var c: T = 45.0
+            end
+            test a * b == c
+        end
+
+        testset "div" do
+            terracode
+                var a: T = 4.5
+                var b: T = 4.0
+                var c: T = 1.125
+            end
+            test a / b == c
+        end
     end
-    main()
-
-
 end
