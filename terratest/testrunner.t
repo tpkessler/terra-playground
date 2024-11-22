@@ -4,7 +4,7 @@
 -- SPDX-License-Identifier: MIT
 
 --local prefix = terralib and terralib.terrahome and terralib.terrahome .."/bin/terra" or "../terra"
-local prefix = "terra"
+local prefix = arg[-1]
 
 --is this a testfile?
 local function istestfile(filename)
