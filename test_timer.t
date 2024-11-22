@@ -8,11 +8,15 @@ local uni = terralib.includec("unistd.h")
 local io = terralib.includec("stdio.h")
 terralib.linklibrary("libgomp.so")
 
-terra main()
-	var sw : time.default_timer
-	sw:start()
-	uni.usleep(2124)
-	var t = sw:stop()
-	io.printf("Sleep took %g s\n", t)
+if not __silent__ then
+
+	terra main()
+		var sw : time.default_timer
+		sw:start()
+		uni.usleep(2124)
+		var t = sw:stop()
+		io.printf("Sleep took %g s\n", t)
+	end
+	main()
+
 end
-main()

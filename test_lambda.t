@@ -152,20 +152,24 @@ local LAMBDIFY = function(sig, func)
     end)
 end
 
-local L1 = double
-local L2 = double
-local prod = LAMBDIFY(
-    {L1, L2},
-    function(f, g)
-        return terra(x: double, y: int)
-            return f(x) * g(y)
-        end
-    end
-)
+if not __silent__ then
 
-local io = terralib.includec("stdio.h")
-terra main()
-    var res = prod([terra(x: double) return x end], [terra(y: int) return y end], 2, 3)
-    io.printf("res = %g\n", res)
+    local L1 = double
+    local L2 = double
+    local prod = LAMBDIFY(
+        {L1, L2},
+        function(f, g)
+            return terra(x: double, y: int)
+                return f(x) * g(y)
+            end
+        end
+    )
+
+    local io = terralib.includec("stdio.h")
+    terra main()
+        var res = prod([terra(x: double) return x end], [terra(y: int) return y end], 2, 3)
+        io.printf("res = %g\n", res)
+    end
+    main()
+
 end
-main()

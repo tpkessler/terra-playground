@@ -41,15 +41,15 @@ local test_finalizer, print_single_passed_test, print_single_failed_test, print_
 --get metatable and check if "--test" or "-t" option is provided as
 --an optional argument. 
 local mt = getmetatable(_G)
-runalltests = false
-silent = false
+__runalltests__ = false     --global - run all tests
+__silent__ = false          --global - silent output (only testenv summary)
 local topfile = ""
 if mt.__declared["arg"]~=nil then
     for i,v in pairs(arg) do
         if v == "--test" or v == "-t" then
-            runalltests = true
+            __runalltests__ = true
         elseif v == "--silent" or v == "-s" then
-            silent = true
+            __silent__ = true
         end 
     end 
     topfile = arg[0]
@@ -82,7 +82,7 @@ function process_testenv(self, lex)
     --exit
     local lasttoken = lex:expect("end")
     --exit with nothing if this is not the topfile
-    local runtests = runalltests and lasttoken.filename==topfile
+    local runtests = __runalltests__ and lasttoken.filename==topfile
     --return env-function
     return function(envfun)
         --return if tests need not be run
@@ -111,7 +111,7 @@ function process_testenv(self, lex)
         local terrastmts = collect_terra_stmts(env, self.terrastmts["scope1"])                                                    
         local stats = terrastmts() --extract test statistics
         -- process test statistics
-        if silent then
+        if __silent__ then
             test_finalizer(parametricname, self.tests)
         else
             print("\n"..format.bold.."Test Environment: "..format.normal, parametricname)
@@ -165,7 +165,7 @@ function process_testset(self, lex)
         local stats = terrastmts() --extract test statistics
         -- process test statistics
         local parametricname = get_parametric_name(env, testsetname, params, isparametric)
-        if not silent then
+        if not __silent__ then
             print_test_stats("\n  "..format.bold.."testset:\t\t"..format.normal..parametricname, stats)
         end
         -- exit current scope
@@ -199,7 +199,7 @@ end
 function process_test(self, lex)
     --definition of locally used functions
     local function evaluate_test_results(passed, file, linenumber)
-        if not silent then
+        if not __silent__ then
             if passed then            
                 print_single_passed_test(file, linenumber)
             else                         
@@ -319,7 +319,7 @@ function collect_terra_stmts(env, terrastmts)
     end
 end 
 
---print in silent mode summery of testenv
+--print in __silent__ mode summery of testenv
 function test_finalizer(testenvname, tests)
     local passed = 0
     local failed = 0
@@ -336,11 +336,11 @@ function test_finalizer(testenvname, tests)
         if failed > 0 then
             local filename = tests[1].filename
             local testresult = format.bold..format.red..passed.."/"..ntotal.." tests passed"..format.normal
-            print(string.format("%-15s%-50s%-30s", filename, testenvname, testresult))
+            print(string.format("%-25s%-50s%-30s", filename, testenvname, testresult))
         else
             local filename = tests[1].filename
             local testresult = format.bold..format.green..passed.."/"..ntotal.." tests passed"..format.normal
-            print(string.format("%-15s%-50s%-30s", filename, testenvname, testresult))
+            print(string.format("%-25s%-50s%-30s", filename, testenvname, testresult))
         end
     end
 end
