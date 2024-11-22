@@ -3,6 +3,9 @@
 --
 -- SPDX-License-Identifier: MIT
 
+if not terralib.cudalib then
+    os.exit(0)
+end
 local cuda = require("cuda")
 local dvector = require("dvector")
 local io = terralib.includec("stdio.h")
