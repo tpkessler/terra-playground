@@ -16,6 +16,7 @@ local tmath = require("mathfuns")
 local dual = require("dual")
 local range = require("range")
 local gauss = require("gauss")
+local lambda = require("lambdas")
 local thread = setmetatable(
     {C = terralib.includec("pthread.h")},
     {__index = function(self, key)
@@ -33,41 +34,22 @@ local dualDouble = dual.DualNumber(double)
 local VDIM = 3
 
 local dvecDouble = dvector.DynamicVector(double)
-local struct quad(base.AbstractBase) {
-    w: dvecDouble
-    x: dvecDouble
-    n: int64
-}
-
 local Alloc = alloc.Allocator
-terra quad.staticmethods.new_hermite(alloc: Alloc, n: int64)
+local struct hermite_t {}
+gauss.QuadruleBase(hermite_t, dvecDouble, dvecDouble)
+local terra hermite(alloc: Alloc, n: int64): hermite_t
     var t = gsl.gsl_integration_fixed_hermite
     var work = gsl.gsl_integration_fixed_alloc(t, n, 0, 0.5, 0.0, 0.0)
     defer gsl.gsl_integration_fixed_free(work)
     var w = gsl.gsl_integration_fixed_weights(work)
     var x = gsl.gsl_integration_fixed_nodes(work)
-    var q: quad
-    q.w = dvecDouble.new(alloc, n)
-    q.x = dvecDouble.new(alloc, n)
-    q.n = n
+    var wq = dvecDouble.new(alloc, n)
+    var xq = dvecDouble.new(alloc, n)
     for i = 0, n do
-        q.w(i) = w[i] / tmath.sqrt(2.0 * math.pi)
-        q.x(i) = x[i]
+        wq(i) = w[i] / tmath.sqrt(2.0 * math.pi)
+        xq(i) = x[i]
     end
-    return q
-end
-
-terra quad.staticmethods.new_legendre(alloc: Alloc, n: int64)
-    var x, w = gauss.legendre(alloc, n)
-    var q: quad
-    q.w = dvecDouble.new(alloc, n)
-    q.x = dvecDouble.new(alloc, n)
-    q.n = n
-    for i = 0, n do
-        q.w(i) = w:get(i)
-        q.x(i) = x:get(i)
-    end
-    return q    
+    return xq, wq
 end
 
 local pow
@@ -90,9 +72,8 @@ terraform pow(n: I, x: T) where {I: concept.Integral, T: concept.Real}
     end
 end
 
-local Vector = vecbase.Vector
-local vbasis
-terraform vbasis(p: &int32, v: &T) where {T: concept.Number}
+local monomial
+terraform monomial(v: &T, p: &I) where {I: concept.Integral, T: concept.Number}
     var res = [v.type.type](1)
     for i = 0, VDIM do
         res = res * pow(p[i], v[i])
@@ -100,57 +81,102 @@ terraform vbasis(p: &int32, v: &T) where {T: concept.Number}
     return res
 end
 
-local struct tensor_quad(base.AbstractBase) {
-    x: dvecDouble,
-    w: dvecDouble,
-    n: int64
+local iMat = dmatrix.DynamicMatrix(int32)
+local struct MonomialBasis(base.AbstractBase){
+    p: iMat
 }
 
-tensor_quad.staticmethods.from = terra(alloc: Alloc, q1: &quad, q2: &quad, q3: &quad)
-    var n = q1.n * q2.n * q3.n
-    var q: tensor_quad
-    q.n = n
-    q.w = dvecDouble.new(alloc, n)
-    q.x = dvecDouble.new(alloc, 3 * n)
-    var idx = 0
-    for i1 = 0, q1.n do
-        for i2 = 0, q2.n do
-            for i3 = 0, q3.n do
-                q.w(idx) = q1.w(i1) * q2.w(i2) * q3.w(i3)
-                q.x(3 * idx + 0) = q1.x(i1)
-                q.x(3 * idx + 1) = q2.x(i2)
-                q.x(3 * idx + 2) = q3.x(i3)
-                idx = idx + 1
-            end
-        end
-    end
-    return q
+MonomialBasis.staticmethods.new = terra(p: iMat)
+    var basis: MonomialBasis
+    basis.p = p
+    return basis
 end
 
+do
+    -- HACK Define our own lambda as a more flexible solution
+    local struct Func {p: &int32}
+    Func.metamethods.__apply = macro(function(self, x)
+        return `monomial(x, self.p)
+    end)
+    local struct iterator {
+        basis: &MonomialBasis
+        func: Func
+        idx: int64
+        len: int64
+    }
+    terra iterator:getvalue()
+        var p = &self.basis.p(self.idx, 0)
+        self.func.p = p
+        return self.func
+    end
+
+    terra iterator:next()
+        self.idx = self.idx + 1
+    end
+
+    terra iterator:isvalid()
+        return self.idx < self.len
+    end
+
+    terra MonomialBasis:getiterator()
+        var func: Func
+        return iterator {self, func, 0, self.p:rows()}
+    end
+    MonomialBasis.iterator = iterator
+    range.Base(MonomialBasis, iterator, Func)
+end
+
+
+local l2inner
+terraform l2inner(f, g, q)
+    var it = q:getiterator()
+    var xw = it:getvalue()
+    var x, w = unpacktuple(xw)
+    var res = [w.type](0)
+    var idx = 0
+    for xw in q do
+        var x, w = unpacktuple(xw)
+        var arg = [&w.type](&x)
+        res = res + w * f(arg) * g(arg)
+        idx = idx + 1
+    end
+    return res
+end
+
+local Vector = vecbase.Vector
 local local_maxwellian
-terraform local_maxwellian(q: &tensor_quad, nv: I, p: &int32, coeff: &V)
+terraform local_maxwellian(basis, coeff: &V, quad)
     where {I: concept.Integral, V: Vector}
     var m1: coeff.type.type.eltype = 0
     var m2 = [svector.StaticVector(m1.type, VDIM)].zeros()
     var m3: m1.type = 0
 
-    for k = 0, q.n do
-        var v = &q.x(VDIM * k)
-        var bv = [m1.type](0)
-        for i = 0, nv do
-            var alpha = p + VDIM * i
-            bv = bv + coeff(i) * vbasis(alpha, v)
+    var it = quad:getiterator()
+    var xw = it:getvalue()
+    var x, w = unpacktuple(xw)
+    for bc in range.zip(basis, coeff) do
+        var cnst = lambda.new([terra(v: &w.type) return 1.0 end])
+        m1 = m1 + l2inner(bc._0, cnst, quad) * bc._1
+        escape
+        -- Unroll loop instead of a dynamic loop. This would require
+        -- a captured variable
+            for i = 0, VDIM - 1 do
+                local vi = `lambda.new([terra(v: &w.type) return v[i] end])
+                emit quote m2(i) = m2(i) + l2inner(bc._0, [vi], quad) * bc._1 end
+            end
         end
-        var w = q.w(k)
-        m1 = m1 + w * bv
-        for j = 0, VDIM do
-            m2(j) = m2(j) + w * v[j] * bv 
-        end
-        var vsqr = [w.type](0)
-        for j = 0, VDIM do
-            vsqr = vsqr + v[j] * v[j]
-        end
-        m3 = m3 + w * vsqr * bv
+        var vsqr = lambda.new([
+                        terra(v: &w.type)
+                            var vsqr = [v.type.type](0)
+                            escape
+                                for j = 0, VDIM - 1 do
+                                    emit quote vsqr = vsqr + v[j] * v[j] end
+                                end
+                            end
+                            return vsqr
+                        end
+                    ])        
+        m3 = m3 + l2inner(bc._0, vsqr, quad) * bc._1
     end
 
     var rho = m1
@@ -164,14 +190,6 @@ terraform local_maxwellian(q: &tensor_quad, nv: I, p: &int32, coeff: &V)
     end
     theta = theta / VDIM
     return rho, u, theta
-end
-
-local Real = concept.Real
-terraform halfspace(
-    ntestv: int64, test_powers: &int32, rho: T1, u: &V1, theta: T2, normal: &V2
-)
-    where {T1: Real, V1: Vector, T2: Real, V2: Vector}
-    var un = u:dot(normal)
 end
 
 local terra outflow(
@@ -210,31 +228,33 @@ local terra outflow(
 end
 
 local DefaultAlloc = alloc.DefaultAllocator()
-local dVec = dvector.DynamicVector(double)
-local iMat = dmatrix.DynamicMatrix(int32)
 local dualDouble = dual.DualNumber(double)
 local ddVec = dvector.DynamicVector(dualDouble)
 local io = terralib.includec("stdio.h")
 terra main()
     var alloc: DefaultAlloc
-    var n = 21
-    var qh = quad.new_hermite(&alloc, n)
-    var qm = tensor_quad.from(&alloc, &qh, &qh, &qh)
+    var n = 3
+    var qh = hermite(&alloc, n)
+    var rule = gauss.productrule(&qh, &qh, &qh)
+    var quad = range.zip(&rule.x, &rule.w)
     var p = iMat.from(&alloc, {
-        {2, 0, 1},
+        {2, 0, 0},
         {0, 2, 0},
-        {1, 0, 2},
+        {0, 0, 2},
     })
+    var basis = MonomialBasis.new(p)
     var coeff = ddVec.zeros(&alloc, p:rows())
     for i = 0, coeff:size() do
-        coeff(i).val = 1
+        coeff(i).val = 1.0 / 3.0
         coeff(i).tng = 1
     end
-    var rho, u, theta = local_maxwellian(&qm, p:rows(), &p(0, 0), &coeff)
+    var rho, u, theta = local_maxwellian(&basis, &coeff, &quad)
     io.printf("rho %g %g\n", rho.val, rho.tng)
     for i = 0, VDIM do
         io.printf("u(%d) %g %g\n", i, u(i).val, u(i).tng)
     end
     io.printf("theta %g %g\n", theta.val, theta.tng)
+    return 0
 end
 main()
+terralib.saveobj("boltzmann.o", {main = main})
