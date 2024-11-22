@@ -1,0 +1,31 @@
+#! /usr/bin/python
+
+# SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+# SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+#
+# SPDX-License-Identifier: MIT
+
+import os
+
+authors = {
+    "René Hiemstra": "rrhiemstar@gmail.com",
+    "Torsten Keßler": "t.kessler@posteo.de",
+}
+year = 2024
+terra_license = "MIT"
+doc_license = "CC0-1.0"
+
+header = " ".join(
+    [f"--copyright \"{name} <{email}>\"" for name, email in authors.items()]
+)
+
+
+os.system(
+    f"reuse annotate --style haskell {header} --year {year} --license {terra_license} *.t"
+)
+
+os.system(
+    f"reuse annotate --style html {header} --year {year} --license {doc_license} *.md"
+)
+
+os.system("reuse lint")

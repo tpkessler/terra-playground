@@ -8,7 +8,7 @@ import "terraform"
 local factorization = require("factorization")
 local base = require("base")
 local err = require("assert")
-local concept = require("concept-new")
+local concept = require("concept")
 local matbase = require("matrix")
 local vecbase = require("vector")
 local veccont = require("vector_contiguous")

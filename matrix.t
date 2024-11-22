@@ -5,7 +5,7 @@
 
 import "terraform"
 local operator = require("operator")
-local concept = require("concept-new")
+local concept = require("concept")
 local template = require("template")
 local err = require("assert")
 local vecbase = require("vector")

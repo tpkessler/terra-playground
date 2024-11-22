@@ -8,7 +8,7 @@ import "terraform"
 
 local io = terralib.includec("stdio.h")
 local Alloc = require("alloc")
-local concept = require("concept-new")
+local concept = require("concept")
 local nfloat = require("nfloat")
 local rn = require("range")
 local Stack = require("example_stack_heap")
