@@ -1,3 +1,9 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
+
 --terratest.t provides a unit testing framework for the terra programming
 --language. It's implemented as a terra language extension.
 --terratest.t can be used from the terminal as follows:

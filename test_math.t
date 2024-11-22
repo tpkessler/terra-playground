@@ -33,7 +33,8 @@ local funs_single_var = {
     "abs"
 }
 
-testenv "single variable math functions - test correctness of output type" do
+testenv "All single variable math functions" do
+    --test correctness of output type
     for k,f in ipairs(funs_single_var) do
         local mathfun = math[f]
         testset(f) "fun " do
@@ -47,8 +48,8 @@ testenv "single variable math functions - test correctness of output type" do
     end
 end
 
-testenv "selected math functions - test if result is correct" do
-
+testenv "Correctness of selected math functions" do
+    --test if result is correct
     testset "sqrt" do
         test math.isapprox(math.sqrt([float](4)), 2.0, 1e-15) 
         test math.isapprox(math.sqrt([double](4)), 2.0, 1e-15) 

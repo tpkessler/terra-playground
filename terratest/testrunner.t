@@ -1,3 +1,8 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
 --local prefix = terralib and terralib.terrahome and terralib.terrahome .."/bin/terra" or "../terra"
 local prefix = "terra"
 
@@ -36,14 +41,17 @@ local files_to_skip = dictionary{
     "test5.t",
 }
 
+--global - use silent output - only testenv summary
+__silent__ = true
+
 --print teststatistics for test environments
 for filename in io.popen("ls -p"):lines() do
     if istestfile(filename) and not files_to_skip[filename] then
         local execstring = prefix .. " " .. filename .. " --test --silent"
-        --&> /dev/null
-        local handle = io.popen(execstring)
-        local result = handle:read("*a")
-        handle:close()
-        io.write(result) 
+        local exitcode = os.execute(execstring)
+        if exitcode ~= 0 then
+            local message = format.bold .. format.red .. "Process exited with exitcode " .. tostring(exitcode)
+            io.write(string.format("%-25s%-59s%-30s\n", filename, message, "NA"..format.normal))
+        end
     end
 end

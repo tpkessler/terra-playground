@@ -3,12 +3,14 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local time = require("timing")
-local uni = terralib.includec("unistd.h")
-local io = terralib.includec("stdio.h")
-terralib.linklibrary("libgomp.so")
+import "terratest/terratest"
 
 if not __silent__ then
+
+	local time = require("timing")
+	local uni = terralib.includec("unistd.h")
+	local io = terralib.includec("stdio.h")
+	terralib.linklibrary("libgomp.so")
 
 	terra main()
 		var sw : time.default_timer

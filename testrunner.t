@@ -1,3 +1,8 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
 --local prefix = terralib and terralib.terrahome and terralib.terrahome .."/bin/terra" or "../terra"
 local prefix = "terra"
 
@@ -46,7 +51,7 @@ for filename in io.popen("ls -p"):lines() do
         local exitcode = os.execute(execstring)
         if exitcode ~= 0 then
             local message = format.bold .. format.red .. "Process exited with exitcode " .. tostring(exitcode)
-            print(string.format("%-25s%-59s%-30s", filename, message, "NA"..format.normal))
+            io.write(string.format("%-25s%-59s%-30s\n", filename, message, "NA"..format.normal))
         end
     end
 end
