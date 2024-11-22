@@ -108,6 +108,9 @@ function process_testenv(self, lex)
         addtoenv(env, self.env["scope1"]) --everything from scope level 1 should be accessible
         --print parametric name
         local parametricname = get_parametric_name(env, testenvname, params, isparametric)
+        if not __silent__ then
+            print("\n"..format.bold.."Test Environment: "..format.normal, parametricname)
+        end
         --give control back to lua, generating code from 'testset' block, 'terracode' block, and 'test' definition
         local f = function()
             luaexprs(env)
@@ -120,7 +123,6 @@ function process_testenv(self, lex)
         if __silent__ then
             test_finalizer(parametricname, self.tests)
         else
-            print("\n"..format.bold.."Test Environment: "..format.normal, parametricname)
             print_test_stats("\n  "..format.bold.."inline tests"..format.normal, stats)
             print_failed_tests(self.tests)
         end
