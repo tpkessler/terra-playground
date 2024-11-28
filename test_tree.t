@@ -10,6 +10,8 @@ local io = terralib.includec("stdio.h")
 local DefaultAllocator = alloc.DefaultAllocator()
 local TreeDouble = tree.Tree(double)
 
+import "terratest/terratest"
+
 
 if not __silent__ then
 

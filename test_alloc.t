@@ -124,7 +124,6 @@ testenv "Block - Default allocator" do
 				y:set(i, i)
 			end
 			A:reallocate(&y, sizeof(double), 5)
-            io.printf("size y: %d\n", y:size())
 		end
 		test y:size() == 5
 		for i=0,2 do
