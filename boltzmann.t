@@ -232,11 +232,7 @@ local ddVec = dvector.DynamicVector(dualDouble)
 local io = terralib.includec("stdio.h")
 terra main()
     var alloc: DefaultAlloc
-<<<<<<< HEAD
-    var n = 3
-=======
     var n = 21
->>>>>>> upstream/master
     var qh = hermite(&alloc, n)
     var rule = gauss.productrule(&qh, &qh, &qh)
     var quad = range.zip(&rule.x, &rule.w)
