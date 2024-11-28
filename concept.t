@@ -284,6 +284,26 @@ local function Base(C, custom_check)
             end
         end
     end
+
+    function C:addmethod(name, sig)
+        self.methods[name] = sig or methodtag
+    end
+
+    function C:addmetamethod(name)
+        self.metamethods[name] = methodtag
+    end
+
+    function C:addtrait(name, val)
+        self.traits[name] = val or traittag
+    end
+
+    function C:addentry(name, typ)
+        self.entries:insert({field = name, type = typ})
+    end
+
+    function C:addfriend(typ)
+        self.friends[typ] = true
+    end
 end
 
 local struct Any(Base) {}
@@ -325,51 +345,43 @@ function is_specialized_over(C1, C2)
     end
 end
 
+local newconcept = function(name)
+    local C = terralib.types.newstruct(name)
+    Base(C)
+    return C
+end
+
 local struct Vararg {}
 Base(Vararg, function(self, ...) return true end)
 
-local M = {
-    Base = Base,
-    isconcept = isconcept,
-    methodtag = methodtag,
-    traittag = traittag,
-    is_specialized_over = is_specialized_over,
-    Any = Any,
-    Vararg = Vararg,
-}
 
-M.Bool = terralib.types.newstruct("Bool")
-Base(M.Bool)
-M.Bool.friends[bool] = true
+local Bool = newconcept("Bool")
+Bool:addfriend(bool)
 
-M.RawString = terralib.types.newstruct("RawString")
-Base(M.RawString)
-M.RawString.friends[rawstring] = true
+local RawString = newconcept("RawString")
+RawString:addfriend(rawstring)
 
-M.Float = terralib.types.newstruct("Float")
-Base(M.Float)
-struct M.Float(Base) {}
+local Float = newconcept("Float")
+local F = {}
 for suffix, T in pairs({["32"] = float, ["64"] = double}) do
 	local name = "Float" .. suffix
-	M[name] = terralib.types.newstruct(name)
-    Base(M[name])
-	M[name].friends[T] = true
-	M.Float.friends[T] = true
+	F[name] = newconcept(name)
+    F[name]:addfriend(T)
+    Float:addfriend(T)
 end
 
+local I = {}
 for _, prefix in pairs({"", "u"}) do
 	local cname = prefix:upper() .. "Integer"
-	M[cname] = terralib.types.newstruct(cname)
-    Base(M[cname])
+	I[cname] = newconcept(cname)
 	for _, suffix in pairs({8, 16, 32, 64}) do
 		local name = prefix:upper() .. "Int" .. tostring(suffix)
 		local terra_name = prefix .. "int" .. tostring(suffix)
 		-- Terra primitive types are global lua variables
 		local T = _G[terra_name] 
-		M[name] = terralib.types.newstruct(name)
-        Base(M[name])
-		M[name].friends[T] = true
-		M[cname].friends[T] = true
+		I[name] = newconcept(name)
+		I[name]:addfriend(T)
+		I[cname]:addfriend(T)
 	end
 end
 
@@ -379,34 +391,57 @@ local function append_friends(C, D)
     end
 end
 
-M.Integral = terralib.types.newstruct("Integral")
-Base(M.Integral)
-for _, C in pairs({M.Integer, M.UInteger}) do
-    append_friends(M.Integral, C)
+local Integral = newconcept("Integral")
+for _, C in pairs({I.Integer, I.UInteger}) do
+    append_friends(Integral, C)
 end
 
-M.Real = terralib.types.newstruct("Real")
-Base(M.Real)
-for _, C in pairs({M.Float, M.Integer}) do
-    append_friends(M.Real, C)
+local Real = newconcept("Real")
+for _, C in pairs({Float, I.Integer}) do
+    append_friends(Real, C)
 end
 
-M.Number = terralib.types.newstruct("Number")
-Base(M.Number)
-for _, C in pairs({M.Float, M.Integer, M.UInteger}) do
-    append_friends(M.Number, C)
+local Number = newconcept("Number")
+for _, C in pairs({Float, I.Integer, I.UInteger}) do
+    append_friends(Number, C)
 end
 
-M.BLASNumber = terralib.types.newstruct("BLASNumber")
-Base(M.BLASNumber)
-for _, T in pairs({float, double}) do
-    M.BLASNumber.friends[T] = true
+local BLASNumber = newconcept("BLASNumber")
+BLASNumber:addfriend(float)
+BLASNumber:addfriend(double)
+
+local Primitive = newconcept("Primitive")
+for _, C in pairs({I.Integer, I.UInteger, Bool, Float}) do
+	append_friends(Primitive, C)
 end
 
-M.Primitive = terralib.types.newstruct("Primitive")
-Base(M.Primitive)
-for _, C in pairs({M.Integer, M.UInteger, M.Bool, M.Float}) do
-	append_friends(M.Primitive, C)
-end
-
-return M
+return {
+    Base = Base,
+    isconcept = isconcept,
+    newconcept = newconcept,
+    methodtag = methodtag,
+    traittag = traittag,
+    is_specialized_over = is_specialized_over,
+    Any = Any,
+    Vararg = Vararg,
+    Bool = Bool,
+    RawString = RawString,
+    Float = Float,
+    Float32 = F.Float32,
+    Float64 = F.Float64,
+    Integer = I.Integer,
+    UInteger = I.UInteger,
+    Int8 = I.Int8,
+    Int16 = I.Int16,
+    Int32 = I.Int32,
+    Int64 = I.Int64,
+    UInt8 = I.UInt8,
+    UInt16 = I.UInt16,
+    UInt32 = I.UInt32,
+    UInt64 = I.UInt64,
+    Integral = Integral,
+    Real = Real,
+    BLASNumber = BLASNumber,
+    Number = Number,
+    Primitive = Primitive,
+}

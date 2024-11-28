@@ -182,14 +182,13 @@ testenv "Collections" do
 	end
 
 	testset "Full Example" do
-		local struct C(concept.Base) {
-			x: concept.Float
-			n: concept.Integral
-			a: concept.RawString
-		}
-		C.traits.super_important = concept.traittag
-		C.metamethods.__apply = concept.methodtag
-		C.methods.scale = {&C, concept.Float} -> {}
+		local C = concept.newconcept("C")
+		C:addentry("x", concept.Float)
+		C:addentry("n", concept.Integral)
+		C:addentry("a", concept.RawString)
+		C:addtrait("super_important")
+		C:addmetamethod("__apply")
+		C:addmethod("scale", {&C, concept.Float} -> {})
 		test [concept.isconcept(C)]
 
 		local struct T1(base.AbstractBase) {

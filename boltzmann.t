@@ -17,6 +17,7 @@ local dual = require("dual")
 local range = require("range")
 local gauss = require("gauss")
 local lambda = require("lambdas")
+local tmath = require("mathfuns")
 local thread = setmetatable(
     {C = terralib.includec("pthread.h")},
     {__index = function(self, key)
@@ -28,8 +29,6 @@ terralib.linklibrary("libpthread.so.0")
 
 local gsl = terralib.includec("gsl/gsl_integration.h")
 terralib.linklibrary("libgsl.so")
-
-local dualDouble = dual.DualNumber(double)
 
 local VDIM = 3
 
@@ -233,7 +232,7 @@ local ddVec = dvector.DynamicVector(dualDouble)
 local io = terralib.includec("stdio.h")
 terra main()
     var alloc: DefaultAlloc
-    var n = 3
+    var n = 21
     var qh = hermite(&alloc, n)
     var rule = gauss.productrule(&qh, &qh, &qh)
     var quad = range.zip(&rule.x, &rule.w)

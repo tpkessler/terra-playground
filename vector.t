@@ -108,9 +108,9 @@ local VectorBase = function(V)
 	end
 
 	if concept.Float(T) then
-		-- terra V:norm()
-		-- 	return mathfun.sqrt(mathfun.real(self:dot(self)))
-		-- end
+		terra V:norm()
+			return mathfun.sqrt(mathfun.real(self:dot(self)))
+		end
 	end
 
 	assert(Vector(V), "Incomplete implementation of vector base class")
