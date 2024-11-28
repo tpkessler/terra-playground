@@ -18,7 +18,6 @@ local testlang = {
     entrypoints = {"testenv","testset","test","terracode"};
     keywords = {"skip"};
     scopelevel = 0;
-    tests = terralib.newlist();
     env = {scope0 = terralib.newlist(), scope1 = terralib.newlist(), scope2 = terralib.newlist()};
     terrastmts = {notests = terralib.newlist(), scope0 = terralib.newlist(), scope1 = terralib.newlist(), scope2 = terralib.newlist()};
     expression = function(self,lex)
@@ -40,6 +39,24 @@ local testlang = {
         end
     end;
 }
+
+local ffi = require("ffi")
+
+--place to store all testresults
+local testsresults = terralib.newlist();
+    
+--add results to testsresults table
+local addToTestResults = terralib.cast({bool, rawstring, int}->{}, 
+                            function(testresult, filename, linenumber)
+                                testsresults:insert({filename=ffi.string(filename), linenumber=linenumber, passed=testresult})
+                            end)
+
+table.clear = function(t)
+    local size = #t
+    for i = 1, size do
+        t[i] = nil
+    end
+end
 
 local get_parametric_name, process_env_parameters, collect_terra_stmts, addtoenv
 local test_finalizer, print_single_passed_test, print_single_failed_test, print_test_stats
@@ -101,7 +118,7 @@ function process_testenv(self, lex)
         self.env["scope1"].counter = symbol(int)                  
         self.env["scope1"].passed = symbol(int)                   
         self.env["scope1"].failed = symbol(int)
-        self.tests = terralib.newlist()
+        table.clear(testsresults)
         --enter scope
         self.scopelevel = 1  -- enter testenv, scopelevel 1
         local env = envfun()
@@ -121,14 +138,13 @@ function process_testenv(self, lex)
         local stats = terrastmts() --extract test statistics
         -- process test statistics
         if __silent__ then
-            test_finalizer(parametricname, self.tests)
+            test_finalizer(parametricname, testsresults)
         else
             print_test_stats("\n  "..format.bold.."inline tests"..format.normal, stats)
-            print_failed_tests(self.tests)
+            print_failed_tests(testsresults)
         end
         -- exit scope
         self.scopelevel = 0  -- exit testenv, back to scopelevel 0
-        --self.tests = terralib.newlist()
     end
 end
 
@@ -222,16 +238,11 @@ function process_test(self, lex)
     --return env-function
     return function(envfun)
         local env = envfun()
-        --add results to self.tests table
-        local addToTestResults = terralib.cast({bool}->{}, 
-                                    function(testresult)
-                                        self.tests:insert({filename=testtoken.filename, linenumber=testtoken.linenumber, passed=testresult})
-                                    end)
-        --evaluate the terra test-expression and add results to self.tests table
+        --evaluate the terra test-expression and add results to testsresults table
         local process_test_expr = macro(function(ex)
             return quote
                 var passed = [ex]
-                addToTestResults(passed)
+                addToTestResults(passed, [testtoken.filename.."\0"], [testtoken.linenumber])
             in
                 passed
             end    
@@ -251,7 +262,7 @@ function process_test(self, lex)
             local ex = testexpr(env)
             local passed = terra() : bool
                 var passed = [ex]
-                addToTestResults(passed)
+                addToTestResults(passed, [testtoken.filename], [testtoken.linenumber])
                 return passed
             end
             evaluate_test_results(passed(), testtoken.filename, testtoken.linenumber)
@@ -343,12 +354,12 @@ function test_finalizer(testenvname, tests)
     if ntotal > 0 then
         if failed > 0 then
             local filename = tests[1].filename
-            local testresult = format.bold..format.red..passed.."/"..ntotal.." tests passed"..format.normal
-            print(string.format("%-25s%-50s%-30s", filename, testenvname, testresult))
+            local testresult = string.format(format.bold..format.red.."%-6s %s" .. format.normal, tostring(passed) .. "/" .. tostring(ntotal), "tests passed")
+            print(string.format("%-25s%-70s%-30s", filename, testenvname, testresult))
         else
             local filename = tests[1].filename
-            local testresult = format.bold..format.green..passed.."/"..ntotal.." tests passed"..format.normal
-            print(string.format("%-25s%-50s%-30s", filename, testenvname, testresult))
+            local testresult = string.format(format.bold..format.green.."%-6s %s" .. format.normal, tostring(passed) .. "/" .. tostring(ntotal), "tests passed")
+            print(string.format("%-25s%-70s%-30s", filename, testenvname, testresult))
         end
     end
 end
