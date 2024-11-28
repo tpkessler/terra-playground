@@ -5,12 +5,21 @@
 
 import "terraform"
 
-local C = terralib.includec("./hashmap/hashmap.h")
 local err = require("assert")
 local template = require("template")
 local concept = require("concept")
 local string = terralib.includec("string.h")
-terralib.linklibrary("./libhash.so")
+
+
+local C = terralib.includec("./hashmap/hashmap.h")
+local uname = io.popen("uname", "r"):read("*a")
+if uname == "Darwin\n" then
+    terralib.linklibrary("./libhash.dylib")
+elseif uname == "Linux\n" then
+    terralib.linklibrary("./libhash.so")
+else
+    error("Not implemented for this OS.")
+end
 
 local M = {}
 
