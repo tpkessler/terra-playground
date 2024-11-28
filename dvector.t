@@ -108,6 +108,29 @@ local DynamicVector = terralib.memoize(function(T)
             end
         end)
 
+    local dstack = stack.DynamicStack(T)
+
+    V.metamethods.__cast = function(from, to, exp)
+        if from == dstack and to == V then
+            --only allow rvalues to be cast from a dstack to a dvector
+            --a dynamic stack can reallocate, which makes it unsafe to cast
+            --an lvalue since the lvalue may be modified (reallocate) later
+            if not exp:islvalue() then
+                return quote
+                    var tmp = exp
+                    var v : V
+                    v.data = tmp.data:__move() --we move the resources over
+                    v.size = tmp.size --as size we provide the whole resource
+                    v.inc = 1
+                in
+                    v
+                end
+            end
+        else
+            error("ArgumentError: not able to cast " .. tostring(from) .. " to " tostring(to) .. ".")
+        end
+    end
+
     if concept.BLASNumber(T) then
         terra V:getblasinfo()
             var n = self:size()
