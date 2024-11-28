@@ -33,7 +33,7 @@ format.header = format.bold..format.yellow
 print(format.header)
 print(string.format("%-25s%-70s%-30s", "Filename", "Test-environment", "Test-result"))
 print(format.normal)
-
+    
 --list files to be skipped
 local files_to_skip = dictionary{
     "test1.t",
