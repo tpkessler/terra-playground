@@ -6,6 +6,7 @@
 local alloc = require("alloc")
 local base = require("base")
 local concept = require("concept")
+local stack = require("stack")
 local vecbase = require("vector")
 local veccont = require("vector_contiguous")
 local vecblas = require("vector_blas")
@@ -127,7 +128,7 @@ local DynamicVector = terralib.memoize(function(T)
                 end
             end
         else
-            error("ArgumentError: not able to cast " .. tostring(from) .. " to " tostring(to) .. ".")
+            error("ArgumentError: not able to cast " .. tostring(from) .. " to " .. tostring(to) .. ".")
         end
     end
 
