@@ -70,6 +70,14 @@ function parse_terraform_statement(self,lex)
 	return templ
 end
 
+--dereference n times
+local function dref(t, n)
+	for i = 1, n do
+		t = t.type
+	end
+	return t
+end
+
 function generate_terrafun(templ, localenv)
 	return function(...)
 		local types = terralib.newlist{...}
@@ -87,8 +95,13 @@ function generate_terrafun(templ, localenv)
 			end
 			local sym = symbol(argtype)
 			argumentlist:insert(sym)
-			--add variable and its type to the local environment
+			--add variable to the local environment
 			localenv[param.name] = sym
+			--add parametric type parameter to the local environment
+			if templ.constraints[param.typename] then
+				--we are dealing with a parametric type
+				localenv[param.typename] = dref(argtype, param.nref)
+			end
 		end
 		return terra([argumentlist])
 			[templ.terrastmts(localenv)]

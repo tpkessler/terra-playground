@@ -351,6 +351,52 @@ local newconcept = function(name)
     return C
 end
 
+local serialize = function(tab)
+    tab = terralib.newlist(tab)
+    return table.concat(tab:map(function(T) return tostring(T) end), "_")
+end
+
+local parametrizedconcept = function(name)
+    local obj = {}
+    obj.name = name
+    obj.templates = terralib.newlist()
+    local mt = {}
+    function mt:__newindex(sig, func)
+        sig = terralib.types.istype(sig) and {sig} or sig
+        sig = terralib.newlist(sig)
+        self.templates[sig] = func
+    end
+
+    function obj:dispatch(Cp, ...)
+        local arg = {...}
+        for sig, func in pairs(self.templates) do
+            local is_specialized = fun.all(
+                function(C, T)
+                    return is_specialized_over(T, C)
+                end,
+                fun.zip(sig, arg)
+            )
+            if #sig <= #arg and is_specialized then
+                func(Cp, unpack(arg))
+            end
+        end
+    end
+
+    function mt:__call(...)
+        local arg = terralib.newlist({...})
+        local argstr = table.concat(
+            arg:map(function(T) return tostring(T) end),
+            ","
+        )
+        local name = self.name .. "(" .. argstr .. ")"
+        local Cp = newconcept(name)
+        self:dispatch(Cp, unpack(arg))
+        return Cp
+    end
+
+    return setmetatable(obj, mt)
+end
+
 local struct Vararg {}
 Base(Vararg, function(self, ...) return true end)
 
@@ -425,6 +471,52 @@ DStack:inherit(Stack)
 DStack.methods.push = {&DStack, Any} -> {}
 DStack.methods.pop = {&DStack} -> Any
 DStack.methods.capacity = {&DStack} -> Integral
+-- local Stack = parametrizedconcept("Stack")
+-- Stack[Any] = function(C, T)
+--     print("Setting Stack for", C, "with", T)
+--     C.metamethods.__apply = methodtag
+--     C.methods.length = {&C} -> int64
+--     C.methods.set = {&C, int64, T} -> {}
+--     C.methods.get = {&C, int64} -> T
+-- end
+
+--[=[
+<template T>
+concept Vector(T) {
+    set,
+    get,
+}
+
+<template Real T>
+concept Vector(T) {
+    axpy,
+    norm
+}
+--]=]
+
+-- local Vec = parametrizedconcept("Vector")
+-- Vec[Any] = function(C, T)
+--     local S = Stack(T)
+--     C:inherit(S)
+--     print("Setting copy and swap of type", C, "with", T)
+--     C.methods.copy = {&C, &C} -> {}
+--     C.methods.swap = {&C, &C} -> {}
+-- end
+
+-- Vec[Real] = function(C, T)
+--     print("Init axpy for Real")
+--     C.methods.axpy = {&C, T, &C} -> {}
+-- end
+
+-- Vec[Integral] = function(C, T)
+--     print("Special integer function")
+--     C.methods.sum = {&C} -> {}
+-- end
+
+-- local VecFoo = Vec(I.UInteger)
+-- for k, v in pairs(VecFoo.methods) do
+--     print(k, v.type)
+-- end
 
 return {
     Base = Base,

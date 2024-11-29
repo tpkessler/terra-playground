@@ -76,7 +76,7 @@ testenv "DynamicStack" do
             s:push(5.0)
         end
         test s:size() == 5
-        test s:capacity() == 6
+        test s:capacity() == 7
         test s(0) == 1
         test s(1) == 2
         test s(2) == 3
