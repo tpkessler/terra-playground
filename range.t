@@ -81,10 +81,9 @@ local RangeBase = function(Range, iterator_t)
     end)
 
     --__for is generated for iterators
-    Range.metamethods.__for = function(range,body)
+    Range.metamethods.__for = function(self, body)
         return quote
-            --var range = &self
-            var iter = range:getiterator()
+            var iter = self:getiterator()
             while iter:isvalid() do             --while not at the end
                 var value = iter:getvalue()     --get value
                 [body(byvalue(value))]          --run body of loop
