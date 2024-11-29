@@ -19,16 +19,16 @@ local float256 = nfloat.FixedFloat(256)
 for _, T in ipairs{int, double, float256} do
 
     local stack = stack.DynamicStack(T)
-    local unitrange = rn.Unitrange(T)
-    local steprange = rn.Steprange(T)
 
     testenv(T) "containers" do
+
+        local unitrange = rn.Unitrange(T)
+        local steprange = rn.Steprange(T)
 
         terracode
             var alloc : DefaultAllocator
             var s = stack.new(&alloc, 10)
             var t = stack.new(&alloc, 10)
-
         end
 
         local smrtptr = alloc.SmartBlock(T)
@@ -66,6 +66,9 @@ for _, T in ipairs{int, double, float256} do
 
     testenv(T) "linear ranges - not including last element" do
 
+        local unitrange = rn.Unitrange(T)
+        local steprange = rn.Steprange(T)
+
         terracode
             var alloc : DefaultAllocator
             var s = stack.new(&alloc, 10)
@@ -74,8 +77,16 @@ for _, T in ipairs{int, double, float256} do
         testset "unitrange" do
             terracode
                 var r = unitrange.new(1, 4)
+                r:pushall(&s)
             end
-
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==2
+            test s:get(2)==3
+            test r.b==4
+            test r(0)==1
+            test r(1)==2
+            test r(2)==3
         end
 
         testset "steprange - step=2, %0" do
@@ -83,7 +94,7 @@ for _, T in ipairs{int, double, float256} do
                 var r = steprange.new(1, 7, 2)
                 r:pushall(&s)
             end
-            --test s:size()==3
+            test s:size()==3
             test s:get(0)==1
             test s:get(1)==3
             test s:get(2)==5
@@ -108,7 +119,6 @@ for _, T in ipairs{int, double, float256} do
             test r(2)==5
         end
 
-
         testset "steprange - backward step=1" do
             terracode
                 var r = steprange.new(1, -2, -1)
@@ -123,7 +133,6 @@ for _, T in ipairs{int, double, float256} do
             test r(1)==0
             test r(2)==-1
         end
-
 
         testset "steprange - backward step=2, %0" do
             terracode
@@ -158,6 +167,9 @@ for _, T in ipairs{int, double, float256} do
     end
 
     testenv(T) "linear ranges - including last element" do
+
+        local unitrange = rn.Unitrange(T)
+        local steprange = rn.Steprange(T)
 
         terracode
             var alloc : DefaultAllocator
@@ -252,6 +264,46 @@ for _, T in ipairs{int, double, float256} do
             test r(0)==1
             test r(1)==-1
             test r(2)==-3
+        end
+
+    end
+
+    testenv(T) "linear ranges - infinite ranges" do
+
+        local unitrange = rn.Unitrange(T, "infinite")
+        local steprange = rn.Steprange(T, "infinite")
+        
+        terracode
+            var alloc : DefaultAllocator
+            var s = stack.new(&alloc, 10)
+        end
+
+        testset "unitrange" do
+            terracode
+                var r = unitrange.new(1)
+                (r >> rn.take(3)):pushall(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==2
+            test s:get(2)==3
+            test r(0)==1
+            test r(1)==2
+            test r(2)==3
+        end
+
+        testset "steprange - step=2, %0" do
+            terracode
+                var r = steprange.new(1, 2)
+                (r >> rn.take(3)):pushall(&s)
+            end
+            test s:size()==3
+            test s:get(0)==1
+            test s:get(1)==3
+            test s:get(2)==5
+            test r(0)==1
+            test r(1)==3
+            test r(2)==5
         end
 
     end

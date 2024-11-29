@@ -133,7 +133,8 @@ terraform truncate(v : T) where {T : concept.NFloat}
     return [size_t](v:truncatetodouble())
 end
 
-local Unitrange = terralib.memoize(function(T)
+
+local unitrange = terralib.memoize(function(T)
 
     local struct range{
         a : T
@@ -190,7 +191,7 @@ local Unitrange = terralib.memoize(function(T)
     return range
 end)
 
-local Steprange = terralib.memoize(function(T)
+local steprange = terralib.memoize(function(T)
 
     local struct range{
         a : T
@@ -247,6 +248,117 @@ local Steprange = terralib.memoize(function(T)
     RangeBase(range, iterator)
 
     return range
+end)
+
+local infunitrange = terralib.memoize(function(T)
+
+    local struct range{
+        a : T
+    }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(range)
+
+    range.staticmethods.new = terra(a : T)
+        return range{a}
+    end
+
+    range.metamethods.__apply = terra(self : &range, i : size_t)
+        return self.a + i
+    end
+
+    local struct iterator{
+        parent : &range
+        state : T
+    }
+
+    terra iterator:next()
+        self.state = self.state + 1
+    end
+
+    terra iterator:getvalue()
+        return self.state
+    end
+
+    terra iterator:isvalid()
+        return true
+    end
+
+    terra range:getiterator()
+        return iterator{self, self.a}
+    end
+
+    --add metamethods
+    RangeBase(range, iterator)
+
+    return range
+end)
+
+local infsteprange = terralib.memoize(function(T)
+
+    local struct range{
+        a : T
+        step : T
+    }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(range)
+
+    range.staticmethods.new = terra(a : T, step : T)
+        return range{a, step}
+    end
+    
+    range.metamethods.__apply = terra(self : &range, i : size_t)
+        return self.a + i * self.step
+    end
+
+    local struct iterator{
+        parent : &range
+        state : T
+    }
+
+    terra iterator:next()
+        self.state = self.state + self.parent.step
+    end
+
+    terra iterator:getvalue()
+        return self.state
+    end
+
+    terra iterator:isvalid()
+        return true
+    end
+
+    terra range:getiterator()
+        return iterator{self, self.a}
+    end
+
+    --add metamethods
+    RangeBase(range, iterator)
+
+    return range
+end)
+
+local Unitrange = terralib.memoize(function(T, sentinal)
+    local sentinal = sentinal or "bounded"
+    if sentinal == "bounded" then
+        return unitrange(T)
+    elseif sentinal == "infinite" then
+        return infunitrange(T)
+    else
+        error("ArgumentError: second (optional) argument should be 'bounded' or 'infinite'.")
+    end
+end)
+
+local Steprange = terralib.memoize(function(T, sentinal)
+    local sentinal = sentinal or "bounded"
+    if sentinal == "bounded" then
+        return steprange(T)
+    elseif sentinal == "infinite" then
+        return infsteprange(T)
+    else
+        error("ArgumentError: second (optional) argument should be 'bounded' or 'infinite'.")
+    end
 end)
 
 local TransformedRange = function(Range, Function)
