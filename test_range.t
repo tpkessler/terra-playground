@@ -435,7 +435,9 @@ testenv "range combiners" do
 
     testset "join - 2" do
         terracode
-            var range = rn.join(unitrange{1, 3}, unitrange{3, 5})
+            var r = unitrange.new(3, 5)
+            r:pushall(&j)
+            var range = rn.join(unitrange{1, 3}, &j)
             for v in range do
                 s:push(v)
             end
@@ -448,7 +450,9 @@ testenv "range combiners" do
 
     testset "join - 3" do
         terracode
-            var range = rn.join(unitrange{1, 3}, unitrange{3, 5}, unitrange{5, 7})
+            var r = unitrange.new(3, 5)
+            r:pushall(&j)
+            var range = rn.join(unitrange{1, 3}, &j, unitrange{5, 7})
             for v in range do
                 s:push(v)
             end

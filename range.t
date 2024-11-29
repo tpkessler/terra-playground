@@ -706,10 +706,12 @@ local JoinRange = function(Ranges)
 
     --get value, range and iterator types
     local T = gettype(Ranges[1]).value_t
-    local iterator_t = gettype(Ranges[1]).iterator_t
+    local state_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        assert(gettype(rn).value_t == T and gettype(rn).iterator_t == iterator_t) --make sure the value type is uniform
+        assert(gettype(rn).value_t == T, "ArgumentError: the value type should be uniform.") --make sure the value type is uniform
+        state_t:insert(gettype(rn).iterator_t)
     end
+    local iterator_t = tuple(unpack(state_t))
 
     local struct iterator{
         range : &joiner
@@ -718,34 +720,62 @@ local JoinRange = function(Ranges)
     }
     
     terra joiner:getiterator()
-        return iterator{self, self._0:getiterator(), 0}
+        var iter : iterator
+        iter.range = self
+        escape
+            for k=0,D-1 do
+                local s = "_"..tostring(k)
+                emit quote
+                    iter.state.[s] = self.[s]:getiterator()
+                end
+            end
+        end
+        iter.index = 0
+        return iter
     end
 
     terra iterator:getvalue()
-        return self.state:getvalue()
-    end
-
-    terra iterator:next()
-        self.state:next()
-        if self.state:isvalid()==false and self.index < D-1 then
-            --jump to next iterator
-            self.index = self.index + 1
-            escape
-                for k=1,D-1 do
-                    local s = "_"..tostring(k)
-                    emit quote
-                        if self.index==[k] then
-                            self.state = self.range.[s]:getiterator()
-                        end
+        escape
+            for k = 0, D-1 do
+                local s = "_" .. tostring(k)
+                emit quote
+                    if self.index == [k] then
+                        return self.state.[s]:getvalue()
                     end
                 end
             end
-            
+        end
+    end
+
+    terra iterator:next()
+        escape
+            for k = 0, D-1 do
+                local s = "_" .. tostring(k)
+                emit quote
+                    if self.index == [k] then
+                        --advance iterator k
+                        self.state.[s]:next()
+                    end
+                end
+            end
         end
     end
 
     terra iterator:isvalid()
-        return self.state:isvalid()
+        escape
+            for k = 0, D-1 do
+                local s = "_" .. tostring(k)
+                emit quote
+                    if self.index == [k] then
+                        if not self.state.[s]:isvalid() then
+                            --jump to next iterator
+                            self.index = self.index + 1
+                        end
+                    end
+                end
+            end
+        end
+        return self.index ~= D
     end
 
     --add metamethods
