@@ -15,18 +15,6 @@ local err = require("assert")
 
 local size_t = uint64
 
---collect requires a stacker interface or a setter interface
---stacker interface
-local struct Stacker(concept.Base) {}
-Stacker.methods.push = {&Stacker, concept.Any} -> {}
---setter interface
-local struct Setter(concept.Base) {}
-Setter.methods.set = {&Setter, concept.Integral, concept.Any} -> {}
---arraylike implements both the setter and the stacker interface
-local struct Sequence(concept.Base) {}
-Sequence:inherit(Stacker)
-Sequence:inherit(Setter)
-
 --get the terra-type of a pointer or type
 local gettype = function(t)
     assert(terralib.types.istype(t) and "Not a terra type")
@@ -93,9 +81,9 @@ local RangeBase = function(Range, iterator_t)
     end)
 
     --__for is generated for iterators
-    Range.metamethods.__for = function(self,body)
+    Range.metamethods.__for = function(range,body)
         return quote
-            var range = self
+            --var range = &self
             var iter = range:getiterator()
             while iter:isvalid() do             --while not at the end
                 var value = iter:getvalue()     --get value
@@ -105,24 +93,18 @@ local RangeBase = function(Range, iterator_t)
         end
     end
     
-    --containers that only implement the stacker interface are using 'push'.
-    terraform Range:collect(container : &S) where {S : Stacker}
-        for v in self do
-            container:push(v)
-        end
-    end
     --containers that only implement the setter interface are using 'set'. Sufficient
     --space needs to be allocated before
-    terraform Range:collect(container : &S) where {S : Setter}
+    terraform Range:collect(container : &S) where {S : concept.Stack}
         var i = 0
         for v in self do
             container:set(i, v)
             i = i + 1
         end
     end
-    --containers implementing the stacker and setter interface will only use
-    --the stacker interface
-    terraform Range:collect(container : &S) where {S : Sequence}
+
+    --dynamic stacks have a push
+    terraform Range:pushall(container : &S) where {S : concept.DStack}
         for v in self do
             container:push(v)
         end
