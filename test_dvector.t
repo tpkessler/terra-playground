@@ -9,6 +9,7 @@ local Alloc = require('alloc')
 local Complex = require('complex')
 local Nfloat = require("nfloat")
 local DVector = require('dvector')
+local stack = require("stack")
 
 local Allocator = Alloc.Allocator
 local DefaultAllocator =  Alloc.DefaultAllocator()
@@ -108,6 +109,21 @@ for _, S in pairs({int, uint, int64, uint64, float, double, float128, float1024}
             test v:get(0) == 3
             test v:get(1) == 2
             test v:get(2) == 1
+        end
+
+        local dstack = stack.DynamicStack(T)
+
+        testset "__move from a dstack" do
+            terracode
+                var s = dstack.new(&alloc, 3)
+                s:push(1.0)
+                s:push(2.0)
+                var v : dvector = s:__move()
+            end
+            test s.data:isempty()
+            test v.data:owns_resource()
+            test v:size() == 2
+            test v(0) == 1.0 and v(1) == 2.0
         end
 
         testset "iterator" do

@@ -79,6 +79,8 @@ local function Base(block, T)
         to.alloc.tab = nil
     end
 
+    terralib.ext.addmissing.__move(block)
+
     --exact clone of the block
     block.methods.clone = terra(self : &block)
         return block{self.ptr, self.nbytes, self.alloc}
@@ -250,7 +252,11 @@ local SmartBlock = terralib.memoize(function(T)
         end
         
         block.iterator = iterator
-        range.Base(block, iterator, T)
+        range.Base(block, iterator)
+
+        terra block:reallocate(size : size_t)
+            self.alloc:__allocators_best_friend(self, sizeof(T), size)
+        end
 
         --declaring __dtor for use in implementation below
         terra block.methods.__dtor :: {&block} -> {}

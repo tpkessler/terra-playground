@@ -415,6 +415,17 @@ for _, C in pairs({I.Integer, I.UInteger, Bool, Float}) do
 	append_friends(Primitive, C)
 end
 
+local struct Stack(Base){}
+Stack.methods.get = {&Stack, Number} -> {}
+Stack.methods.set = {&Stack, Number, Any} -> {}
+Stack.methods.size = {&Stack} -> Number
+
+local struct DStack(Base){}
+DStack:inherit(Stack)
+DStack.methods.push = {&DStack, Any} -> {}
+DStack.methods.pop = {&DStack} -> Any
+DStack.methods.capacity = {&DStack} -> Integral
+
 return {
     Base = Base,
     isconcept = isconcept,
@@ -444,4 +455,6 @@ return {
     BLASNumber = BLASNumber,
     Number = Number,
     Primitive = Primitive,
+    Stack = Stack,
+    DStack = DStack
 }

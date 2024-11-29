@@ -10,7 +10,7 @@ local concept = require("concept")
 local mathfun = require("mathfuns")
 
 local Number = concept.Number
-local Stack = stack.Stack
+local Stack = concept.Stack
 local struct Vector(concept.Base) {}
 Vector:inherit(Stack)
 Vector.methods.fill = {&Vector, Number} -> {}
