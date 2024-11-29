@@ -90,19 +90,12 @@ local DynamicStack = terralib.memoize(function(T)
 
     terra stack:push(v : T)
         --we don't allow pushing when 'data' is empty
-        err.assert(self.data:isempty()==false)
-        --push if there is capacity
-        if self:size() < self:capacity() then
-            self.size = self.size + 1
-            self:set(self.size-1, v)
-        else
-            --reallocate if there is no more capacity
-            --copy of data is automatically performed
-            self.data:reallocate(self:capacity() * 2)
-            --push value
-            self.size = self.size + 1
-            self:set(self.size-1, v)
+        err.assert(self.data:isempty() == false)
+        if self:size() == self:capacity() then
+            self.data:reallocate(1 + 2 * self:capacity())
         end
+        self.size = self.size + 1
+        self:set(self.size - 1, v)
     end
 
     terra stack:pop()

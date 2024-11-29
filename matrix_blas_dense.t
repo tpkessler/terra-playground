@@ -35,8 +35,8 @@ local function BLASDenseMatrixBase(M)
             where {T1 : BLASNumber, V1 : BLASVector, T2 : BLASNumber, V2 : BLASVector}
         escape
             local T = M.eltype
-            assert(T == x.type.type.eltype)
-            assert(T == y.type.type.eltype)
+            assert(T == V1.eltype)
+            assert(T == V2.eltype)
         end
         var nx, xptr, incx = x:getblasinfo()
         var ny, yptr, incy = y:getblasinfo()
@@ -61,8 +61,8 @@ local function BLASDenseMatrixBase(M)
             where {S1 : BLASNumber, S2 : BLASNumber, M1 : BLASDenseMatrix, M2 : BLASDenseMatrix}
         escape
             local T = M.eltype
-            assert(T == a.type.type.eltype)
-            assert(T == b.type.type.eltype)
+            assert(T == M1.eltype)
+            assert(T == M2.eltype)
         end
         var nc, mc, ptrc, ldc = self:getblasdenseinfo()
         var na, ma, ptra, lda = a:getblasdenseinfo()

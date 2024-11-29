@@ -16,6 +16,7 @@ local Integer = concept.Integer
 local Float = concept.Float
 local size_t = uint64
 
+
 testenv "terraforming free functions" do
 
     testset "concrete types" do
@@ -233,7 +234,7 @@ testenv "terraforming free functions" do
     testset "Access to parametric types in escape" do
         terraform foo(a : T1, b : T2) where {T1 : Float, T2 : Float}
             escape
-                assert(a.type == double and b.type==float)
+                assert(T1 == double and T2 == float)
             end
             return a * b + 1
         end

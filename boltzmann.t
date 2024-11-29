@@ -18,6 +18,7 @@ local range = require("range")
 local gauss = require("gauss")
 local lambda = require("lambdas")
 local tmath = require("mathfuns")
+local stack = require("stack")
 local thread = setmetatable(
     {C = terralib.includec("pthread.h")},
     {__index = function(self, key)
@@ -191,6 +192,48 @@ terraform local_maxwellian(basis, coeff: &V, quad)
     return rho, u, theta
 end
 
+local RecDiff = concept.newconcept("RecDiff")
+RecDiff.traits.depth = concept.traittag
+RecDiff.traits.eltype = concept.traittag
+local Stack = stack.Stack
+RecDiff.methods.getcoeff = {&RecDiff, concept.Integral, &Stack} -> {}
+
+local Integer = concept.Integer
+local olver
+terraform olver(alloc, rec: &R, y0: &S, nmax: I, mom: &V)
+    where {R: RecDiff, S: Stack, I: Integer, V: Vector}
+    var y = [svector.StaticVector(R.traits.eltype, R.traits.depth + 1)].zeros()
+    var sys = [dmatrix.DynamicMatrix(R.traits.eltype)].zeros(alloc, nmax, nmax)
+    for n = 0, nmax do
+        rec:getcoeff(n, &y)
+    end
+end
+
+local ExpMom = function(T)
+    local struct impl(base.AbstractBase) {
+        a: T
+    }
+    function impl.metamethods.__tostring(self)
+        return ("ExpMom(%s)"):format(tostring(T))
+    end
+    base.AbstractBase(impl)
+    impl.traits.depth = 5
+    impl.traits.eltype = T
+    terraform impl:getcoeff(n: I, y: &S) where {I: concept.Integral, S: Stack}
+        var a = self.a
+        y:set(0, a * (n - 1))
+        y:set(1, 2 * a * (n - 1))
+        y:set(2, -2 * (a + n * n - 1))
+        y:set(3, -2 * a * (n + 1))
+        y:set(4, -a * (n + 1))
+        y:set(5, 2 * (tmath.exp(-4 * a) + terralib.select(n % 2 == 0, 1, -1)))
+    end
+    impl.staticmethods.new = terra(a: T)
+        return impl {a}
+    end
+    return impl
+end
+
 local terra outflow(
     num_threads: int64,
     -- Dimension of test space and the result arrays
@@ -230,9 +273,10 @@ local DefaultAlloc = alloc.DefaultAllocator()
 local dualDouble = dual.DualNumber(double)
 local ddVec = dvector.DynamicVector(dualDouble)
 local io = terralib.includec("stdio.h")
+local ExpMomDual = ExpMom(dualDouble)
 terra main()
     var alloc: DefaultAlloc
-    var n = 21
+    var n = 5
     var qh = hermite(&alloc, n)
     var rule = gauss.productrule(&qh, &qh, &qh)
     var quad = range.zip(&rule.x, &rule.w)
@@ -253,6 +297,11 @@ terra main()
         io.printf("u(%d) %g %g\n", i, u(i).val, u(i).tng)
     end
     io.printf("theta %g %g\n", theta.val, theta.tng)
+    var rec = ExpMomDual.new(dualDouble {0.1, -0.3})
+    var nmom = 5
+    var mom = ddVec.new(&alloc, nmom)
+    var mom0 = ddVec.from(&alloc, 2.0, -0.313)
+    olver(&alloc, &rec, &mom0, 10, &mom)
     return 0
 end
 main()
