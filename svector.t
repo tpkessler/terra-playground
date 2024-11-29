@@ -42,6 +42,10 @@ local StaticVector = terralib.memoize(function(T, N)
     local V = create_static_vector(T, N)
     V.eltype = T
 
+    terra V:getdataptr() : &T
+        return &self.data[0]
+    end
+
     terra V:size(): uint64
         return N
     end

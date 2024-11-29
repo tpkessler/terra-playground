@@ -85,6 +85,7 @@ local terra hermite_xinit_sin(r : double, nu : double, a : double)
 end
 
 local unitrange = range.Unitrange(int)
+local steprange = range.Steprange(int)
 local unitrange_d = range.Unitrange(double)
 
 local terra hermite_initialguess(alloc : Allocator, n : size_t)
@@ -121,14 +122,18 @@ local terra hermite_initialguess(alloc : Allocator, n : size_t)
 
     --combine 10 first precomputed values and thereafter approximations
     -- of the airy roots
-    var airyrts = range.join(
+    if m < 9 then
+        var airyrts = svec8d{airy_roots_8} >> range.take(m) >> range.transform(hermite_xinit, {nu=nu, a=a})
+    else
+        var airyrts = range.join(
                     svec8d{airy_roots_8},
                     unitrange.new(9, m+1) >> range.transform([terra(i : int) return -airyroots(3*tmath.pi / 8. * (4*i - 1.)) end])
                 )
+        var xinitrange = airyrts >> range.transform(hermite_xinit, {nu=nu, a=a})
+        xinitrange:pushall(&x_init_airy)
+    end
 
-    --compute the initial guesses for the quadrature points
-    var xinitrange = airyrts >> range.transform(hermite_xinit, {nu=nu, a=a})
-    xinitrange:pushall(&x_init_airy)
+    io.printf("x_init_airy\n")
     for x in x_init_airy do
         io.printf("x = %0.3f\n", x)
     end
@@ -137,27 +142,24 @@ local terra hermite_initialguess(alloc : Allocator, n : size_t)
     --These initial guesses are good near x = 0 . Note: zeros of besselj(+/-.5,x)
     --are integer and half-integer multiples of π.
     --x_init_bess =  bess/sqrt(nu).*sqrt((1+ (bess.^2+2*(a^2-1))/3/nu^2) );
-    var tricrts = unitrange.new(1, m+1) >> range.transform(tricomiroots, {m=m, nu = nu})
+    var tricrts = steprange.new(m+1, 0, -1) >> range.transform(tricomiroots, {m=m, nu = nu})
     var x_init_sin = tricrts >> range.transform(hermite_xinit_sin, {nu=nu,a=a})
 
+    io.printf("\nx_init_sin\n")
+    for x in x_init_sin do
+        io.printf("x = %0.3f\n", x)
+    end
+
     --patch together
-    var p = [int](tmath.floor([0.4985 + double:eps()] * n))
+    var p = [int](tmath.floor(0.5 * m))
     --move resources into a dynamic vector
     var x : dvec = x_init_airy:__move()
-    if isodd(n) then
-        var xinit = range.join(
-            unitrange_d.new(0.0, 1.0),
-            x_init_sin >> range.take(p),
-            x >> range.drop(p)
-        )
-        xinit:collect(&x)
-    else
-        var xinit = range.join(
-            x_init_sin >> range.take(p),
-            x >> range.drop(p)
-        )
-        xinit:collect(&x)
-    end
+    var xinit = range.join(
+        x >> range.take(p),
+        x_init_sin >> range.drop(p)
+
+    )
+    xinit:collect(&x)
     return x
 end
 
@@ -250,9 +252,6 @@ terra main()
 
     var alloc : DefaultAllocator
     var x, w = hermite_rec(&alloc, 25)
-    for xx in x do
-        io.printf("x = %0.3f\n", xx)
-    end
     --Newton's method with three-term recurrence
 
 end
