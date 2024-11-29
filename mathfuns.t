@@ -12,6 +12,9 @@ local C = terralib.includecstring[[
 --constants
 math.pi = constant(3.14159265358979323846264338327950288419716939937510)
 
+function float:eps() return 0x1p-23 end
+function double:eps() return 0x1p-52 end
+
 local funs_single_var = {
     sin = "sin",
     cos = "cos",
