@@ -129,6 +129,9 @@ local terra hermite_initialguess(alloc : Allocator, n : size_t)
     --compute the initial guesses for the quadrature points
     var xinitrange = airyrts >> range.transform(hermite_xinit, {nu=nu, a=a})
     xinitrange:pushall(&x_init_airy)
+    for x in x_init_airy do
+        io.printf("x = %0.3f\n", x)
+    end
 
     --Tricomi initial guesses. Equation (2.1) in [1]. Originally in [2].
     --These initial guesses are good near x = 0 . Note: zeros of besselj(+/-.5,x)
