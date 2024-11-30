@@ -1067,6 +1067,50 @@ local ProductRange = function(Ranges, options)
     return product
 end
 
+
+local FoldLeft = function(Range, Function)
+    
+    --checking function input and outpiut arguments
+    assert(Function.returntype, "ArgumentError: return type information is not available")
+    assert(#Function.parameters == 2, "ArgumentError: not a binary function.")
+
+    --pass by reference
+    local passbyvalue = true
+    if Function.returntype.convertible == "tuple" then
+        assert(#Function.returntype.entries == 0)
+        passbyvalue = false
+    end
+
+    --scalar datatype
+    local T1 = Function.parameters[1]
+    local T2 = Function.parameters[2]
+
+    local struct foldl{
+        range : Range
+        f : Function
+    }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(foldl)
+
+    if passbyvalue then -- pass-by-value
+        foldl.methods.accumulatefrom = terra(self : &foldl, save : T1)
+            for v in self.range do
+                save = self.f(save, v)
+            end
+            return save
+        end
+    else -- pass-by-reference - T isa pointer
+        foldl.methods.accumulatefrom = terra(self : &foldl, save : T1)
+            for v in self.range do
+                self.f(save, v)
+            end
+        end
+    end
+
+    return foldl
+end
+
 --generate user api macro's for adapters
 local transform = adapter_lambda_factory(TransformedRange)
 local filter = adapter_lambda_factory(FilteredRange)
@@ -1079,6 +1123,8 @@ local enumerate = combiner_factory(Enumerator)
 local join = combiner_factory(JoinRange)
 local product = combiner_factory(ProductRange)
 local zip = combiner_factory(ZipRange)
+--accumulators
+local foldl = adapter_lambda_factory(FoldLeft)
 
 --define reduction as a transform
 local binaryoperation = {
@@ -1104,14 +1150,6 @@ local reduce = macro(function(binaryop)
     end
     return `transform(tuplereduce)
 end)
-
-local printtable = function(tab)
-    for k,v in pairs(tab) do
-        print(k)
-        print(v)
-        print()
-    end
-end
 
 local reverse = macro(function() 
     --reduction vararg template function
@@ -1165,5 +1203,6 @@ return {
     join = join,
     product = product,
     zip = zip,
+    foldl = foldl,
     develop = develop
 }

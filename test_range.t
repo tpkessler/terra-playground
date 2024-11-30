@@ -392,6 +392,66 @@ testenv "range adapters" do
     end
 end
 
+testenv "range accumulators" do
+
+    terracode
+        var alloc : DefaultAllocator
+        var s = stack.new(&alloc, 10)
+    end
+
+    local f = terra(a : int, b : int)
+        return a + b
+    end
+
+    testset "foldl - lvalue" do
+        terracode
+            var r = unitrange.new(1,4) >> rn.foldl(f)
+            var v = r:accumulatefrom(4)
+        end
+        test v == 4 + 1+2+3
+    end
+
+    testset "foldl - rvalue" do
+        terracode
+            var v = (unitrange.new(1,4) >> rn.foldl(f)):accumulatefrom(4)
+        end
+        test v == 4 + 1+2+3
+    end
+    
+    local g = terra(a : int, b : int, c : int)
+        return a + b + c
+    end
+
+    testset "foldl - lvalue with capture" do
+        terracode
+            var r = unitrange.new(1,4) >> rn.foldl(g, {c = 1})
+            var v = r:accumulatefrom(4)
+        end
+        test v == 4 + 1+2+3 + 3
+    end
+
+    testset "foldl - rvalue with capture" do
+        terracode
+            var v = (unitrange.new(1,4) >> rn.foldl(g, {c = 1})):accumulatefrom(4)
+        end
+        test v == 4 + 1+2+3 + 3
+    end
+
+    local h = terra(save : &int, b : int)
+        @save = @save + b 
+    end
+
+    testset "foldl - by reference" do
+        terracode
+            var r = unitrange.new(1,4) >> rn.foldl(h)
+            var x = 4
+            r:accumulatefrom(&x)
+        end
+        test x == 4 + 1+2+3
+    end
+
+end
+
 testenv "range composition" do
 
     terracode
