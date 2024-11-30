@@ -25,6 +25,13 @@ local makelambda = function(fun, lambdaobj)
         local args = terralib.newlist{...}
         return `fun([args], unpackstruct(self))
     end))
+    --add returntype and parameter info if available
+    local funtype = fun:gettype()
+    if funtype:ispointertofunction() then
+        lambdatype.returntype = funtype.type.returntype
+        local nargs = #funtype.type.parameters - #lambdatype.entries
+        lambdatype.parameters = funtype.type.parameters:filteri(function(i,v) return i <= nargs end)
+    end
     return lambdaobj
 end
 
