@@ -81,7 +81,7 @@ local DualNumber = terralib.memoize(function(T)
         terra fun.erf(x: dual)
             var y = x.val
             var erfval = mathfun.erf(y)
-            var expval = mathfun.sqrt(2 / mathfun.pi) * mathfun.exp(-y * y)
+            var expval = 2 / mathfun.sqrt(mathfun.pi) * mathfun.exp(-y * y)
             return dual {erfval, expval * x.tng}
         end
 

@@ -9,7 +9,7 @@ local dual = require("dual")
 local lambda = require("lambda")
 local tmath = require("mathfuns")
 
-for T, tol in pairs({[float] = 1e-6, [double] = 1e-14}) do
+for T, tol in pairs({[float] = `1e-6f, [double] = `1e-14}) do
     testenv(T) "Dual Number" do
         local Td = dual.DualNumber(T)
         testset "Init" do
@@ -126,6 +126,23 @@ for T, tol in pairs({[float] = 1e-6, [double] = 1e-14}) do
                 var y = f(x)
                 var val: T = 1.1338934190276815
                 var tng: T = 0.0629940788348712
+            end
+            test tmath.isapprox(y.val, val, tol)
+            test tmath.isapprox(y.tng, tng, tol)
+        end
+
+        testset "Mixed expression" do
+            terracode
+                var f = lambda.new([
+                    terra(x: Td)
+                        var arg = 2 * tmath.sqrt(x)
+                        return tmath.sqrt(tmath.pi) * tmath.erf(arg) / arg
+                    end
+                ])
+                var x = Td {0.1, 1}
+                var y = f(x)
+                var val: T = 1.7625080698798488
+                var tng: T = -2.1093398890428485
             end
             test tmath.isapprox(y.val, val, tol)
             test tmath.isapprox(y.tng, tng, tol)
