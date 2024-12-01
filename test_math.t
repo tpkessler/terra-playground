@@ -51,23 +51,23 @@ end
 testenv "Correctness of selected math functions" do
     --test if result is correct
     testset "sqrt" do
-        test math.isapprox(math.sqrt([float](4)), 2.0, 1e-15) 
+        test math.isapprox(math.sqrt([float](4)), 2.0f, 1e-7f) 
         test math.isapprox(math.sqrt([double](4)), 2.0, 1e-15) 
     end
 
     testset "log" do
-        test math.isapprox(math.log([float](1)), 0, 1e-15) 
+        test math.isapprox(math.log([float](1)), 0, 1e-7f) 
         test math.isapprox(math.log([double](1)), 0, 1e-15) 
     end
 
     testset "sin" do
-        test math.isapprox(math.sin([float](math.pi)), 0, 1e-15) 
+        test math.isapprox(math.sin([float](math.pi)), 0, 1e-7f) 
         test math.isapprox(math.sin([double](math.pi)), 0, 1e-15) 
     end
 
     testset "cos" do
-        test math.isapprox(math.cos([float](math.pi)), 1, 1e-15) 
-        test math.isapprox(math.cos([double](math.pi)), 1, 1e-15) 
+        test math.isapprox(math.cos([float](math.pi)), -1, 1e-7f) 
+        test math.isapprox(math.cos([double](math.pi)), -1, 1e-15) 
     end
 
 end
