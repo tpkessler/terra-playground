@@ -69,13 +69,20 @@ local DualNumber = terralib.memoize(function(T)
 
     concept.Number.friends[dual] = true
 
-    if concept.Real(T) then
-        concept.Real.friends[dual] = true
+    if concept.Number(T) then
+        concept.Number:addfriend(dual)
         local fun = {}
 
         terra fun.exp(x: dual)
             var expval = mathfun.exp(x.val)
             return dual {expval, expval * x.tng}
+        end
+
+        terra fun.erf(x: dual)
+            var y = x.val
+            var erfval = mathfun.erf(y)
+            var expval = mathfun.sqrt(2 / mathfun.pi) * mathfun.exp(-y * y)
+            return dual {erfval, expval * x.tng}
         end
 
         terra fun.sin(x: dual)
@@ -90,9 +97,27 @@ local DualNumber = terralib.memoize(function(T)
             return dual {mathfun.sqrt(x.val), 1 / (2 * mathfun.sqrt(x.val)) * x.tng}
         end
 
+        terra fun.abs(x: dual)
+            return dual {mathfun.abs(x.val), mathfun.sign(x.val) * x.tng}
+        end
+
+        for _, lin in pairs({"real", "imag", "conj"}) do
+            fun[lin] = terra(x: dual)
+                return dual {[mathfun[lin]](x.val), [mathfun[lin]](x.tng)}
+            end
+        end
+
         for name, func in pairs(fun) do
             mathfun[name]:adddefinition(func)
         end
+    end
+
+    if concept.Real(T) then
+        concept.Real:addfriend(dual)
+    end
+
+    if concept.Float(T) then
+        concept.Float:addfriend(dual)
     end
 
     return dual
