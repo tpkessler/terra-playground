@@ -15,18 +15,6 @@ local err = require("assert")
 
 local size_t = uint64
 
---collect requires a stacker interface or a setter interface
---stacker interface
-local struct Stacker(concept.Base) {}
-Stacker.methods.push = {&Stacker, concept.Any} -> {}
---setter interface
-local struct Setter(concept.Base) {}
-Setter.methods.set = {&Setter, concept.Integral, concept.Any} -> {}
---arraylike implements both the setter and the stacker interface
-local struct Sequence(concept.Base) {}
-Sequence:inherit(Stacker)
-Sequence:inherit(Setter)
-
 --get the terra-type of a pointer or type
 local gettype = function(t)
     assert(terralib.types.istype(t) and "Not a terra type")
@@ -93,10 +81,9 @@ local RangeBase = function(Range, iterator_t)
     end)
 
     --__for is generated for iterators
-    Range.metamethods.__for = function(self,body)
+    Range.metamethods.__for = function(self, body)
         return quote
-            var range = self
-            var iter = range:getiterator()
+            var iter = self:getiterator()
             while iter:isvalid() do             --while not at the end
                 var value = iter:getvalue()     --get value
                 [body(byvalue(value))]          --run body of loop
@@ -105,24 +92,18 @@ local RangeBase = function(Range, iterator_t)
         end
     end
     
-    --containers that only implement the stacker interface are using 'push'.
-    terraform Range:collect(container : &S) where {S : Stacker}
-        for v in self do
-            container:push(v)
-        end
-    end
     --containers that only implement the setter interface are using 'set'. Sufficient
     --space needs to be allocated before
-    terraform Range:collect(container : &S) where {S : Setter}
+    terraform Range:collect(container : &S) where {S : concept.Stack}
         var i = 0
         for v in self do
             container:set(i, v)
             i = i + 1
         end
     end
-    --containers implementing the stacker and setter interface will only use
-    --the stacker interface
-    terraform Range:collect(container : &S) where {S : Sequence}
+
+    --dynamic stacks have a push
+    terraform Range:pushall(container : &S) where {S : concept.DStack}
         for v in self do
             container:push(v)
         end
@@ -152,7 +133,8 @@ terraform truncate(v : T) where {T : concept.NFloat}
     return [size_t](v:truncatetodouble())
 end
 
-local Unitrange = terralib.memoize(function(T)
+
+local unitrange = terralib.memoize(function(T)
 
     local struct range{
         a : T
@@ -209,7 +191,7 @@ local Unitrange = terralib.memoize(function(T)
     return range
 end)
 
-local Steprange = terralib.memoize(function(T)
+local steprange = terralib.memoize(function(T)
 
     local struct range{
         a : T
@@ -266,6 +248,117 @@ local Steprange = terralib.memoize(function(T)
     RangeBase(range, iterator)
 
     return range
+end)
+
+local infunitrange = terralib.memoize(function(T)
+
+    local struct range{
+        a : T
+    }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(range)
+
+    range.staticmethods.new = terra(a : T)
+        return range{a}
+    end
+
+    range.metamethods.__apply = terra(self : &range, i : size_t)
+        return self.a + i
+    end
+
+    local struct iterator{
+        parent : &range
+        state : T
+    }
+
+    terra iterator:next()
+        self.state = self.state + 1
+    end
+
+    terra iterator:getvalue()
+        return self.state
+    end
+
+    terra iterator:isvalid()
+        return true
+    end
+
+    terra range:getiterator()
+        return iterator{self, self.a}
+    end
+
+    --add metamethods
+    RangeBase(range, iterator)
+
+    return range
+end)
+
+local infsteprange = terralib.memoize(function(T)
+
+    local struct range{
+        a : T
+        step : T
+    }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(range)
+
+    range.staticmethods.new = terra(a : T, step : T)
+        return range{a, step}
+    end
+    
+    range.metamethods.__apply = terra(self : &range, i : size_t)
+        return self.a + i * self.step
+    end
+
+    local struct iterator{
+        parent : &range
+        state : T
+    }
+
+    terra iterator:next()
+        self.state = self.state + self.parent.step
+    end
+
+    terra iterator:getvalue()
+        return self.state
+    end
+
+    terra iterator:isvalid()
+        return true
+    end
+
+    terra range:getiterator()
+        return iterator{self, self.a}
+    end
+
+    --add metamethods
+    RangeBase(range, iterator)
+
+    return range
+end)
+
+local Unitrange = terralib.memoize(function(T, sentinal)
+    local sentinal = sentinal or "bounded"
+    if sentinal == "bounded" then
+        return unitrange(T)
+    elseif sentinal == "infinite" then
+        return infunitrange(T)
+    else
+        error("ArgumentError: second (optional) argument should be 'bounded' or 'infinite'.")
+    end
+end)
+
+local Steprange = terralib.memoize(function(T, sentinal)
+    local sentinal = sentinal or "bounded"
+    if sentinal == "bounded" then
+        return steprange(T)
+    elseif sentinal == "infinite" then
+        return infsteprange(T)
+    else
+        error("ArgumentError: second (optional) argument should be 'bounded' or 'infinite'.")
+    end
 end)
 
 local TransformedRange = function(Range, Function)
@@ -725,10 +818,12 @@ local JoinRange = function(Ranges)
 
     --get value, range and iterator types
     local T = gettype(Ranges[1]).value_t
-    local iterator_t = gettype(Ranges[1]).iterator_t
+    local state_t = terralib.newlist{}
     for i,rn in ipairs(Ranges) do
-        assert(gettype(rn).value_t == T and gettype(rn).iterator_t == iterator_t) --make sure the value type is uniform
+        assert(gettype(rn).value_t == T, "ArgumentError: the value type should be uniform.") --make sure the value type is uniform
+        state_t:insert(gettype(rn).iterator_t)
     end
+    local iterator_t = tuple(unpack(state_t))
 
     local struct iterator{
         range : &joiner
@@ -737,34 +832,62 @@ local JoinRange = function(Ranges)
     }
     
     terra joiner:getiterator()
-        return iterator{self, self._0:getiterator(), 0}
+        var iter : iterator
+        iter.range = self
+        escape
+            for k=0,D-1 do
+                local s = "_"..tostring(k)
+                emit quote
+                    iter.state.[s] = self.[s]:getiterator()
+                end
+            end
+        end
+        iter.index = 0
+        return iter
     end
 
     terra iterator:getvalue()
-        return self.state:getvalue()
-    end
-
-    terra iterator:next()
-        self.state:next()
-        if self.state:isvalid()==false and self.index < D-1 then
-            --jump to next iterator
-            self.index = self.index + 1
-            escape
-                for k=1,D-1 do
-                    local s = "_"..tostring(k)
-                    emit quote
-                        if self.index==[k] then
-                            self.state = self.range.[s]:getiterator()
-                        end
+        escape
+            for k = 0, D-1 do
+                local s = "_" .. tostring(k)
+                emit quote
+                    if self.index == [k] then
+                        return self.state.[s]:getvalue()
                     end
                 end
             end
-            
+        end
+    end
+
+    terra iterator:next()
+        escape
+            for k = 0, D-1 do
+                local s = "_" .. tostring(k)
+                emit quote
+                    if self.index == [k] then
+                        --advance iterator k
+                        self.state.[s]:next()
+                    end
+                end
+            end
         end
     end
 
     terra iterator:isvalid()
-        return self.state:isvalid()
+        escape
+            for k = 0, D-1 do
+                local s = "_" .. tostring(k)
+                emit quote
+                    if self.index == [k] then
+                        if not self.state.[s]:isvalid() then
+                            --jump to next iterator
+                            self.index = self.index + 1
+                        end
+                    end
+                end
+            end
+        end
+        return self.index ~= D
     end
 
     --add metamethods
@@ -944,6 +1067,50 @@ local ProductRange = function(Ranges, options)
     return product
 end
 
+
+local FoldLeft = function(Range, Function)
+    
+    --checking function input and outpiut arguments
+    assert(Function.returntype, "ArgumentError: return type information is not available")
+    assert(#Function.parameters == 2, "ArgumentError: not a binary function.")
+
+    --pass by reference
+    local passbyvalue = true
+    if Function.returntype.convertible == "tuple" then
+        assert(#Function.returntype.entries == 0)
+        passbyvalue = false
+    end
+
+    --scalar datatype
+    local T1 = Function.parameters[1]
+    local T2 = Function.parameters[2]
+
+    local struct foldl{
+        range : Range
+        f : Function
+    }
+    --add methods, staticmethods and templates tablet and template fallback mechanism 
+    --allowing concept-based function overloading at compile-time
+    base.AbstractBase(foldl)
+
+    if passbyvalue then -- pass-by-value
+        foldl.methods.accumulatefrom = terra(self : &foldl, save : T1)
+            for v in self.range do
+                save = self.f(save, v)
+            end
+            return save
+        end
+    else -- pass-by-reference - T isa pointer
+        foldl.methods.accumulatefrom = terra(self : &foldl, save : T1)
+            for v in self.range do
+                self.f(save, v)
+            end
+        end
+    end
+
+    return foldl
+end
+
 --generate user api macro's for adapters
 local transform = adapter_lambda_factory(TransformedRange)
 local filter = adapter_lambda_factory(FilteredRange)
@@ -956,6 +1123,8 @@ local enumerate = combiner_factory(Enumerator)
 local join = combiner_factory(JoinRange)
 local product = combiner_factory(ProductRange)
 local zip = combiner_factory(ZipRange)
+--accumulators
+local foldl = adapter_lambda_factory(FoldLeft)
 
 --define reduction as a transform
 local binaryoperation = {
@@ -981,14 +1150,6 @@ local reduce = macro(function(binaryop)
     end
     return `transform(tuplereduce)
 end)
-
-local printtable = function(tab)
-    for k,v in pairs(tab) do
-        print(k)
-        print(v)
-        print()
-    end
-end
 
 local reverse = macro(function() 
     --reduction vararg template function
@@ -1042,5 +1203,6 @@ return {
     join = join,
     product = product,
     zip = zip,
+    foldl = foldl,
     develop = develop
 }
