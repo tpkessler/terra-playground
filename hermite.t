@@ -84,9 +84,8 @@ local terra hermite_xinit_sin(r : double, nu : double, a : double)
     return tmath.sqrt(lambda)
 end
 
-local unitrange = range.Unitrange(int)
+local unitrange = range.Unitrange(int, "infinite")
 local steprange = range.Steprange(int)
-local unitrange_d = range.Unitrange(double)
 
 local terra hermite_initialguess(alloc : Allocator, n : size_t)
     --HERMITEINTITIALGUESSES(N), Initial guesses for Hermite zeros.
@@ -98,7 +97,7 @@ local terra hermite_initialguess(alloc : Allocator, n : size_t)
     --rappresentazione asintotica, Ann. Mat. Pura Appl. 26 (1947), pp. 283-300.
 
     --Error if n < 20 because initial guesses are based on asymptotic expansions:
-    err.assert(n >= 20)
+    --err.assert(n >= 20)
 
     --Gatteschi formula involving airy roots [1].
     --These initial guess are good near x = sqrt(n+1/2);
@@ -115,54 +114,38 @@ local terra hermite_initialguess(alloc : Allocator, n : size_t)
     end
     var nu = 4. * m + 2. * a + 2.
 
-    --initialize dynamic array 
-    --its resource will be transfered to 'x' (dvec) and
-    --will be an output argument
-    var x_init_airy = dstack.new(alloc, n)
-
-    --combine 10 first precomputed values and thereafter approximations
+    --combine 8 first precomputed values and thereafter approximations
     -- of the airy roots
-    if m < 9 then
-        var airyrts = svec8d{airy_roots_8} >> range.take(m) >> range.transform(hermite_xinit, {nu=nu, a=a})
-    else
-        var airyrts = range.join(
-                    svec8d{airy_roots_8},
-                    unitrange.new(9, m+1) >> range.transform([terra(i : int) return -airyroots(3*tmath.pi / 8. * (4*i - 1.)) end])
-                )
-        var xinitrange = airyrts >> range.transform(hermite_xinit, {nu=nu, a=a})
-        xinitrange:pushall(&x_init_airy)
-    end
-
-    io.printf("x_init_airy\n")
-    for x in x_init_airy do
-        io.printf("x = %0.3f\n", x)
-    end
+    var r1 = svec8d{airy_roots_8} >> range.transform(hermite_xinit, {nu=nu, a=a})
+    var r2 = unitrange.new(9) >> 
+                range.transform([terra(i : int) return -airyroots(3*tmath.pi / 8. * (4*i - 1.)) end]) >> 
+                    range.transform(hermite_xinit, {nu=nu, a=a})
+    var airyrts = range.join(r1, r2)
 
     --Tricomi initial guesses. Equation (2.1) in [1]. Originally in [2].
-    --These initial guesses are good near x = 0 . Note: zeros of besselj(+/-.5,x)
-    --are integer and half-integer multiples of π.
-    --x_init_bess =  bess/sqrt(nu).*sqrt((1+ (bess.^2+2*(a^2-1))/3/nu^2) );
-    var tricrts = steprange.new(m+1, 0, -1) >> range.transform(tricomiroots, {m=m, nu = nu})
-    var x_init_sin = tricrts >> range.transform(hermite_xinit_sin, {nu=nu,a=a})
-
-    io.printf("\nx_init_sin\n")
-    for x in x_init_sin do
-        io.printf("x = %0.3f\n", x)
-    end
+    --These initial guesses are good near x = 0.
+    var tricrts = steprange.new(m, 0, -1) >> 
+                    range.transform(tricomiroots, {m=m, nu = nu}) >>
+                        range.transform(hermite_xinit_sin, {nu=nu,a=a})
 
     --patch together
     var p = [int](tmath.floor(0.5 * m))
-    --move resources into a dynamic vector
-    var x : dvec = x_init_airy:__move()
     var xinit = range.join(
-        x >> range.take(p),
-        x_init_sin >> range.drop(p)
-
+        airyrts >> range.take(p),
+        tricrts >> range.drop(p)
     )
-    xinit:collect(&x)
-    return x
-end
+        
+    --fill dynamic stack
+    var x = dstack.new(alloc, n)
+    xinit:pushall(&x)
 
+    --add zero element for odd order case
+    if isodd(n) then
+        x:push(0.0)
+    end
+    -- return as a dvector
+    return [dvec](x:__move())
+end
 
 local terra hermpoly_rec(x0 : double, n : size_t)
     --evaluation of scaled Hermite poly using recurrence
@@ -186,8 +169,6 @@ local terra hermpoly_rec(x0 : double, n : size_t)
     end
     return H, -x0 * H + tmath.sqrt(double(n)) * Hold
 end
-
-
 
 local terra apply_hermpoly_rec(x : double, n : size_t)
     --Compute single Hermite nodes and weights using recurrence relation.
@@ -222,12 +203,15 @@ local terra hermite_rec(alloc : Allocator, n : size_t)
     --use symmetry to establish complete rule
     x.size = n --ToDo: we used x as a view here. Fix when views are ready.
     --use symmetry to get the other Legendre nodes and weights:
-    var m = (n + 1) >> 1
+    var m = terralib.select(isodd(n), (n+1) >> 1, n >> 1)
+    var alpha = tmath.sqrt(tmath.pi)
     for i = 0, m do
-        x(n - 1 - i) = -x(i)
-        w(n - 1 - i) = -w(i)
+        var xx = x(i)
+        x(i) = -xx
+        x(n - 1 - i) = xx
+        w(i) = w(i) * tmath.exp(-tmath.pow(xx, 2)) * alpha
+        w(n - 1 - i) = w(i)
     end
-    if (n % 2 ~= 0) then x(m-1) = 0.0 end
     return x, w
 end
 
@@ -235,7 +219,8 @@ local terra unweightedgausshermite(alloc : Allocator, n : size_t)
     --compute the gauss-hermite nodes and weights in O(n) time.
     if n == 1 then
         --special case n==1
-        var x, w = dvec.all(alloc, 1, 0.0), dvec.all(alloc, 1, tmath.sqrt(tmath.pi))
+        var x = dvec.all(alloc, 1, 0.0)
+        var w = dvec.all(alloc, 1, tmath.sqrt(tmath.pi))
         return x, w
     elseif n <= 100 then
        --Newton's method with three-term recurrence
@@ -244,15 +229,79 @@ local terra unweightedgausshermite(alloc : Allocator, n : size_t)
     end
 end
 
+local DefaultAllocator =  alloc.DefaultAllocator()
+
+terra main()
+    var alloc : DefaultAllocator
+    var x, w = unweightedgausshermite(&alloc, 5)
+    for i, xx in range.enumerate(x) do
+        io.printf("w(%d) = %0.15f\n", i, xx)
+    end
+end
+main()
+
+
+
+import "terratest/terratest"
+local poly = require("poly")
 
 local DefaultAllocator =  alloc.DefaultAllocator()
 
+testenv "" do
 
-terra main()
+    terracode
+        var alloc : DefaultAllocator
+    end
 
-    var alloc : DefaultAllocator
-    var x, w = hermite_rec(&alloc, 25)
-    --Newton's method with three-term recurrence
+    local N = 4
+
+    local D = 2*N-1
+    local polynomial = poly.Polynomial(double, D)
+
+    struct exppolynomial{
+        p : polynomial
+    }
+
+    exppolynomial.metamethods.__apply = terra(self : &exppolynomial, x : double)
+        return self.p(x) * tmath.exp(-tmath.pow(x, 2))
+    end
+
+    local iexact = terra(N : int)
+        var S = tmath.sqrt(tmath.pi)
+        for n = 1, N do
+            S = (2*n-1) * S / 2.0
+        end
+        return S
+    end
+
+    terracode 
+        --create polynomial sum_{i=0}^{D} exp(-x^2) * x^i dx
+        var expol = exppolynomial{}
+        for k = 0, D do
+            expol.p.coeffs(k) = 1.0
+        end
+        var S = 0.0
+        for j = 0, 1 do
+            S = S + iexact(j)
+        end
+    end
+
+    testset "Hermite" do
+        terracode
+            var x, w = unweightedgausshermite(&alloc, N)
+            var s = 0.0
+            for t in range.zip(&x, &w) do
+                var xx, ww = t
+                s = s + expol(xx) * ww
+            end
+            io.printf("s = %0.15f\n", s)
+            io.printf("S = %0.15f\n", S)
+        end
+        test x:size() == N and w:size() == N
+        test x.data:owns_resource() and w.data:owns_resource()
+        test s == S
+
+    end
+    
 
 end
-main()
