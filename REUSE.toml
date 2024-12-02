@@ -40,3 +40,9 @@ path = "fun.lua"
 precendence = "override"
 SPDX-FileCopyrightText = "2013-2017 Roman Tsisyk <roman@tsisyk.com>"
 SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "toml.lua"
+precendence = "override"
+SPDX-FileCopyrightText = "2017 Jonathan Stoler"
+SPDX-License-Identifier = "MIT"
