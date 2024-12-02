@@ -5,6 +5,7 @@
 
 local base = require("base")
 local concept = require("concept")
+local paramlist = require("concept-parametrized").paramlist
 
 import "terratest/terratest"
 import "terraform"
@@ -200,5 +201,91 @@ testenv "Collections" do
 		terra T1.metamethods.__apply(self: &T1, x: float) end
 		terra T1:scale(a: float) end
 		test [C(T1)]
+	end
+end
+
+testenv "Parametrized Concepts" do
+	local Stack = concept.parametrizedconcept("Stack")
+	Stack[paramlist.new({concept.Any}, {1}, {0})] = function(C, T)
+	    C.methods.length = {&C} -> concept.Integral
+	    C.methods.get = {&C, concept.Integral} -> T
+	    C.methods.set = {&C, concept.Integral , T} -> {}
+	end
+
+	local Vector = concept.parametrizedconcept("Vector")
+	Vector[paramlist.new({concept.Any}, {1}, {0})] = function(C, T)
+	    local S = Stack(T)
+	    C:inherit(S)
+	    C.methods.swap = {&C, &S} -> {}
+	    C.methods.copy = {&C, &S} -> {}
+	end
+
+	local Number = concept.Number
+	Vector[paramlist.new({Number}, {1}, {0})] = function(C, T)
+	    local S = Stack(T)
+	    C.methods.fill = {&C, T} -> {}
+	    C.methods.clear = {&C} -> {}
+	    C.methods.sum = {&C} -> T
+	    C.methods.axpy = {&C, T, &S} -> {}
+	    C.methods.dot = {&C, &S} -> T
+	end
+
+	Vector[paramlist.new({concept.Float}, {1}, {0})] = function(C, T)
+	    C.methods.norm = {&C} -> T
+	end
+	testset "Dispatch on Any" do
+		local S = Stack(concept.Any)
+		local V = Vector(concept.Any)
+
+		test [S(V) == true]
+		test [V(S) == false]
+		test [concept.is_specialized_over(&V, &S)]
+	end
+
+	testset "Dispatch on Integers" do
+		local S = Stack(concept.Integer)
+		local V1 = Vector(concept.Any)
+		local V2 = Vector(concept.Integer)
+
+		test [S(V2) == true]
+		test [V2(S) == false]
+		test [V1(V2) == true]
+		test [V2(V1) == false]
+		test [concept.is_specialized_over(&V2, &V1)]
+	end
+
+	testset "Dispatch on Float" do
+		local S = Stack(concept.Float)
+		local V1 = Vector(concept.Any)
+		local V2 = Vector(concept.Number)
+		local V3 = Vector(concept.Float)
+
+		test [S(V3) == true]
+		test [V3(S) == false]
+		test [V1(V2) == true]
+		test [V1(V3) == true]
+		test [V1(V2) == true]
+		test [V2(V3) == true]
+		test [V3(V2) == false]
+		test [V3(V1) == false]
+		test [concept.is_specialized_over(&V3, &V2)]
+	end
+
+	testset "Multiple Arguments" do
+		local Any = concept.Any
+		local Matrix = concept.parametrizedconcept("Matrix")
+		Matrix[paramlist.new({Any, Any}, {1, 2}, {0, 0})] = function(C, T1, T2)
+			C.methods.sum = {&C} -> {}
+		end
+
+		Matrix[paramlist.new({Any}, {1, 1}, {0, 0})] = function(C, T1, T2)
+			C.methods.special_sum = {&C} -> {}
+		end
+
+		local Generic = Matrix(concept.Float, concept.Integer)
+		local Special = Matrix(concept.Float, concept.Float)
+
+		test [Generic(Special) == true]
+		test [Special(Generic) == false]
 	end
 end

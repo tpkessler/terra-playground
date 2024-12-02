@@ -3,21 +3,12 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept")
+local concept = require("concept-impl")
 local base = require("base")
 local fun = require("fun")
 local serde = require("serde")
 
 local Template = {}
-
-printtable = function(tab)
-	for k,v in pairs(tab) do
-		print(k)
-		print(v)
-		print()
-	end 
-end
-
 
 local function sgn(x)
 	return x > 0 and 1 or x < 0 and -1 or 0
@@ -59,6 +50,36 @@ paramlist.new = function(keys, pos, ref)
 	local t = {keys=keys, pos=pos, ref=ref}
 	return setmetatable(t, paramlist)
 end
+
+local function strip_ref(T)
+	assert(terralib.types.istype(T))
+	local nref = 0
+	while T:ispointer() do
+		nref = nref + 1
+		T = T.type
+	end
+	return T, nref
+end
+
+paramlist.compress = function(sig)
+	local pos = {}
+	local ref = {}
+	local unique = {}
+	for i, T in ipairs(sig) do
+		local S, nref = strip_ref(T)
+		if not unique[S] then
+			unique[S] = i
+		end
+		pos[i] = unique[S]
+		ref[i] = nref
+	end
+	local keys = {}
+	for S, i in pairs(unique) do
+		keys[i] = S
+	end
+	return paramlist.new(keys, pos, ref)
+end
+
 --return parameter-list {Any,Any,...}
 paramlist.init = function(n)
 	assert(type(n) == "number")
