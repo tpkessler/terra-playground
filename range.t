@@ -8,7 +8,7 @@ import "terraform"
 local base = require("base")
 local concept = require("concept")
 local template = require("template")
-local lambda = require("lambdas")
+local lambda = require("lambda")
 local tmath = require("mathfuns")
 local nfloat = require("nfloat")
 local err = require("assert")

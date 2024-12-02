@@ -50,7 +50,6 @@ local funs_two_var = {
     pow = "pow",
     atan2 = "atan2",
     hypot = "hypot",
-    dist = "fdim",
     fmod = "fmod"
 }
 
@@ -99,6 +98,15 @@ math.abs:adddefinition(terra(x : int) return C.abs(x) end)
 math.abs:adddefinition(terra(x : int64) return C.labs(x) end)
 
 
+math.sign = terralib.overloadedfunction("sign")
+for _, T in pairs({int32, int64, float, double}) do
+    math.sign:adddefinition(
+        terra(x: T): T
+            return terralib.select(x < 0, -1, 1)
+        end
+    )
+end
+
 --convenience functions
 local cotf = terra(x : float) return math.cos(x) / math.sin(x) end
 local cot  = terra(x : double) return math.cos(x) / math.sin(x) end
@@ -113,9 +121,19 @@ for _, T in ipairs{int32, int64, float, double} do
     math.max:adddefinition(terra(x : T, y : T) return terralib.select(x > y, x, y) end)
 end
 
+math.dist = terralib.overloadedfunction("dist")
+for _, T in pairs({float, double}) do
+    math.dist:adddefinition(terra(x: T, y: T) return math.abs(x - y) end)
+end
+
 --comparing functions
-math.isapprox = terra(a : double, b : double, atol : double)
-    return math.dist(a, b) < atol
+math.isapprox = terralib.overloadedfunction("isapprox")
+for _, T in pairs({float, double}) do
+    math.isapprox:adddefinition(
+        terra(a: T, b: T, atol: T)
+            return math.dist(a, b) < atol
+        end
+    )
 end
 
 for _, name in pairs({"real", "imag", "conj"}) do
