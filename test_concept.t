@@ -211,6 +211,7 @@ testenv "Parametrized Concepts" do
 	    C.methods.get = {&C, concept.Integral} -> T
 	    C.methods.set = {&C, concept.Integral , T} -> {}
 	end
+	test [concept.isparametrizedconcept(Stack) == true]
 
 	local Vector = concept.parametrizedconcept("Vector")
 	Vector[paramlist.new({concept.Any}, {1}, {0})] = function(C, T)
@@ -233,6 +234,7 @@ testenv "Parametrized Concepts" do
 	Vector[paramlist.new({concept.Float}, {1}, {0})] = function(C, T)
 	    C.methods.norm = {&C} -> T
 	end
+	test [concept.isparametrizedconcept(Vector) == true]
 	testset "Dispatch on Any" do
 		local S = Stack(concept.Any)
 		local V = Vector(concept.Any)

@@ -16,6 +16,7 @@ local traittag = impl.traittag
 local is_specialized_over = impl.is_specialized_over
 
 local parametrizedconcept = para.parametrizedconcept
+local isparametrizedconcept = para.isparametrizedconcept
 
 local Bool = newconcept("Bool")
 Bool:addfriend(bool)
@@ -96,6 +97,7 @@ return {
     traittag = traittag,
     is_specialized_over = is_specialized_over,
     parametrizedconcept = parametrizedconcept,
+    isparametrizedconcept = isparametrizedconcept,
     Any = Any,
     Vararg = Vararg,
     Bool = Bool,

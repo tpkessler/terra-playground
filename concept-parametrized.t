@@ -9,6 +9,7 @@ local template = require("template")
 local function parametrizedconcept(name)
     local tp = template.Template:new()
     rawset(tp, "name", name)
+    rawset(tp, "type", "parametrizedconcept")
 
     local mt = getmetatable(tp)
     -- templates already come with an overloaded __call. In contrast to
@@ -43,8 +44,13 @@ local function parametrizedconcept(name)
     return tp
 end
 
+local function isparametrizedconcept(C)
+    return type(C) == "table" and C.type == "parametrizedconcept"
+end
+
 return {
     parametrizedconcept = parametrizedconcept,
+    isparametrizedconcept = isparametrizedconcept,
     paramlist = template.paramlist,
 }
 
