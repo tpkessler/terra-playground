@@ -28,6 +28,20 @@ local function getunderlyingtype(tp)
 	return tp
 end
 
+local function Value(v)
+	local C = concept.newconcept(("Value(%s)"):format(tostring(v)))
+	C.traits.value = v
+	return C
+end
+
+local function cast_to_concept(T)
+	if type(T) == "number" or type(T) == "string" then
+		return Value(T)
+	else
+		return T
+	end
+end
+
 --representation of signature in terms of two tables,
 --unique types and 
 --{{T,S},{1,2,1}} = {T, S, T}
@@ -47,6 +61,8 @@ end
 --create a new parameter list from unique keys and position array
 --{{T,S},{1,2,1}} = {T, S, T}
 paramlist.new = function(keys, pos, ref)
+	keys = terralib.newlist(keys)
+	keys = keys:map(function(T) return cast_to_concept(T) end)
 	local t = {keys=keys, pos=pos, ref=ref}
 	return setmetatable(t, paramlist)
 end
@@ -266,8 +282,9 @@ function Template:new()
 	end
 
 	function template:select_method(...)
-		local args = {...}
-		local admissible = self:get_methods(...)
+		local args = terralib.newlist({...})
+		args = args:map(function(T) return cast_to_concept(T) end)
+		local admissible = self:get_methods(unpack(args))
 		return select_most_specialized(args, admissible)
 	end
 
@@ -387,6 +404,7 @@ end
 
 return {
 	paramlist = paramlist,
+	cast_to_concept = cast_to_concept,
 	Template = Template,
 	functiontemplate = functiontemplate,
 	istemplate = istemplate,

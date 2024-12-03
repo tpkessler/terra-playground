@@ -274,6 +274,52 @@ testenv "Parametrized Concepts" do
 		test [concept.is_specialized_over(&V3, &V2)]
 	end
 
+	testset "Compile-time integer and string dispatch" do
+		local A = concept.newconcept("A")
+		A.traits.isfoo = "A"
+		local B = concept.newconcept("B")
+		B.traits.isfoo = "B"
+		local C = concept.newconcept("C")
+		C.traits.isfoo = "C"
+		local Foo = concept.parametrizedconcept("Foo")
+		Foo[paramlist.new({1}, {1}, {0})] = function(S, N)
+			assert(N == 1)
+			S:inherit(A)
+		end
+		Foo[paramlist.new({2}, {1}, {0})] = function(S, N)
+			assert(N == 2)
+			S:inherit(B)
+		end
+		Foo[paramlist.new({3}, {1}, {0})] = function(S, N)
+			assert(N == 3)
+			S:inherit(C)
+		end
+		Foo[paramlist.new({"hello"}, {1}, {0})] = function(S, H)
+			assert(H == "hello")
+			S.traits.isfoo = H
+		end
+		local Foo1 = Foo(1)
+		local Foo2 = Foo(2)
+		local Foo3 = Foo(3)
+		local Foo4 = Foo("hello")
+		test [A(Foo1) == true]
+		test [Foo1(A) == true]
+
+		test [B(Foo2) == true]
+		test [Foo2(B) == true]
+		test [A(B) == false]
+		test [B(A) == false]
+
+		test [C(Foo3) == true]
+		test [Foo3(C) == true]
+		test [C(A) == false]
+		test [C(B) == false]
+		test [A(C) == false]
+		test [B(C) == false]
+
+		test [Foo4.traits.isfoo == "hello"]
+	end
+
 	testset "Multiple Arguments" do
 		local Any = concept.Any
 		local Matrix = concept.parametrizedconcept("Matrix")
@@ -290,5 +336,67 @@ testenv "Parametrized Concepts" do
 
 		test [Generic(Special) == true]
 		test [Special(Generic) == false]
+	end
+
+	testset "Multipe inheritance" do
+		local SVec = concept.parametrizedconcept("SVec")
+		SVec[paramlist.new({}, {}, {})] = function(S)
+			S.traits.length = concept.traittag
+			S.methods.length = &S -> concept.Integral
+		end
+		SVec[paramlist.new({concept.Number}, {1}, {0})] = function(S, T)
+			S:inherit(SVec())
+			S.methods.axpy = {&S, T, &S} -> {}
+		end
+		SVec[paramlist.new({concept.Float, 3}, {1, 2}, {0, 0})] = function(S, T, N)
+			assert(N == 3)
+			S:inherit(SVec(T))
+			S.traits.length = N
+			S.methods.cross = {&S, &S} -> T
+		end
+
+		local struct H(base.AbstractBase) {}
+		H.methods.length = &H -> int32
+
+		local struct G(base.AbstractBase) {}
+		G.traits.length = 2
+		G.methods.length = &G -> int64
+
+		local SVecAny = SVec()
+		test [SVecAny(H) == false]
+		test [SVecAny(G) == true]
+
+		local struct I(base.AbstractBase) {}
+		I.traits.length = 2
+		I.methods.length = &I -> uint64
+		I.methods.axpy = {&I, int32, &I} -> {}
+
+		local SVecInt = SVec(concept.Integer)
+		test [SVecInt(G) == false]
+		test [SVecInt(I) == true]
+
+		local struct D(base.AbstractBase) {}
+		D.traits.length = 3
+		D.methods.length = &D -> uint64
+		D.methods.axpy = {&D, double, &D} -> {}
+		D.methods.cross = {&D, &D} -> {}
+
+		local struct D(base.AbstractBase) {}
+		D.traits.length = 3
+		D.methods.length = &D -> uint64
+		D.methods.axpy = {&D, double, &D} -> {}
+		D.methods.cross = {&D, &D} -> {}
+
+		local struct E(base.AbstractBase) {}
+		E.traits.length = 4
+		E.methods.length = &E -> uint64
+		E.methods.axpy = {&E, double, &E} -> {}
+		E.methods.cross = {&E, &E} -> {}
+
+		local SVec3D = SVec(concept.Float, 3)
+		test [SVec3D(G) == false]
+		test [SVec3D(I) == false]
+		test [SVec3D(D) == true]
+		test [SVec3D(E) == false]
 	end
 end

@@ -27,13 +27,14 @@ local function parametrizedconcept(name)
         local C = concept.newconcept(name)
         -- Get all admissible methods without constrained parameters, that is
         -- C(T, S) and C(T, S = T) are both included in the table.
+        arg = arg:map(function(T) return template.cast_to_concept(T) end)
         local methods = self:get_methods(unpack(arg))
         local ref = template.paramlist.compress(arg)
         for sig, method in pairs(methods) do
             -- Only invoke methods that have at the least same number of
             -- constrained concepts.
             if #ref.keys <= #sig.keys then
-                method(C, unpack(arg))
+                method(C, ...)
             end
         end
         return C
