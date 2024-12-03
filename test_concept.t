@@ -248,6 +248,7 @@ testenv "Parametrized Concepts" do
 		local V2 = Vector(concept.Integer)
 
 		test [S(V2) == true]
+		test [S(V1) == false]
 		test [V2(S) == false]
 		test [V1(V2) == true]
 		test [V2(V1) == false]
@@ -260,6 +261,8 @@ testenv "Parametrized Concepts" do
 		local V2 = Vector(concept.Number)
 		local V3 = Vector(concept.Float)
 
+		test [S(V1) == false]
+		test [S(V2) == false]
 		test [S(V3) == true]
 		test [V3(S) == false]
 		test [V1(V2) == true]
