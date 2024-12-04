@@ -6,6 +6,10 @@
 local concept = require("concept-impl")
 local template = require("template")
 
+local function isempty(tab)
+    return next(tab) == nil
+end
+
 local function parametrizedconcept(name)
     local tp = template.Template:new()
     rawset(tp, "name", name)
@@ -22,15 +26,20 @@ local function parametrizedconcept(name)
     -- over {T1, T2} where {T1: C, T2: C}.
     function mt:__call(...)
         local arg = terralib.newlist({...})
+        arg = arg:map(function(T) return template.cast_to_concept(T) end)
+        local methods = self:get_methods(unpack(arg))
+        assert(
+            not isempty(methods),
+            "No admissible implementation found for " .. tostring(arg) ..
+            " in parametrized concept " .. self.name
+        )
+        local ref = template.paramlist.compress(arg)
         local name = ("%s(%s)"):format(
             self.name, arg:map(function(T) return tostring(T) end):concat(",")
         )
         local C = concept.newconcept(name)
         -- Get all admissible methods without constrained parameters, that is
         -- C(T, S) and C(T, S = T) are both included in the table.
-        arg = arg:map(function(T) return template.cast_to_concept(T) end)
-        local methods = self:get_methods(unpack(arg))
-        local ref = template.paramlist.compress(arg)
         for sig, method in pairs(methods) do
             -- Only invoke methods that have at the least same number of
             -- constrained concepts.
