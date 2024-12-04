@@ -101,11 +101,6 @@ local DualNumber = terralib.memoize(function(T)
             return dual {mathfun.abs(x.val), mathfun.sign(x.val) * x.tng}
         end
 
-        terra fun.pow(x: dual, y: dual)
-            var res = mathfun.pow(x.val, y.val)
-            return dual {res, res * (x.tng * y.val / x.val + y.tng * mathfun.log(x.val))}
-        end
-
         for _, lin in pairs({"real", "imag", "conj"}) do
             fun[lin] = terra(x: dual)
                 return dual {[mathfun[lin]](x.val), [mathfun[lin]](x.tng)}
@@ -115,6 +110,36 @@ local DualNumber = terralib.memoize(function(T)
         for name, func in pairs(fun) do
             mathfun[name]:adddefinition(func)
         end
+
+        local terra dcpow(x: T, n: int64): T
+            if n < 0 then
+                return dcpow(1 / x, -n)
+            end
+            if n == 0 then
+                return [T](1)
+            end
+            if n == 1 then
+                return x
+            end
+            var p2 = dcpow(x * x, n / 2)
+            return terralib.select(n % 2 == 0, p2, x * p2)
+        end
+        for _, I in pairs({int8, int16, int32, int64}) do
+            mathfun.pow:adddefinition(terra(x: dual, y: I)
+                if y == 0 then
+                    return [dual](1)
+                else
+                    return dual {
+                        dcpow(x.val, y), y * dcpow(x.val, y - 1) * x.tng
+                    }
+                end
+            end)
+        end
+
+        mathfun.pow:adddefinition(terra(x: dual, y: dual)
+            var res = mathfun.pow(x.val, y.val)
+            return dual {res, res * (x.tng * y.val / x.val + y.tng * mathfun.log(x.val))}
+        end)
     end
 
     if concept.Real(T) then
