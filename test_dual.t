@@ -131,6 +131,19 @@ for T, tol in pairs({[float] = `1e-6f, [double] = `1e-14}) do
             test tmath.isapprox(y.tng, tng, tol)
         end
 
+        testset "Power function" do
+            terracode
+                var f = lambda.new([terra(x: Td, y: Td) return tmath.pow(2 * x, y / 3) end])
+                var x = Td {2.5, 1}
+                var y = Td {1.25, 1}
+                var z = f(x, y)
+                var val: T = 1.95540851400894
+                var tng: T = 1.374937617915628
+            end
+            test tmath.isapprox(z.val, val, tol)
+            test tmath.isapprox(z.tng, tng, tol)
+        end
+
         testset "Mixed expression" do
             terracode
                 var f = lambda.new([

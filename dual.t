@@ -101,6 +101,11 @@ local DualNumber = terralib.memoize(function(T)
             return dual {mathfun.abs(x.val), mathfun.sign(x.val) * x.tng}
         end
 
+        terra fun.pow(x: dual, y: dual)
+            var res = mathfun.pow(x.val, y.val)
+            return dual {res, res * (x.tng * y.val / x.val + y.tng * mathfun.log(x.val))}
+        end
+
         for _, lin in pairs({"real", "imag", "conj"}) do
             fun[lin] = terra(x: dual)
                 return dual {[mathfun[lin]](x.val), [mathfun[lin]](x.tng)}
