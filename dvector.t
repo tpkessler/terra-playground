@@ -33,6 +33,10 @@ local DynamicVector = terralib.memoize(function(T)
 
     base.AbstractBase(V)
 
+    terra V:getdataptr()
+        return self.data:getdataptr()
+    end
+
     terra V:size()
         return self.size
     end

@@ -347,12 +347,10 @@ testenv "Parametrized Concepts" do
 			S.methods.length = &S -> concept.Integral
 		end
 		SVec[paramlist.new({concept.Number}, {1}, {0})] = function(S, T)
-			S:inherit(SVec())
 			S.methods.axpy = {&S, T, &S} -> {}
 		end
 		SVec[paramlist.new({concept.Float, 3}, {1, 2}, {0, 0})] = function(S, T, N)
 			assert(N == 3)
-			S:inherit(SVec(T))
 			S.traits.length = N
 			S.methods.cross = {&S, &S} -> T
 		end

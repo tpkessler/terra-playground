@@ -29,6 +29,11 @@ local VectorBase = function(V)
 		"A vector base implementation requires a valid stack implementation")
 	local T = V.eltype
 
+	--adds:
+	--methods.reverse
+	--iterator{T}
+	stack.StackBase(V)
+
 	-- Promote this to a templated method with proper concepts for callable objects
 	V.methods.map = macro(function(self, other, f)
 		return quote
