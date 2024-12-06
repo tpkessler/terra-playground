@@ -21,26 +21,35 @@ end
 
 local conceptlang = {
 	name = "conceptlang";
-	entrypoints = {"terraform"};
+	entrypoints = {"terraform", "terrace"};
 	keywords = {"where"};
 	statement = 
 		function(self,lex)
-			local templ = parse_terraform_statement(self,lex)
-			if isclasstemplate(templ) then
-				return process_class_method_statement(templ)
-			else
-				if isnamespacedfunctiontemplate(templ) then
-					return process_namespaced_function_statement(templ)
-				elseif isfreefunctiontemplate(templ) then
-					return process_free_function_statement(templ), { templ.path } -- create the statement: path = ctor(envfun)
+			if lex:matches("terraform") then
+				local templ = parse_terraform_statement(self,lex)
+				if isclasstemplate(templ) then
+					return process_class_method_statement(templ)
+				else
+					if isnamespacedfunctiontemplate(templ) then
+						return process_namespaced_function_statement(templ)
+					elseif isfreefunctiontemplate(templ) then
+						return process_free_function_statement(templ), { templ.path } -- create the statement: path = ctor(envfun)
+					end
 				end
+			elseif lex:matches("terrace") then
+				local templ = parse_concept_statement(self,lex)
+				return process_concept_statement(templ), { templ.path }
 			end
 		end;
 	localstatement = 
 		function(self,lex)
-			local templ = parse_terraform_statement(self,lex)
-			if isfreefunctiontemplate(templ) then
-				return process_free_function_statement(templ), { templ.path } -- create the statement: path = ctor(envfun)
+			if lex:matches("terraform") then
+				local templ = parse_terraform_statement(self,lex)
+				if isfreefunctiontemplate(templ) then
+					return process_free_function_statement(templ), { templ.path } -- create the statement: path = ctor(envfun)
+				end
+			elseif lex:matches("terrace") then
+
 			end
 		end;
 }
@@ -65,6 +74,23 @@ function parse_terraform_statement(self,lex)
 	templ.constraints = process_where_clause(lex)
 	--process terra-block
 	templ.terrastmts = lex:terrastats()
+	--end of terra-block
+	lex:expect("end")
+	return templ
+end
+
+function parse_concept_statement(self,lex)
+	local templ = {}
+	lex:expect("terrace")
+	--process method path / class path
+	templ.path = process_namespace_indexing(lex)
+	templ.classname, templ.methodname = process_method_name(lex, templ.path)
+	--process templatefunction parameters
+	templ.params = process_concept_template_parameters(lex)
+	--process template parameter constraints
+	templ.constraints = process_where_clause(lex)
+	--process terra-block
+	templ.luastmts = lex:luastats()
 	--end of terra-block
 	lex:expect("end")
 	return templ
@@ -106,6 +132,18 @@ function generate_terrafun(templ, localenv)
 		return terra([argumentlist])
 			[templ.terrastmts(localenv)]
 		end
+	end
+end
+
+function generate_luafun(templ, localenv)
+	return function(Self, ...)
+		localenv["Self"] = Self
+		local args = terralib.newlist{...}
+		for counter,param in ipairs(templ.params) do
+			--add variable to the local environment
+			localenv[param.typename] = args[counter]
+		end
+		templ.luastmts(localenv)
 	end
 end
 
@@ -168,6 +206,21 @@ function process_class_method_statement(templ)
 		templfun:adddefinition({[paramconceptlist] = terralib.memoize(generate_terrafun(templ,localenv))})
 		--register class method
 		class["templates"][templ.methodname] = templfun
+	end
+end
+
+function process_concept_statement(templ)
+	return function(envfun)
+		--initialize environment and allow easy searching in 'env' 
+		--of variables that are nested inside tables
+		local localenv = namespace.new(envfun())
+		--get parameter-types list
+		local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
+		--get/register new template function
+		local templfun = localenv[templ.path] or concept.parametrizedconcept(templ.methodname)
+		--add current template method implementation
+		templfun[paramconceptlist] = terralib.memoize(generate_luafun(templ, localenv))
+		return templfun
 	end
 end
 
@@ -313,6 +366,19 @@ function process_template_parameters(lex,classname)
 	return params
 end
 
+function process_concept_template_parameters(lex)
+	local params = terralib.newlist()
+	if lex:nextif("(") then
+		repeat
+			local param = lex:expect(lex.name).value
+			lex:ref(param) --make param available in 'env'
+			params:insert({name="", typename=param, nref=0}) 
+		until not lex:nextif(",")
+		lex:expect(")")
+	end
+	return params
+end
+
 local function process_single_constraint(lex)
 	if lex:nextif(":") then
 		local path, name = process_namespace_indexing(lex)
@@ -335,7 +401,7 @@ function process_where_clause(lex)
 			params[param] = process_single_constraint(lex)    
 		until not lex:nextif(",")                                
 		lex:expect("}")                                
-	end        
+	end
 	return params
 end
 
