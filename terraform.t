@@ -49,7 +49,8 @@ local conceptlang = {
 					return process_free_function_statement(templ), { templ.path } -- create the statement: path = ctor(envfun)
 				end
 			elseif lex:matches("terrace") then
-
+				local templ = parse_concept_statement(self,lex)
+				return process_concept_statement(templ), { templ.path }
 			end
 		end;
 }
@@ -273,6 +274,14 @@ namespace.new = function(env)
 	return setmetatable(t, namespace)
 end
 
+namespace.isa = function(t)
+	if type(t) == "table" and getmetatable(t) == namespace then
+		return true
+	else
+		return false
+	end
+end
+
 local function dereference(v)
 	if v:ispointer() then
 		return dereference(v.type)
@@ -299,7 +308,15 @@ function get_template_parameter_list(localenv, params, constraints)
 				tp = localenv[c.path] or error("Concept " .. tostring(c.name) .. " not found in current scope.")
 				--evaluate in case of a parametric concept
 				if concept.isparametrizedconcept(tp) or type(tp) == "function" then
-					tp = tp(unpack(c.fargs))
+					local args = terralib.newlist()
+					for i,v in ipairs(c.fargs) do
+						if type(v) == "table" then
+							args:insert(localenv[v])
+						else
+							args:insert(v)
+						end
+					end
+					tp = tp(unpack(args))
 				end
 				ctrs[param.typename] = counter --update to a number in uniqueparams
 				--update tables defining template parameter list
