@@ -18,6 +18,14 @@ local is_specialized_over = impl.is_specialized_over
 local parametrizedconcept = para.parametrizedconcept
 local isparametrizedconcept = para.isparametrizedconcept
 
+--concept that carries a value, used to generate concept specialization
+--with values (like integers or strings) rather that concepts.
+local function Value(n)
+    local value = newconcept("Value")
+    value.traits.value = n
+    return value
+end
+
 local Bool = newconcept("Bool")
 Bool:addfriend(bool)
 
@@ -100,6 +108,7 @@ return {
     isparametrizedconcept = isparametrizedconcept,
     Any = Any,
     Vararg = Vararg,
+    Value = Value,
     Bool = Bool,
     RawString = RawString,
     Float = Float,
