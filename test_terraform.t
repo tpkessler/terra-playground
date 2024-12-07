@@ -18,9 +18,6 @@ local Float = concept.Float
 local Number = concept.Number
 local size_t = uint64
 
-local Value = concept.newconcept("Value")
-Value.traits.value = concept.traittag
-
 testenv "Parametrized Concepts" do
 
     terrace Stack(T) where {T}
@@ -94,6 +91,137 @@ testenv "Parametrized Concepts" do
         test [concept.is_specialized_over(&V3, &V2)]
     end
 
+    testset "Compile-time integer and string dispatch" do
+        local A = concept.newconcept("A")
+        A.traits.isfoo = "A"
+        local B = concept.newconcept("B")
+        B.traits.isfoo = "B"
+        local C = concept.newconcept("C")
+        C.traits.isfoo = "C"
+
+        terrace Foo(N) where {N : 1}
+            assert(N == 1)
+            Self:inherit(A)
+        end
+
+        terrace Foo(N) where {N : 2}
+            assert(N == 2)
+            Self:inherit(B)
+        end
+
+        terrace Foo(N) where {N : 3}
+            assert(N == 3)
+            Self:inherit(C)
+        end
+
+        terrace Foo(S) where {S : "hello"}
+            assert(S == "hello")
+            Self.traits.isfoo = S
+        end
+
+        local Foo1 = Foo(1)
+        local Foo2 = Foo(2)
+        local Foo3 = Foo(3)
+        local Foo4 = Foo("hello")
+        test [A(Foo1) == true]
+        test [Foo1(A) == true]
+
+        test [B(Foo2) == true]
+        test [Foo2(B) == true]
+        test [A(B) == false]
+        test [B(A) == false]
+
+        test [C(Foo3) == true]
+        test [Foo3(C) == true]
+        test [C(A) == false]
+        test [C(B) == false]
+        test [A(C) == false]
+        test [B(C) == false]
+
+        test [Foo4.traits.isfoo == "hello"]
+    end
+
+    testset "Multiple Arguments" do
+
+        terrace Matrix(T1, T2) where {T1 : Any, T2 : Any}
+            Self.methods.sum = {&Self} -> {}
+        end
+
+        terrace Matrix(T, T) where {T : Any}
+            Self.methods.special_sum = {&Self} -> {}
+        end
+
+		local Generic = Matrix(concept.Float, concept.Integer)
+		local Special = Matrix(concept.Float, concept.Float)
+
+		test [Generic(Special) == true]
+		test [Special(Generic) == false]
+	end
+
+    testset "Multipe inheritance" do
+		local SVec = concept.parametrizedconcept("SVec")
+
+        terrace SVec()
+            Self.traits.length = concept.traittag
+			Self.methods.length = &Self -> concept.Integral
+        end
+
+        terrace SVec(T) where {T : concept.Number}
+			Self:inherit(SVec())
+			Self.methods.axpy = {&Self, T, &Self} -> {}
+        end
+
+        terrace SVec(T, N) where {T : concept.Float, N : 3}
+			assert(N == 3)
+			Self:inherit(SVec(T))
+			Self.traits.length = N
+			Self.methods.cross = {&Self, &Self} -> T
+        end
+
+		local struct H(base.AbstractBase) {}
+		H.methods.length = &H -> int32
+
+		local struct G(base.AbstractBase) {}
+		G.traits.length = 2
+		G.methods.length = &G -> int64
+
+		local SVecAny = SVec()
+		test [SVecAny(H) == false]
+		test [SVecAny(G) == true]
+
+		local struct I(base.AbstractBase) {}
+		I.traits.length = 2
+		I.methods.length = &I -> uint64
+		I.methods.axpy = {&I, int32, &I} -> {}
+
+		local SVecInt = SVec(concept.Integer)
+		test [SVecInt(G) == false]
+		test [SVecInt(I) == true]
+
+		local struct D(base.AbstractBase) {}
+		D.traits.length = 3
+		D.methods.length = &D -> uint64
+		D.methods.axpy = {&D, double, &D} -> {}
+		D.methods.cross = {&D, &D} -> {}
+
+		local struct D(base.AbstractBase) {}
+		D.traits.length = 3
+		D.methods.length = &D -> uint64
+		D.methods.axpy = {&D, double, &D} -> {}
+		D.methods.cross = {&D, &D} -> {}
+
+		local struct E(base.AbstractBase) {}
+		E.traits.length = 4
+		E.methods.length = &E -> uint64
+		E.methods.axpy = {&E, double, &E} -> {}
+		E.methods.cross = {&E, &E} -> {}
+
+		local SVec3D = SVec(concept.Float, 3)
+		test [SVec3D(G) == false]
+		test [SVec3D(I) == false]
+		test [SVec3D(D) == true]
+		test [SVec3D(E) == false]
+	end
 end
 
 testenv "terraforming free functions" do

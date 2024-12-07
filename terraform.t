@@ -264,8 +264,10 @@ namespace = {
 		end
 	end,
 }
+
 namespace.new = function(env)
 	env["Any"] = concept.Any
+	env["Value"] = concept.Value
 	env["Vararg"] = concept.Vararg
 	local t = {env=env}
 	return setmetatable(t, namespace)
@@ -285,7 +287,7 @@ function get_template_parameter_list(localenv, params, constraints)
 	for i,param in ipairs(params) do
 		local c = ctrs[param.typename]
 		local tp
-		if c then --c is either a concept or has been mutated to an integer that points to
+		if c then --c is either a (parameterized) concept or has been mutated to an integer that points to
 		--a concept already treated in uniqueparams
 			if type(c)=="number" then
 				--already treated in uniqueparams, so insert number 'c' and do not
@@ -295,6 +297,10 @@ function get_template_parameter_list(localenv, params, constraints)
 			else
 				--get concept type
 				tp = localenv[c.path] or error("Concept " .. tostring(c.name) .. " not found in current scope.")
+				--evaluate in case of a parametric concept
+				if concept.isparametrizedconcept(tp) or type(tp) == "function" then
+					tp = tp(unpack(c.fargs))
+				end
 				ctrs[param.typename] = counter --update to a number in uniqueparams
 				--update tables defining template parameter list
 				uniqueparams:insert(tp)
@@ -370,20 +376,49 @@ function process_concept_template_parameters(lex)
 	local params = terralib.newlist()
 	if lex:nextif("(") then
 		repeat
-			local param = lex:expect(lex.name).value
-			lex:ref(param) --make param available in 'env'
-			params:insert({name="", typename=param, nref=0}) 
+			if lex:matches(lex.name) then
+				local param = lex:expect(lex.name).value
+				lex:ref(param) --make param available in 'env'
+				params:insert({name="", typename=param, nref=0})
+			end
 		until not lex:nextif(",")
 		lex:expect(")")
 	end
 	return params
 end
 
+local function processfunargs(lex)
+	if lex:nextif("(") then
+		local args = terralib.newlist()
+		repeat
+			if lex:matches(lex.name) then
+				local path, name = process_namespace_indexing(lex)
+				args:insert(path)
+			elseif lex:matches(lex.number) then
+				args:insert(lex:expect(lex.number).value)
+			elseif lex:matches(lex.string) then
+				args:insert(lex:expect(lex.string).value)
+			end
+		until not lex:nextif(",")
+		lex:expect(")")
+		return args
+	end
+end
+
 local function process_single_constraint(lex)
 	if lex:nextif(":") then
-		local path, name = process_namespace_indexing(lex)
-		lex:ref(path[1])
-		return {path=path, name=name}
+		if lex:matches(lex.name) then
+			local path, name = process_namespace_indexing(lex)
+			lex:ref(path[1])
+			local fargs = processfunargs(lex)
+			return {path=path, name=name, fargs=fargs}
+		elseif lex:matches(lex.string) then
+			return {path={"Value"}, name="Value", fargs={lex:expect(lex.string).value} }
+		elseif lex:matches(lex.number) then
+			return {path={"Value"}, name="Value", fargs={lex:expect(lex.number).value} }
+		else
+			error("ParseError: expected a concept `name`, a string or a number.")
+		end
 	else
 		return {path = {"Any"}, name = "Any"}
 	end
@@ -398,7 +433,7 @@ function process_where_clause(lex)
 		lex:expect("{") 
 		repeat      
 			local param = lex:expect(lex.name).value
-			params[param] = process_single_constraint(lex)    
+			params[param] = process_single_constraint(lex)
 		until not lex:nextif(",")                                
 		lex:expect("}")                                
 	end
