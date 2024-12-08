@@ -7,7 +7,7 @@ import "terraform"
 
 local err = require("assert")
 local template = require("template")
-local concept = require("concept")
+local concepts = require("concepts")
 local string = terralib.includec("string.h")
 
 
@@ -23,7 +23,7 @@ end
 
 local M = {}
 
-terraform primitive_compare(a: &T, b: &T) where {T: concept.Primitive}
+terraform primitive_compare(a: &T, b: &T) where {T: concepts.Primitive}
 	if @a > @b then
 		return 1
 	elseif @a < @b then
@@ -46,7 +46,7 @@ terraform primitive_compare(a: &rawstring, b: &rawstring)
 	return string.strcmp(@a, @b)
 end
 
-terraform primitive_length(a: &T) where {T: concept.Primitive}
+terraform primitive_length(a: &T) where {T: concepts.Primitive}
 	var size: int64 = [sizeof(a.type.type)]
 	return size
 end

@@ -3,7 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept-impl")
+local concepts = require("concept-impl")
 
 local Base = {}
 
@@ -33,7 +33,7 @@ local AbstractBase = Base:new("AbstractBase",
 		assert(terralib.types.istype(T))
 		assert(T:isstruct())
 		local Self = terralib.types.newstruct("Self" .. tostring(T))
-		concept.Base(Self)
+		concepts.Base(Self)
 		Self.friends[T] = true
 		for key, val in pairs({staticmethods = {}, templates = {}, varargtemplates = {}, Self = Self, traits = {}}) do
 			T[key] = val
@@ -78,7 +78,7 @@ local AbstractBase = Base:new("AbstractBase",
 					else
 						--variable argument dispatch
 						local newargs, varargs = terralib.newlist(), terralib.newlist()
-						local m = sig:len()-2 --sig includes concept Vararg and Self. Therefore we subtract 2.
+						local m = sig:len()-2 --sig includes concepts Vararg and Self. Therefore we subtract 2.
 						for k = 1, m do
 							newargs:insert(args[k])
 						end 

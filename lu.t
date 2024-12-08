@@ -8,7 +8,7 @@ import "terraform"
 local factorization = require("factorization")
 local base = require("base")
 local err = require("assert")
-local concept = require("concept")
+local concepts = require("concepts")
 local template = require("template")
 local matbase = require("matrix")
 local vecbase = require("vector")
@@ -20,14 +20,14 @@ local lapack = require("lapack")
 
 local Matrix = matbase.Matrix
 local Vector = vecbase.Vector
-local Number = concept.Number
+local Number = concepts.Number
 
 terraform factorize(a: &M, p: &P, tol: T)
     where {M: Matrix, P: Vector, T: Number}
     escape
         local ptype = p.type.type
         assert(
-            concept.Integral(ptype.eltype),
+            concepts.Integral(ptype.eltype),
             "Permutation array doesn't have integral type"
         )
     end
@@ -73,7 +73,7 @@ end
 
 local MatBLAS = matblas.BLASDenseMatrix
 local VectorContiguous = veccont.VectorContiguous
-local BLASNumber = concept.BLASNumber
+local BLASNumber = concepts.BLASNumber
 
 terraform factorize(a: &M, p: &P, tol: T)
     where {M: MatBLAS, P: VectorContiguous, T: BLASNumber}
@@ -89,14 +89,14 @@ terraform factorize(a: &M, p: &P, tol: T)
     return info
 end
 
-local Bool = concept.Bool
+local Bool = concepts.Bool
 local conj = mathfun.conj
 terraform solve(trans: B, a: &M, p: &P, x: &V)
     where {B: Bool, M: Matrix, P: Vector, V: Vector}
     escape
         local ptype = p.type.type
         assert(
-            concept.Integral(ptype.eltype),
+            concepts.Integral(ptype.eltype),
             "Permutation array doesn't have integral type"
         )
     end
@@ -154,7 +154,7 @@ terraform solve(trans: B, a: &M, p: &P, x: &V)
 end
 
 local function get_trans(T)
-    if concept.Complex(T) then
+    if concepts.Complex(T) then
         return "C"
     else
         return "T"
@@ -200,11 +200,11 @@ local LUFactory = terralib.memoize(function(M, P)
                               .. " does not implement the matrix interface")
     assert(vecbase.Vector(P), "Type " .. tostring(P)
                               .. " does not implement the vector interface")
-    assert(concept.Integral(P.eltype), "Permutation vector has to be of integer type")
+    assert(concepts.Integral(P.eltype), "Permutation vector has to be of integer type")
 
     local T = M.eltype
     local Ts = T
-    local Ts = concept.Complex(T) and T.traits.eltype or T
+    local Ts = concepts.Complex(T) and T.traits.eltype or T
     local struct lu{
         a: &M
         p: &P
@@ -234,7 +234,7 @@ local LUFactory = terralib.memoize(function(M, P)
         solve(trans, self.a, self.p, x)
     end
 
-    local Number = concept.Number
+    local Number = concepts.Number
     terraform lu:apply(trans: B, a: T1, x: &V1, b: T2, y: &V2)
         where {B: Bool, T1: Number, V1: Vector, T2: Number, V2: Vector}
         self:solve(trans, x)

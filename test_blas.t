@@ -4,7 +4,7 @@
 -- SPDX-License-Identifier: MIT
 
 local blas = require("blas")
-local concept = require("concept")
+local concepts = require("concepts")
 local complex = require("complex")
 local C = terralib.includecstring[[
     #include <stdio.h>
@@ -201,7 +201,7 @@ for prefix, T in pairs(types) do
         testset "norm vectors" do
             local n = 4
             local incx = 3
-            local Ts = concept.Complex(T) and T.traits.eltype or T
+            local Ts = concepts.Complex(T) and T.traits.eltype or T
             terracode
                 var x: T[n * incx]
                 var xre: Ts[n * incx]
@@ -220,7 +220,7 @@ for prefix, T in pairs(types) do
                     ref = ref + xre[i * incx] * xre[i * incx]
                 end
                 escape
-                    if concept.Complex(T) then
+                    if concepts.Complex(T) then
                         emit quote
                             for i = 0, n do
                                 ref = ref + xim[i * incx] * xim[i * incx]

@@ -3,7 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept-impl")
+local concepts = require("concept-impl")
 local base = require("base")
 local fun = require("fun")
 local serde = require("serde")
@@ -29,7 +29,7 @@ local function getunderlyingtype(tp)
 end
 
 local function Value(v)
-	local C = concept.newconcept(("Value(%s)"):format(tostring(v)))
+	local C = concepts.newconcept(("Value(%s)"):format(tostring(v)))
 	C.traits.value = v
 	return C
 end
@@ -101,7 +101,7 @@ paramlist.init = function(n)
 	assert(type(n) == "number")
 	local keys, pos, ref = terralib.newlist(), terralib.newlist(), terralib.newlist()
 	for i = 1, n do
-		keys:insert(concept.Any)
+		keys:insert(concepts.Any)
 		pos:insert(i)
 		ref:insert(0)
 	end
@@ -119,7 +119,7 @@ function paramlist:iter(maxlen) --padd until maxlen with Any
 		end
 		if i < maxlen then
 			i = i + 1
-			return i, concept.Any
+			return i, concepts.Any
 		end
 	end
 end
@@ -127,7 +127,7 @@ function paramlist:len()
 	return #rawget(self,"pos")
 end
 function paramlist:isvararg()
-	return self.keys[#self.keys] == concept.Vararg
+	return self.keys[#self.keys] == concepts.Vararg
 end
 paramlist.__tostring = function(t)
 	local s = {}
@@ -181,7 +181,7 @@ function Template:new()
 		local expandedsig = sig:collect(#args)
 		--check which methods are admissible
 		local res = fun.all(function(C, T)
-								return concept.is_specialized_over(T, C)
+								return concepts.is_specialized_over(T, C)
 							end, fun.zip(expandedsig, args))
 		return res
 	end
@@ -194,10 +194,10 @@ function Template:new()
 		assert(#clist_1 == #clist_2,
 			   "Can only compare function signatures of equal size")
 		local function compare(s, c_1, c_2)
-			if concept.is_specialized_over(c_1, c_2) then
+			if concepts.is_specialized_over(c_1, c_2) then
 				s[1] = s[1] + 1
 			end
-			if concept.is_specialized_over(c_2, c_1) then
+			if concepts.is_specialized_over(c_2, c_1) then
 				s[2] = s[2] + 1
 			end
 			return s
@@ -344,7 +344,7 @@ local function isfunctiontemplate(T)
 end
 
 local function isvarargtemplatefun(sig, func)
-	return sig.keys[#sig.keys] == concept.Vararg
+	return sig.keys[#sig.keys] == concepts.Vararg
 end
 
 local function dispatch(T, ...)
@@ -364,7 +364,7 @@ local functiontemplate = function(name, methods)
         		return `func([args])
 			else
 				local newargs, varargs = terralib.newlist(), terralib.newlist()
-				local m = sig:len()-1 --sig includes concept Vararg. Therefore we subtract 1.
+				local m = sig:len()-1 --sig includes concepts Vararg. Therefore we subtract 1.
 				for k = 1, m do
 					newargs:insert(args[k])
 				end 
@@ -374,7 +374,7 @@ local functiontemplate = function(name, methods)
 				return `func([newargs],{[varargs]})
 			end
 		end
-		error("No implemementation found that satisfies the concept check.", 2)
+		error("No implemementation found that satisfies the concepts check.", 2)
     end)
 
     local t = constant(T)

@@ -10,7 +10,7 @@ local dvector = require("dvector")
 local alloc = require("alloc")
 local complex = require("complex")
 local nfloat = require("nfloat")
-local concept = require("concept")
+local concepts = require("concepts")
 
 local cfloat = complex.complex(float)
 local cdouble = complex.complex(double)
@@ -202,7 +202,7 @@ for _, T in pairs({double, float, int64, cdouble, cfloat, cint, float128, cfloat
             end
         end
 
-        if concept.Complex(T) then
+        if concepts.Complex(T) then
             testset "Mul complex" do
                 terracode
                     var alloc: DefaultAlloc

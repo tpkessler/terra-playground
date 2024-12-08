@@ -6,7 +6,7 @@
 import "terraform"
 
 local base = require("base")
-local concept = require("concept")
+local concepts = require("concepts")
 local template = require("template")
 local lambda = require("lambda")
 local tmath = require("mathfuns")
@@ -94,7 +94,7 @@ local RangeBase = function(Range, iterator_t)
     
     --containers that only implement the setter interface are using 'set'. Sufficient
     --space needs to be allocated before
-    terraform Range:collect(container : &S) where {S : concept.Stack}
+    terraform Range:collect(container : &S) where {S : concepts.Stack}
         var i = 0
         for v in self do
             container:set(i, v)
@@ -103,7 +103,7 @@ local RangeBase = function(Range, iterator_t)
     end
 
     --dynamic stacks have a push
-    terraform Range:pushall(container : &S) where {S : concept.DStack}
+    terraform Range:pushall(container : &S) where {S : concepts.DStack}
         for v in self do
             container:push(v)
         end
@@ -112,15 +112,15 @@ local RangeBase = function(Range, iterator_t)
 end
 
 local floor
-terraform floor(v : T) where {T : concept.Integer}
+terraform floor(v : T) where {T : concepts.Integer}
     return size_t(v)
 end
 
-terraform floor(v : T) where {T : concept.Float}
+terraform floor(v : T) where {T : concepts.Float}
     return [size_t](tmath.floor(v))
 end
 
-terraform floor(v : T) where {T : concept.NFloat}
+terraform floor(v : T) where {T : concepts.NFloat}
     return [size_t](v:truncatetodouble())
 end
 
@@ -129,7 +129,7 @@ terraform truncate(v : T) where {T}
     return [size_t](v)
 end
 
-terraform truncate(v : T) where {T : concept.NFloat}
+terraform truncate(v : T) where {T : concepts.NFloat}
     return [size_t](v:truncatetodouble())
 end
 
@@ -141,7 +141,7 @@ local unitrange = terralib.memoize(function(T)
         b : T
     }
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(range)
 
     local new = terra(a : T, b : T, include_last : bool)
@@ -199,7 +199,7 @@ local steprange = terralib.memoize(function(T)
         step : T
     }
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(range)
 
     local new = terra(a : T, b : T, step : T, include_last : bool)
@@ -256,7 +256,7 @@ local infunitrange = terralib.memoize(function(T)
         a : T
     }
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(range)
 
     range.staticmethods.new = terra(a : T)
@@ -301,7 +301,7 @@ local infsteprange = terralib.memoize(function(T)
         step : T
     }
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(range)
 
     range.staticmethods.new = terra(a : T, step : T)
@@ -368,7 +368,7 @@ local TransformedRange = function(Range, Function)
         f : Function
     }
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(transform)
 
     local iterator_t = Range.iterator_t
@@ -420,7 +420,7 @@ local FilteredRange = function(Range, Function)
         predicate : Function
     }
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(filter)
 
     local iterator_t = Range.iterator_t
@@ -479,7 +479,7 @@ local TakeRange = function(Range)
         count : int64
     }
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(take)
 
     local iterator_t = Range.iterator_t
@@ -520,7 +520,7 @@ local DropRange = function(Range)
         count : int64
     }
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(drop)
 
     local iterator_t = Range.iterator_t
@@ -565,7 +565,7 @@ local TakeWhileRange = function(Range, Function)
         predicate : Function
     }
     --add methods, staticmethods and templates and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(takewhile)
 
     local iterator_t = Range.iterator_t
@@ -618,7 +618,7 @@ local DropWhileRange = function(Range, Function)
         predicate : Function
     }
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(dropwhile)
 
     local iterator_t = Range.iterator_t
@@ -812,7 +812,7 @@ local JoinRange = function(Ranges)
 
     local joiner = newcombiner(Ranges, "joiner")
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(joiner)
     local D = #Ranges
 
@@ -900,7 +900,7 @@ local ZipRange = function(Ranges)
   
     local zipper = newcombiner(Ranges, "zip")
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(zipper)
     local D = #Ranges
 
@@ -981,7 +981,7 @@ local ProductRange = function(Ranges, options)
 
     local product = newcombiner(Ranges, "product")
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(product)
     local D = #Ranges
     --default ordering is {D, D-1, ... , 1}
@@ -1090,7 +1090,7 @@ local FoldLeft = function(Range, Function)
         f : Function
     }
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(foldl)
 
     if passbyvalue then -- pass-by-value

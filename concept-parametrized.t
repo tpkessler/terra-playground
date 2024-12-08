@@ -3,7 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept-impl")
+local concepts = require("concept-impl")
 local template = require("template")
 
 local function isempty(tab)
@@ -37,7 +37,7 @@ local function parametrizedconcept(name)
         local name = ("%s(%s)"):format(
             self.name, arg:map(function(T) return tostring(T) end):concat(",")
         )
-        local C = concept.newconcept(name)
+        local C = concepts.newconcept(name)
         -- Get all admissible methods without constrained parameters, that is
         -- C(T, S) and C(T, S = T) are both included in the table.
         for sig, method in pairs(methods) do

@@ -20,7 +20,7 @@ end
 
 local base = require("base")
 local mathfun = require("mathfuns")
-local concept = require("concept")
+local concepts = require("concepts")
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
 local float_type = {}
@@ -59,9 +59,9 @@ local binary_math = {
     "pow",
 }
 
-concept.NFloat = terralib.types.newstruct("NFloat")
-concept.Base(concept.NFloat)
-concept.NFloat.traits.precision = concept.traittag
+concepts.NFloat = terralib.types.newstruct("NFloat")
+concepts.Base(concepts.NFloat)
+concepts.NFloat.traits.precision = concepts.traittag
 
 --extract the exponent of an nfloat
 local exponent = macro(function(value)
@@ -297,7 +297,7 @@ local FixedFloat = terralib.memoize(function(N)
     end
 
     for _, C in pairs({"NFloat", "Real", "Float", "Number"}) do
-        concept[C].friends[nfloat] = true
+        concepts[C].friends[nfloat] = true
     end
 
     return nfloat

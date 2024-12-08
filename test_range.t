@@ -8,7 +8,7 @@ import "terraform"
 
 local io = terralib.includec("stdio.h")
 local alloc = require("alloc")
-local concept = require("concept")
+local concepts = require("concepts")
 local nfloat = require("nfloat")
 local rn = require("range")
 local stack = require("stack")
@@ -309,7 +309,7 @@ for _, T in ipairs{int, double, float256} do
     end
 end -- for _, T in ipairs{int, double} do
 
-local Integer = concept.Integer
+local Integer = concepts.Integer
 local stack = stack.DynamicStack(int)
 local unitrange = rn.Unitrange(int)
 local steprange = rn.Steprange(int)

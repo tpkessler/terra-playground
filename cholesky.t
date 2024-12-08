@@ -8,7 +8,7 @@ import "terraform"
 local factorization = require("factorization")
 local base = require("base")
 local err = require("assert")
-local concept = require("concept")
+local concepts = require("concepts")
 local matbase = require("matrix")
 local vecbase = require("vector")
 local veccont = require("vector_contiguous")
@@ -18,7 +18,7 @@ local mathfun = require("mathfuns")
 local lapack = require("lapack")
 
 local Matrix = matbase.Matrix
-local Number = concept.Number
+local Number = concepts.Number
 terraform factorize(a: &M, tol: T) where {M: Matrix, T: Number}
     var n = a:rows()
     for i = 0, n do
@@ -39,14 +39,14 @@ terraform factorize(a: &M, tol: T) where {M: Matrix, T: Number}
 end
 
 local MatBLAS = matblas.BLASDenseMatrix
-local BLASNumber = concept.BLASNumber
+local BLASNumber = concepts.BLASNumber
 terraform factorize(a: &M, tol: T) where {M: MatBLAS, T: BLASNumber}
     var n, m, adata, lda = a:getblasdenseinfo()
     err.assert(n == m)
     lapack.potrf(lapack.ROW_MAJOR, @"L", n, adata, lda)
 end
 
-local Bool = concept.Bool
+local Bool = concepts.Bool
 local Vector = vecbase.Vector
 local conj = mathfun.conj
 terraform solve(trans: B, a: &M, x: &V) where {B: Bool, M: Matrix, V: Vector}
@@ -81,7 +81,7 @@ local CholeskyFactory = terralib.memoize(function(M)
                               .. " does not implement the matrix interface")
     local T = M.eltype
     local Ts = T
-    local Ts = concept.Complex(T) and T.traits.eltype or T
+    local Ts = concepts.Complex(T) and T.traits.eltype or T
     local struct cho{
         a: &M
         tol: Ts
