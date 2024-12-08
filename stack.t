@@ -36,7 +36,7 @@ local StackBase = terralib.memoize(function(stack)
     }
 
     terra stack:getiterator()
-        return iterator{self, self.data.ptr}
+        return iterator{self, self:getdataptr()}
     end
 
     terra iterator:getvalue()
@@ -48,7 +48,7 @@ local StackBase = terralib.memoize(function(stack)
     end
 
     terra iterator:isvalid()
-        return self.ptr - self.parent.data.ptr < self.parent.size
+        return self.ptr - self.parent:getdataptr() < self.parent:size()
     end
     
     stack.iterator = iterator
@@ -78,6 +78,10 @@ local DynamicStack = terralib.memoize(function(T)
         s.data = alloc:allocate(sizeof(T), capacity)
         s.size = 0
         return s
+    end
+
+    terra stack:getdataptr()
+        return self.data:getdataptr()
     end
 
     terra stack:size()

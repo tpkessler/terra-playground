@@ -32,6 +32,10 @@ local function Base(block, T)
     block.eltype = T
     block.elsize = T==opaque and 1 or sizeof(T)
 
+    block.methods.getdataptr = terra(self : &block)
+        return self.ptr
+    end
+
     --block is empty, no resource and no allocator
     block.methods.isempty = terra(self : &block)
         return self.ptr==nil
