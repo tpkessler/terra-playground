@@ -3,15 +3,15 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept")
+local concepts = require("concepts")
 local vecbase = require("vector")
 
-local Bool = concept.Bool
-local Integral = concept.Integral
-local Number = concept.Number
+local Bool = concepts.Bool
+local Integral = concepts.Integral
+local Number = concepts.Number
 local Vector = vecbase.Vector
 
-local struct Operator(concept.Base) {}
+local struct Operator(concepts.Base) {}
 Operator.methods.rows = {&Operator} -> Integral
 Operator.methods.cols = {&Operator} -> Integral
 Operator.methods.apply = {&Operator, Bool, Number, &Vector, Number, &Vector} -> {}
