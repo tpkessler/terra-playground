@@ -10,16 +10,10 @@ local base = require("base")
 local concepts = require("concepts")
 local alloc = require('alloc')
 local dvector = require("dvector")
-
-import "terratest/terratest"
-
-local Any = concepts.Any
-local Real = concepts.Real
-local Integer = concepts.Integer
-local Float = concepts.Float
-local Number = concepts.Number
 local size_t = uint64
 
+
+import "terratest/terratest"
 
 testenv "terraforming free functions" do
 
@@ -458,16 +452,16 @@ end
 
 testenv "defining regular concepts" do
 
-    concept Stack
+    concept MyStack
         Self.methods.length = {&Self} -> concepts.Integral
         Self.methods.get = {&Self, concepts.Integral} -> Any
         Self.methods.set = {&Self, concepts.Integral , Any} -> {}
     end
 
-    test [concepts.isconcept(Stack) == true]
+    test [concepts.isconcept(MyStack) == true]
 
     concept VectorAny
-        local S = Stack
+        local S = MyStack
         Self:inherit(S)
         Self.methods.swap = {&Self, &S} -> {}
         Self.methods.copy = {&Self, &S} -> {}
@@ -477,7 +471,7 @@ testenv "defining regular concepts" do
 
     concept VectorNumber
         Self:inherit(VectorAny)
-        local S = Stack
+        local S = MyStack
         Self.methods.fill = {&Self, Number} -> {}
         Self.methods.clear = {&Self} -> {}
         Self.methods.sum = {&Self} -> Number
@@ -495,16 +489,16 @@ testenv "defining regular concepts" do
     test [concepts.isconcept(VectorFloat) == true]
 
     testset "inheritance and specialization" do
-        test [VectorAny(Stack) == false]
-        test [concepts.is_specialized_over(&VectorAny, &Stack)]
-        test [Stack(VectorAny) == true]
-        test [Stack(VectorNumber) == true]
-        test [Stack(VectorFloat) == true]
-        test [VectorNumber(Stack) == false]
+        test [VectorAny(MyStack) == false]
+        test [concepts.is_specialized_over(&VectorAny, &MyStack)]
+        test [MyStack(VectorAny) == true]
+        test [MyStack(VectorNumber) == true]
+        test [MyStack(VectorFloat) == true]
+        test [VectorNumber(MyStack) == false]
         test [VectorAny(VectorNumber) == true]
         test [VectorNumber(VectorAny) == false]
         test [concepts.is_specialized_over(&VectorNumber, &VectorAny)]
-        test [VectorFloat(Stack) == false]
+        test [VectorFloat(MyStack) == false]
         test [VectorAny(VectorNumber) == true]
         test [VectorAny(VectorFloat) == true]
         test [VectorAny(VectorNumber) == true]
@@ -518,23 +512,23 @@ end
 
 testenv "defining parametrized concepts" do
 
-    concept Stack(T) where {T}
+    concept MyStack(T) where {T}
         Self.methods.length = {&Self} -> concepts.Integral
         Self.methods.get = {&Self, concepts.Integral} -> T
         Self.methods.set = {&Self, concepts.Integral , T} -> {}
     end
 
-    test [concepts.isparametrizedconcept(Stack) == true]
+    test [concepts.isparametrizedconcept(MyStack) == true]
 
     concept Vector(T) where {T}
-        local S = Stack(T)
+        local S = MyStack(T)
         Self:inherit(S)
         Self.methods.swap = {&Self, &S} -> {}
         Self.methods.copy = {&Self, &S} -> {}
     end
 
     concept Vector(T) where {T : Number}
-        local S = Stack(T)
+        local S = MyStack(T)
         Self.methods.fill = {&Self, T} -> {}
         Self.methods.clear = {&Self} -> {}
         Self.methods.sum = {&Self} -> T
@@ -549,7 +543,7 @@ testenv "defining parametrized concepts" do
     test [concepts.isparametrizedconcept(Vector) == true]
 
     testset "Dispatch on Any" do
-        local S = Stack(concepts.Any)
+        local S = MyStack(concepts.Any)
         local V = Vector(concepts.Any)
 
         test [S(V) == true]
@@ -558,7 +552,7 @@ testenv "defining parametrized concepts" do
     end
 
     testset "Dispatch on Integers" do
-        local S = Stack(concepts.Integer)
+        local S = MyStack(concepts.Integer)
         local V1 = Vector(concepts.Any)
         local V2 = Vector(concepts.Integer)
 
@@ -571,7 +565,7 @@ testenv "defining parametrized concepts" do
     end
 
     testset "Dispatch on Float" do
-        local S = Stack(concepts.Float)
+        local S = MyStack(concepts.Float)
         local V1 = Vector(concepts.Any)
         local V2 = Vector(concepts.Number)
         local V3 = Vector(concepts.Float)

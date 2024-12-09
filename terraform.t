@@ -496,4 +496,11 @@ function isvarargstemplate(templ)
 	return templ.params[n].typename == "__varargs__"
 end
 
+--add all concepts to global scope
+for k,v in pairs(concepts) do
+	if concepts.isconcept(v) or concepts.isparametrizedconcept(v) then
+		_G[k] = v
+	end
+end
+
 return conceptlang
