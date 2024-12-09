@@ -130,6 +130,18 @@ local CSRMatrix = terralib.memoize(function(T, I)
     end
     csr.staticmethods.new = new
 
+    csr.staticmethods.frombuffer = (
+        terra(rows: I, cols: I, nnz: I, data: &T, col: &I, rowptr: &I)
+            var a = csr {}
+            a.rows = rows
+            a.cols = cols
+            a.data = ST.frombuffer(nnz, data)
+            a.col = SI.frombuffer(nnz, col)
+            a.rowptr = SI.frombuffer(rows + 1, rowptr)
+            return a
+        end
+    )
+
     matrix.MatrixBase(csr)
     assert(matrix.Matrix(csr))
 
