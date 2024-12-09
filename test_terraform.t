@@ -10,17 +10,10 @@ local base = require("base")
 local concepts = require("concepts")
 local alloc = require('alloc')
 local dvector = require("dvector")
-
-import "terratest/terratest"
---[[
-local Any = concepts.Any
-local Real = concepts.Real
-local Integer = concepts.Integer
-local Float = concepts.Float
-local Number = concepts.Number
---]]
 local size_t = uint64
 
+
+import "terratest/terratest"
 
 testenv "terraforming free functions" do
 
