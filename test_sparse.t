@@ -64,7 +64,6 @@ for _, T in pairs({float, double, float256, complexDouble}) do
                 test b:cols() == cols
                 for ii = 0, 2 do
                     for jj = 0, 1 do
-                        -- print(i, j, type(i), type(j))
                         test b:get(ii, jj) == cols * ii + jj + 1
                     end
                 end
