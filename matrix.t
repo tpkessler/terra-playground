@@ -5,17 +5,17 @@
 
 import "terraform"
 local operator = require("operator")
-local concept = require("concept")
+local concepts = require("concepts")
 local template = require("template")
 local err = require("assert")
 local vecbase = require("vector")
 
-local Bool = concept.Bool
-local Integral = concept.Integral
-local Number = concept.Number
+local Bool = concepts.Bool
+local Integral = concepts.Integral
+local Number = concepts.Number
 local Vector = vecbase.Vector
 
-local struct Matrix(concept.Base) {}
+local struct Matrix(concepts.Base) {}
 Matrix:inherit(operator.Operator)
 Matrix.methods.set = {&Matrix, Integral, Integral, Number} -> {}
 Matrix.methods.get = {&Matrix, Integral, Integral} -> {Number}
@@ -32,7 +32,7 @@ local function MatrixBase(M)
     local T = M.eltype
     local function get(A, atrans, i, j)
         if atrans then
-            if concept.Complex(T) then
+            if concepts.Complex(T) then
                 return quote var x = [A]:get([j], [i]) in x:conj() end
             else
                 return `[A]:get([j], [i])

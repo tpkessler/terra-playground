@@ -7,7 +7,7 @@ require("terralibext")
 local base = require("base")
 local alloc = require("alloc")
 local err = require("assert")
-local concept = require("concept")
+local concepts = require("concepts")
 local range = require("range")
 local io = terralib.includec("stdio.h")
 
@@ -70,7 +70,7 @@ local DynamicStack = terralib.memoize(function(T)
     stack.eltype = T
 
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(stack)
 
     stack.staticmethods.new = terra(alloc : Allocator, capacity: size_t)
@@ -149,7 +149,7 @@ local DynamicStack = terralib.memoize(function(T)
     end
 
     --sanity check
-    assert(concept.DStack(stack), "Stack type does not satisfy the DStack concept.")
+    assert(concepts.DStack(stack), "Stack type does not satisfy the DStack concepts.")
 
     return stack
 end)

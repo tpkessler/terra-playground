@@ -7,13 +7,17 @@ import "terraform"
 
 local io = terralib.includec("stdio.h")
 local base = require("base")
-local concept = require("concept")
+local concepts = require("concepts")
+local alloc = require('alloc')
+local dvector = require("dvector")
 
 import "terratest/terratest"
 
-local Real = concept.Real
-local Integer = concept.Integer
-local Float = concept.Float
+local Any = concepts.Any
+local Real = concepts.Real
+local Integer = concepts.Integer
+local Float = concepts.Float
+local Number = concepts.Number
 local size_t = uint64
 
 
@@ -199,7 +203,7 @@ testenv "terraforming free functions" do
         terraform foo(a : T1, b : T2) where {T1 : Float, T2 : Float}
             return a * b + 1
         end
-        --both of the following calls satisfy the concept dispatch 
+        --both of the following calls satisfy the concepts dispatch 
         --checks on all arguments. 
         test foo(1., 2.) == 2.0 --calling foo<T> and foo<T1,T2> are both valid. However,
         --foo<T> is considered to be more specialized, so we pick this method.
@@ -242,7 +246,6 @@ testenv "terraforming free functions" do
     end
 
 end
-
 
 testenv "terraforming class methods" do
 
@@ -405,7 +408,7 @@ testenv "terraforming class methods" do
         terraform bar:foo(a : T1, b : T2) where {T1 : Float, T2 : Float}
             return a * b + 1 + self.index
         end
-        --both of the following calls satisfy the concept dispatch 
+        --both of the following calls satisfy the concepts dispatch 
         --checks on all arguments. 
         test mybar:foo(1., 2.) == 3.0 --calling foo<T> and foo<T1,T2> are both valid. However,
         --foo<T> is considered to be more specialized, so we pick this method.
@@ -451,4 +454,210 @@ testenv "terraforming class methods" do
         test mybar:eval(1.) == 2
     end
 
+end
+
+testenv "defining parametrized concepts" do
+
+    concept Stack(T) where {T}
+        Self.methods.length = {&Self} -> concepts.Integral
+        Self.methods.get = {&Self, concepts.Integral} -> T
+        Self.methods.set = {&Self, concepts.Integral , T} -> {}
+    end
+
+    test [concepts.isparametrizedconcept(Stack) == true]
+
+    concept Vector(T) where {T}
+        local S = Stack(T)
+        Self:inherit(S)
+        Self.methods.swap = {&Self, &S} -> {}
+        Self.methods.copy = {&Self, &S} -> {}
+    end
+
+    concept Vector(T) where {T : Number}
+        local S = Stack(T)
+        Self.methods.fill = {&Self, T} -> {}
+        Self.methods.clear = {&Self} -> {}
+        Self.methods.sum = {&Self} -> T
+        Self.methods.axpy = {&Self, T, &S} -> {}
+        Self.methods.dot = {&Self, &S} -> T
+    end
+
+    concept Vector(T) where {T : Float}
+        Self.methods.norm = {&Self} -> T
+    end
+
+    test [concepts.isparametrizedconcept(Vector) == true]
+
+    testset "Dispatch on Any" do
+        local S = Stack(concepts.Any)
+        local V = Vector(concepts.Any)
+
+        test [S(V) == true]
+        test [V(S) == false]
+        test [concepts.is_specialized_over(&V, &S)]
+    end
+
+    testset "Dispatch on Integers" do
+        local S = Stack(concepts.Integer)
+        local V1 = Vector(concepts.Any)
+        local V2 = Vector(concepts.Integer)
+
+        test [S(V2) == true]
+        test [S(V1) == false]
+        test [V2(S) == false]
+        test [V1(V2) == true]
+        test [V2(V1) == false]
+        test [concepts.is_specialized_over(&V2, &V1)]
+    end
+
+    testset "Dispatch on Float" do
+        local S = Stack(concepts.Float)
+        local V1 = Vector(concepts.Any)
+        local V2 = Vector(concepts.Number)
+        local V3 = Vector(concepts.Float)
+
+        test [S(V1) == false]
+        test [S(V2) == false]
+        test [S(V3) == true]
+        test [V3(S) == false]
+        test [V1(V2) == true]
+        test [V1(V3) == true]
+        test [V1(V2) == true]
+        test [V2(V3) == true]
+        test [V3(V2) == false]
+        test [V3(V1) == false]
+        test [concepts.is_specialized_over(&V3, &V2)]
+    end
+
+    testset "Compile-time integer and string dispatch" do
+        local A = concepts.newconcept("A")
+        A.traits.isfoo = "A"
+        local B = concepts.newconcept("B")
+        B.traits.isfoo = "B"
+        local C = concepts.newconcept("C")
+        C.traits.isfoo = "C"
+
+        concept Foo(N) where {N : 1}
+            assert(N == 1)
+            Self:inherit(A)
+        end
+
+        concept Foo(N) where {N : 2}
+            assert(N == 2)
+            Self:inherit(B)
+        end
+
+        concept Foo(N) where {N : 3}
+            assert(N == 3)
+            Self:inherit(C)
+        end
+
+        concept Foo(S) where {S : "hello"}
+            assert(S == "hello")
+            Self.traits.isfoo = S
+        end
+
+        local Foo1 = Foo(1)
+        local Foo2 = Foo(2)
+        local Foo3 = Foo(3)
+        local Foo4 = Foo("hello")
+        test [A(Foo1) == true]
+        test [Foo1(A) == true]
+
+        test [B(Foo2) == true]
+        test [Foo2(B) == true]
+        test [A(B) == false]
+        test [B(A) == false]
+
+        test [C(Foo3) == true]
+        test [Foo3(C) == true]
+        test [C(A) == false]
+        test [C(B) == false]
+        test [A(C) == false]
+        test [B(C) == false]
+
+        test [Foo4.traits.isfoo == "hello"]
+    end
+
+    testset "Multiple Arguments" do
+
+        concept Matrix(T1, T2) where {T1 : Any, T2 : Any}
+            Self.methods.sum = {&Self} -> {}
+        end
+
+        concept Matrix(T, T) where {T : Any}
+            Self.methods.special_sum = {&Self} -> {}
+        end
+
+		local Generic = Matrix(concepts.Float, concepts.Integer)
+		local Special = Matrix(concepts.Float, concepts.Float)
+
+		test [Generic(Special) == true]
+		test [Special(Generic) == false]
+	end
+
+    testset "Multipe inheritance" do
+		local SVec = concepts.parametrizedconcept("SVec")
+
+        concept SVec()
+            Self.traits.length = concepts.traittag
+			Self.methods.length = &Self -> concepts.Integral
+        end
+
+        concept SVec(T) where {T : concepts.Number}
+			Self:inherit(SVec())
+			Self.methods.axpy = {&Self, T, &Self} -> {}
+        end
+
+        concept SVec(T, N) where {T : concepts.Float, N : 3}
+			assert(N == 3)
+			Self:inherit(SVec(T))
+			Self.traits.length = N
+			Self.methods.cross = {&Self, &Self} -> T
+        end
+
+		local struct H(base.AbstractBase) {}
+		H.methods.length = &H -> int32
+
+		local struct G(base.AbstractBase) {}
+		G.traits.length = 2
+		G.methods.length = &G -> int64
+
+		local SVecAny = SVec()
+		test [SVecAny(H) == false]
+		test [SVecAny(G) == true]
+
+		local struct I(base.AbstractBase) {}
+		I.traits.length = 2
+		I.methods.length = &I -> uint64
+		I.methods.axpy = {&I, int32, &I} -> {}
+
+		local SVecInt = SVec(concepts.Integer)
+		test [SVecInt(G) == false]
+		test [SVecInt(I) == true]
+
+		local struct D(base.AbstractBase) {}
+		D.traits.length = 3
+		D.methods.length = &D -> uint64
+		D.methods.axpy = {&D, double, &D} -> {}
+		D.methods.cross = {&D, &D} -> {}
+
+		local struct D(base.AbstractBase) {}
+		D.traits.length = 3
+		D.methods.length = &D -> uint64
+		D.methods.axpy = {&D, double, &D} -> {}
+		D.methods.cross = {&D, &D} -> {}
+
+		local struct E(base.AbstractBase) {}
+		E.traits.length = 4
+		E.methods.length = &E -> uint64
+		E.methods.axpy = {&E, double, &E} -> {}
+		E.methods.cross = {&E, &E} -> {}
+
+		local SVec3D = SVec(concepts.Float, 3)
+		test [SVec3D(G) == false]
+		test [SVec3D(I) == false]
+		test [SVec3D(D) == true]
+		test [SVec3D(E) == false]
+	end
 end

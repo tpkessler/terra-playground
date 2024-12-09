@@ -4,7 +4,7 @@
 -- SPDX-License-Identifier: MIT
 
 local base = require("base")
-local concept = require("concept")
+local concepts = require("concepts")
 local mathfun = require("mathfuns")
 
 local DualNumber = terralib.memoize(function(T)
@@ -67,10 +67,10 @@ local DualNumber = terralib.memoize(function(T)
         return dual {val, tng}
     end
 
-    concept.Number.friends[dual] = true
+    concepts.Number.friends[dual] = true
 
-    if concept.Number(T) then
-        concept.Number:addfriend(dual)
+    if concepts.Number(T) then
+        concepts.Number:addfriend(dual)
         local fun = {}
 
         terra fun.exp(x: dual)
@@ -142,12 +142,12 @@ local DualNumber = terralib.memoize(function(T)
         end)
     end
 
-    if concept.Real(T) then
-        concept.Real:addfriend(dual)
+    if concepts.Real(T) then
+        concepts.Real:addfriend(dual)
     end
 
-    if concept.Float(T) then
-        concept.Float:addfriend(dual)
+    if concepts.Float(T) then
+        concepts.Float:addfriend(dual)
     end
 
     return dual

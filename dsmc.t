@@ -5,7 +5,7 @@
 
 local alloc = require("alloc")
 local base = require("base")
-local concept = require("concept")
+local concepts = require("concepts")
 local template = require("template")
 local random = require("random")
 local dvector = require("dvector")
@@ -17,7 +17,7 @@ local mathfun = require("mathfuns")
 local err = require("assert")
 
 local ParticleSystem = terralib.memoize(function(T)
-    assert(concept.Real(T))
+    assert(concepts.Real(T))
     local Allocator = alloc.Allocator
     local DVec = dvector.DynamicVector(T)
     local struct particle_system(base.AbstractBase) {

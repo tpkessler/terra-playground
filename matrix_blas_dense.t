@@ -5,18 +5,18 @@
 
 import "terraform"
 local matrix = require("matrix")
-local concept = require("concept")
+local concepts = require("concepts")
 local blas = require("blas")
 local vecblas = require("vector_blas")
 local err = require("assert")
 
 local BLASVector = vecblas.VectorBLAS
-local BLASNumber = concept.BLASNumber
-local Complex = concept.Complex
-local Bool = concept.Bool
-local Integral = concept.Integral
+local BLASNumber = concepts.BLASNumber
+local Complex = concepts.Complex
+local Bool = concepts.Bool
+local Integral = concepts.Integral
 
-local struct BLASDenseMatrix(concept.Base) {}
+local struct BLASDenseMatrix(concepts.Base) {}
 BLASDenseMatrix:inherit(matrix.Matrix)
 BLASDenseMatrix.methods.getblasdenseinfo = {&BLASDenseMatrix} -> {Integral, Integral, &BLASNumber, Integral}
 

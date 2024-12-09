@@ -7,7 +7,7 @@ import "terraform"
 
 local alloc = require("alloc")
 local base = require("base")
-local concept = require("concept")
+local concepts = require("concepts")
 local vecbase = require("vector")
 local svector = require("svector")
 local dvector = require("dvector")
@@ -16,7 +16,7 @@ local tmath = require("mathfuns")
 local dual = require("dual")
 local range = require("range")
 local gauss = require("gauss")
-local lambda = require("lambdas")
+local lambda = require("lambda")
 local tmath = require("mathfuns")
 local stack = require("stack")
 local thread = setmetatable(
@@ -53,7 +53,7 @@ local terra hermite(alloc: Alloc, n: int64): hermite_t
 end
 
 local pow
-terraform pow(n: I, x: T) where {I: concept.Integral, T: concept.Real}
+terraform pow(n: I, x: T) where {I: concepts.Integral, T: concepts.Real}
     escape
         local pow_raw = terralib.memoize(function(I, T)
             local terra impl(n: I, x: T): T
@@ -73,7 +73,7 @@ terraform pow(n: I, x: T) where {I: concept.Integral, T: concept.Real}
 end
 
 local monomial
-terraform monomial(v: &T, p: &I) where {I: concept.Integral, T: concept.Number}
+terraform monomial(v: &T, p: &I) where {I: concepts.Integral, T: concepts.Number}
     var res = [v.type.type](1)
     for i = 0, VDIM do
         res = res * pow(p[i], v[i])
@@ -146,7 +146,7 @@ end
 local Vector = vecbase.Vector
 local local_maxwellian
 terraform local_maxwellian(basis, coeff: &V, quad)
-    where {I: concept.Integral, V: Vector}
+    where {I: concepts.Integral, V: Vector}
     var m1: coeff.type.type.eltype = 0
     var m2 = [svector.StaticVector(m1.type, VDIM)].zeros()
     var m3: m1.type = 0
@@ -192,13 +192,13 @@ terraform local_maxwellian(basis, coeff: &V, quad)
     return rho, u, theta
 end
 
-local RecDiff = concept.newconcept("RecDiff")
-RecDiff.traits.depth = concept.traittag
-RecDiff.traits.eltype = concept.traittag
-local Stack = stack.Stack
-RecDiff.methods.getcoeff = {&RecDiff, concept.Integral, &Stack} -> {}
+local RecDiff = concepts.newconcept("RecDiff")
+RecDiff.traits.depth = concepts.traittag
+RecDiff.traits.eltype = concepts.traittag
+local Stack = concepts.Stack
+RecDiff.methods.getcoeff = {&RecDiff, concepts.Integral, &Stack} -> {}
 
-local Integer = concept.Integer
+local Integer = concepts.Integer
 local olver
 terraform olver(alloc, rec: &R, y0: &S, nmax: I, mom: &V)
     where {R: RecDiff, S: Stack, I: Integer, V: Vector}
@@ -219,7 +219,7 @@ local ExpMom = function(T)
     base.AbstractBase(impl)
     impl.traits.depth = 5
     impl.traits.eltype = T
-    terraform impl:getcoeff(n: I, y: &S) where {I: concept.Integral, S: Stack}
+    terraform impl:getcoeff(n: I, y: &S) where {I: concepts.Integral, S: Stack}
         var a = self.a
         y:set(0, a * (n - 1))
         y:set(1, 2 * a * (n - 1))

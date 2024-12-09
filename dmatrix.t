@@ -5,7 +5,7 @@
 
 local alloc = require("alloc")
 local base = require("base")
-local concept = require("concept")
+local concepts = require("concepts")
 local matrix = require("matrix")
 local err = require("assert")
 local fun = require("fun")
@@ -53,7 +53,7 @@ local DynamicMatrix = terralib.memoize(function(T)
 
     matrix.MatrixBase(M)
 
-    if concept.BLASNumber(T) then
+    if concepts.BLASNumber(T) then
         terra M:getblasdenseinfo()
             return self:rows(), self:cols(), self.data.ptr, self.ld
         end

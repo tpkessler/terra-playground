@@ -9,7 +9,7 @@ local base = require("base")
 local vecbase = require("vector")
 local veccont = require("vector_contiguous")
 local vecblas = require("vector_blas")
-local concept = require("concept")
+local concepts = require("concepts")
 
 local StaticVector = terralib.memoize(function(T, N)
     local function create_static_vector(T, N)
@@ -116,7 +116,7 @@ local StaticVector = terralib.memoize(function(T, N)
 
     if T:isprimitive() then
 
-        terraform V:fill(a : S) where {S : concept.Number}
+        terraform V:fill(a : S) where {S : concepts.Number}
             self.simd = a
         end
 
@@ -124,11 +124,11 @@ local StaticVector = terralib.memoize(function(T, N)
             self.simd = other.simd
         end
 
-        terraform V:scal(a : S) where {S : concept.Number}
+        terraform V:scal(a : S) where {S : concepts.Number}
             self.simd = a * self.simd
         end
 
-        terraform V:axpy(a : S, x : &V2) where {S : concept.Number, V2 : V.Self}
+        terraform V:axpy(a : S, x : &V2) where {S : concepts.Number, V2 : V.Self}
             self.simd = self.simd + a * x.simd
         end
         -- dot impletation doesn't profit from a vectorized implementation

@@ -7,7 +7,7 @@ import "terratest/terratest"
 
 local lu = require("lu")
 local alloc = require("alloc")
-local concept = require("concept")
+local concepts = require("concepts")
 local random = require("random")
 local complex = require("complex")
 local nfloat = require("nfloat")
@@ -48,7 +48,7 @@ for _, Ts in pairs({float, double, float128, float1024}) do
                 lu:solve(true, &xt)
             end
 
-            if not concept.BLASNumber(T) then
+            if not concepts.BLASNumber(T) then
                 testset "Factorize" do
                     test mathfun.abs(a(0, 0) - [T](3)) < tol
                     test mathfun.abs(a(0, 1) - [T](4)) < tol

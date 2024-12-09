@@ -3,7 +3,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept-impl")
+local concepts = require("concept-impl")
 local template = require("template")
 
 local function isempty(tab)
@@ -45,7 +45,7 @@ local function parametrizedconcept(name)
         local name = ("%s(%s)"):format(
             self.name, arg:map(function(T) return tostring(T) end):concat(",")
         )
-        local C = concept.newconcept(name)
+        local C = concepts.newconcept(name)
         local method_arg = terralib.newlist({...})
         -- Implicit inheritance for implementations with fewer arguments
         for k = 0, #arg do
