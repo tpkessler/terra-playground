@@ -6,12 +6,12 @@
 import "terraform"
 local stack = require("stack")
 local err = require("assert")
-local concept = require("concept")
+local concepts = require("concepts")
 local mathfun = require("mathfuns")
 
-local Number = concept.Number
-local Stack = concept.Stack
-local struct Vector(concept.Base) {}
+local Number = concepts.Number
+local Stack = concepts.Stack
+local struct Vector(concepts.Base) {}
 Vector:inherit(Stack)
 Vector.methods.fill = {&Vector, Number} -> {}
 Vector.methods.clear = {&Vector} -> {}
@@ -29,6 +29,11 @@ local VectorBase = function(V)
 		"A vector base implementation requires a valid stack implementation")
 	local T = V.eltype
 
+	--adds:
+	--methods.reverse
+	--iterator{T}
+	stack.StackBase(V)
+
 	-- Promote this to a templated method with proper concepts for callable objects
 	V.methods.map = macro(function(self, other, f)
 		return quote
@@ -42,7 +47,7 @@ local VectorBase = function(V)
 		end
 	end)
 
-	terraform V:fill(a : T) where {T : concept.Number}
+	terraform V:fill(a : T) where {T : concepts.Number}
 		var size = self:size()
 		for i = 0, size do
 			self:set(i, a)
@@ -80,14 +85,14 @@ local VectorBase = function(V)
 		end
 	end
 
-	terraform V:scal(a : T) where {T : concept.Number}
+	terraform V:scal(a : T) where {T : concepts.Number}
 		var size = self:size()
 		for i = 0, size do
 			self:set(i, a * self:get(i))
 		end
 	end
 
-	terraform V:axpy(a : T, x : &S) where {T : concept.Number, S : Stack}
+	terraform V:axpy(a : T, x : &S) where {T : concepts.Number, S : Stack}
 		err.assert(self:size() == x:size())
 		var size = self:size()
 		for i = 0, size do
@@ -107,7 +112,7 @@ local VectorBase = function(V)
 		return res
 	end
 
-	if concept.Float(T) then
+	if concepts.Float(T) then
 		terra V:norm()
 			return mathfun.sqrt(mathfun.real(self:dot(self)))
 		end

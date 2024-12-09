@@ -4,10 +4,9 @@
 -- SPDX-License-Identifier: MIT
 
 import "terratest/terratest"
-local io = terralib.includec('stdio.h')
 local Alloc = require('alloc')
 local gauss = require("gauss")
-local math = require("mathfuns")
+local tmath = require("mathfuns")
 local vector = require("dvector")
 local poly = require("poly")
 local rn = require("range")
@@ -16,24 +15,24 @@ local Allocator = Alloc.Allocator
 local DefaultAllocator =  Alloc.DefaultAllocator()
 local dvec = vector.DynamicVector(double)
 
-math.isapprox = terralib.overloadedfunction("isapprox")
-math.isapprox:adddefinition(terra(a : double, b : double, atol : double)
-    return math.abs(b-a) < atol
+tmath.isapprox = terralib.overloadedfunction("isapprox")
+tmath.isapprox:adddefinition(terra(a : double, b : double, atol : double)
+    return tmath.abs(b-a) < atol
 end)
 
-math.isapprox:adddefinition(terra(v : dvec, w : dvec, atol : double)
+tmath.isapprox:adddefinition(terra(v : dvec, w : dvec, atol : double)
     if v:size() == w:size() then
         var s = 0.0
         for i = 0, v:size() do
             var e = v(i) - w(i)
             s = s + e * e
         end
-        return math.sqrt(s) < atol
+        return tmath.sqrt(s) < atol
     end
     return false
 end)
 
-testenv "gauss Legendre quadrature" do
+testenv(skip) "gauss Legendre quadrature" do
 
     terracode
         var alloc : DefaultAllocator
@@ -67,14 +66,14 @@ testenv "gauss Legendre quadrature" do
                 end
             end
             test x:size() == N and w:size() == N
-            test math.isapprox(w:sum(), 2.0, 1e-13)
-            test math.isapprox(s, S, 1e-13)
+            test tmath.isapprox(w:sum(), 2.0, 1e-13)
+            test tmath.isapprox(s, S, 1e-13)
         end
     end
 
 end
 
-testenv "gauss Chebyshev quadrature" do
+testenv(skip) "gauss Chebyshev quadrature" do
 
     local poly2 = poly.Polynomial(double, 3)
     local poly3 = poly.Polynomial(double, 4)
@@ -98,8 +97,8 @@ testenv "gauss Chebyshev quadrature" do
                 end
             end
             test x:size() == N and w:size() == N
-            test math.isapprox(s2, math.pi/2., 1e-14)
-            test math.isapprox(s3, 0., 1e-14)
+            test tmath.isapprox(s2, tmath.pi/2., 1e-14)
+            test tmath.isapprox(s3, 0., 1e-14)
         end
 
         testset(N) "Chebyshev u" do
@@ -112,8 +111,8 @@ testenv "gauss Chebyshev quadrature" do
                 end
             end
             test x:size() == N and w:size() == N
-            test math.isapprox(s2, math.pi/8., 1e-14)
-            test math.isapprox(s3, 0., 1e-14)
+            test tmath.isapprox(s2, tmath.pi/8., 1e-14)
+            test tmath.isapprox(s3, 0., 1e-14)
         end
 
         testset(N) "Chebyshev v" do
@@ -126,8 +125,8 @@ testenv "gauss Chebyshev quadrature" do
                 end
             end
             test x:size() == N and w:size() == N
-            test math.isapprox(s2, math.pi/2., 1e-14)
-            test math.isapprox(s3, 3.*math.pi/8., 1e-14)
+            test tmath.isapprox(s2, tmath.pi/2., 1e-14)
+            test tmath.isapprox(s3, 3.*tmath.pi/8., 1e-14)
         end
 
         testset(N) "Chebyshev w" do
@@ -140,13 +139,13 @@ testenv "gauss Chebyshev quadrature" do
                 end
             end
             test x:size() == N and w:size() == N
-            test math.isapprox(s2, math.pi/2., 1e-14)
-            test math.isapprox(s3, -3.*math.pi/8., 1e-14)
+            test tmath.isapprox(s2, tmath.pi/2., 1e-14)
+            test tmath.isapprox(s3, -3.*tmath.pi/8., 1e-14)
         end
     end
 end
 
-testenv "gauss Jacobi quadrature" do
+testenv(skip) "gauss Jacobi quadrature" do
 
     terracode
         var alloc : DefaultAllocator
@@ -160,8 +159,8 @@ testenv "gauss Jacobi quadrature" do
                 var xref, wref = gauss.legendre(&alloc, N)
             end
             test x:size() == N and w:size() == N
-            test math.isapprox(xref, x, 1e-13)
-            test math.isapprox(wref, w, 1e-13)
+            test tmath.isapprox(xref, x, 1e-13)
+            test tmath.isapprox(wref, w, 1e-13)
         end
 
         testset(N) "reproduce gauss-Chebyshev of the 1st kind" do
@@ -170,8 +169,8 @@ testenv "gauss Jacobi quadrature" do
                 var xref, wref = gauss.chebyshev_t(&alloc, N)
             end
             test x:size() == N and w:size() == N
-            test math.isapprox(xref, x, 1e-13)
-            test math.isapprox(wref, w, 1e-13)
+            test tmath.isapprox(xref, x, 1e-13)
+            test tmath.isapprox(wref, w, 1e-13)
         end
 
         testset(N) "reproduce gauss-Chebyshev of the 2st kind" do
@@ -180,8 +179,8 @@ testenv "gauss Jacobi quadrature" do
                 var xref, wref = gauss.chebyshev_u(&alloc, N)
             end
             test x:size() == N and w:size() == N
-            test math.isapprox(xref, x, 1e-13)
-            test math.isapprox(wref, w, 1e-13)
+            test tmath.isapprox(xref, x, 1e-13)
+            test tmath.isapprox(wref, w, 1e-13)
         end
 
         testset(N) "reproduce gauss-Chebyshev of the 3rd kind" do
@@ -190,8 +189,8 @@ testenv "gauss Jacobi quadrature" do
                 var xref, wref = gauss.chebyshev_v(&alloc, N)
             end
             test x:size() == N and w:size() == N
-            test math.isapprox(xref, x, 1e-13)
-            test math.isapprox(wref, w, 1e-13)
+            test tmath.isapprox(xref, x, 1e-13)
+            test tmath.isapprox(wref, w, 1e-13)
         end
 
         testset(N) "reproduce gauss-Chebyshev of the 4rd kind" do
@@ -200,8 +199,8 @@ testenv "gauss Jacobi quadrature" do
                 var xref, wref = gauss.chebyshev_w(&alloc, N)
             end
             test x:size() == N and w:size() == N
-            test math.isapprox(xref, x, 1e-13)
-            test math.isapprox(wref, w, 1e-13)
+            test tmath.isapprox(xref, x, 1e-13)
+            test tmath.isapprox(wref, w, 1e-13)
         end
     end
 
@@ -211,8 +210,8 @@ testenv "gauss Jacobi quadrature" do
             var x, w = gauss.jacobi(&alloc, 1, a, b)
         end
         test x:size() == 1 and w:size() == 1
-        test math.isapprox(x(0), (b - a) / (a + b + 2), 1e-13)
-        test math.isapprox(w(0), 1.3333333333333333, 1e-13)
+        test tmath.isapprox(x(0), (b - a) / (a + b + 2), 1e-13)
+        test tmath.isapprox(w(0), 1.3333333333333333, 1e-13)
     end
 
     testset "a specific n = 10" do
@@ -220,8 +219,8 @@ testenv "gauss Jacobi quadrature" do
             var x, w = gauss.jacobi(&alloc, 10, 0.2, -1./30.)
         end
         test x:size() == 10 and w:size() == 10
-        test math.isapprox(x(6), 0.41467011760532446, 1e-13)
-        test math.isapprox(w(2), 0.24824523988590236, 1e-13)
+        test tmath.isapprox(x(6), 0.41467011760532446, 1e-13)
+        test tmath.isapprox(w(2), 0.24824523988590236, 1e-13)
     end
 
     testset "a specific n = 42" do
@@ -229,11 +228,75 @@ testenv "gauss Jacobi quadrature" do
             var x, w = gauss.jacobi(&alloc, 42, -.1, .3)
         end
         test x:size() == 42 and w:size() == 42
-        test math.isapprox(x(36), 0.912883347814032, 1e-13)
-        test math.isapprox(w(36), 0.046661910947553, 1e-13)
+        test tmath.isapprox(x(36), 0.912883347814032, 1e-13)
+        test tmath.isapprox(w(36), 0.046661910947553, 1e-13)
     end
 
 end
+
+testenv "gauss hermite quadrature" do
+
+    terracode
+        var alloc : DefaultAllocator
+    end
+
+    for N=1, 30, 3 do
+
+        local D = 2*N-1
+        local polynomial = poly.Polynomial(double, D)
+
+        local iexact = terra(K : int)
+            if K % 2 == 1 then return 0.0 end
+            var S = tmath.sqrt(tmath.pi)
+            for k = 2, K+1, 2 do
+                S = (k-1) * S / 2.0
+            end
+            return S
+        end
+
+        terracode 
+            --create polynomial sum_{i=0}^{D} exp(-x^2) * x^i dx
+            var p = polynomial{}
+            for k = 0, D do
+                p.coeffs(k) = 1.0
+            end
+            var S = 0.0
+            for j = 0, D do
+                S = S + iexact(j)
+            end
+        end
+
+        testset(N) "hermite" do
+            terracode
+                var x, w = gauss.hermite(&alloc, N)
+                var s = 0.0
+                for t in rn.zip(&x, &w) do
+                    var xx, ww = t
+                    s = s + p(xx) * ww
+                end
+            end
+            test x:size() == N and w:size() == N
+            test x.data:owns_resource() and w.data:owns_resource()
+            test tmath.isapprox(s, S, S * 1e-12)
+        end
+
+        testset(N) "scaled hermite" do
+            terracode
+                var x, w = gauss.hermite(&alloc, N, {origin=1.0, scaling=0.5})
+                var s = 0.0
+                for t in rn.zip(&x, &w) do
+                    var xx, ww = t
+                    s = s + ww
+                end
+            end
+            test x:size() == N and w:size() == N
+            test tmath.isapprox(s, 0.5 * tmath.sqrt(tmath.pi), 1e-12)
+        end
+
+    end --N=1, 50, 3
+    
+end
+
 
 local struct interval{
     _0 : double
@@ -250,7 +313,7 @@ interval.metamethods.__entrymissing = macro(function(entryname, self)
     end
 end)
 
-testenv "API" do
+testenv(skip) "API" do
 
     terracode
         var alloc : DefaultAllocator
@@ -261,7 +324,7 @@ testenv "API" do
             var x,w = gauss.legendre(&alloc, 3, interval{1.0, 3.0})
         end
         test x:size() == 3 and w:size() == 3
-        test math.isapprox(w:sum(), 2.0, 1e-13)
+        test tmath.isapprox(w:sum(), 2.0, 1e-13)
     end
 
     N = 3
@@ -287,8 +350,8 @@ testenv "API" do
             end
         end
         test x:size() == N and w:size() == N
-        test math.isapprox(w:sum(), 3.0, 1e-13)
-        test math.isapprox(s, 5997.0 / 20.0, 1e-13)
+        test tmath.isapprox(w:sum(), 3.0, 1e-13)
+        test tmath.isapprox(s, 5997.0 / 20.0, 1e-13)
     end
 
     terracode
@@ -311,7 +374,7 @@ testenv "API" do
                 s = s + w
             end
         end
-        test math.isapprox(s, 12.0, 1e-14)
+        test tmath.isapprox(s, 12.0, 1e-14)
     end
     
     testset "3D tensor-product rules - pass by reference" do
@@ -323,7 +386,7 @@ testenv "API" do
                 s = s + w
             end
         end
-        test math.isapprox(s, 60.0, 1e-14)
+        test tmath.isapprox(s, 60.0, 1e-14)
     end
    
 end

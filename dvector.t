@@ -5,7 +5,7 @@
 
 local alloc = require("alloc")
 local base = require("base")
-local concept = require("concept")
+local concepts = require("concepts")
 local stack = require("stack")
 local vecbase = require("vector")
 local veccont = require("vector_contiguous")
@@ -32,6 +32,10 @@ local DynamicVector = terralib.memoize(function(T)
     end
 
     base.AbstractBase(V)
+
+    terra V:getdataptr()
+        return self.data:getdataptr()
+    end
 
     terra V:size()
         return self.size
@@ -132,7 +136,7 @@ local DynamicVector = terralib.memoize(function(T)
         end
     end
 
-    if concept.BLASNumber(T) then
+    if concepts.BLASNumber(T) then
         terra V:getblasinfo()
             var n = self:size()
             var data = self.data.ptr

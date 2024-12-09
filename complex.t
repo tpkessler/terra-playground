@@ -6,13 +6,13 @@
 local C = terralib.includec("math.h")
 
 local base = require("base")
-local concept = require("concept")
+local concepts = require("concepts")
 local mathfun = require("mathfuns")
 
-concept.Complex = terralib.types.newstruct("Complex")
-concept.Base(concept.Complex)
-concept.Complex.traits.iscomplex = true
-concept.Complex.traits.eltype = concept.traittag
+concepts.Complex = terralib.types.newstruct("Complex")
+concepts.Base(concepts.Complex)
+concepts.Complex.traits.iscomplex = true
+concepts.Complex.traits.eltype = concepts.traittag
 
 local complex = terralib.memoize(function(T)
 
@@ -39,8 +39,8 @@ local complex = terralib.memoize(function(T)
     base.AbstractBase(complex)
     complex.traits.iscomplex = true
     complex.traits.eltype = T
-    assert(concept.Complex(complex))
-    -- concept.Complex.friends[complex] = true
+    assert(concepts.Complex(complex))
+    -- concepts.Complex.friends[complex] = true
 
     terra complex.metamethods.__add(self: complex, other: complex)
         return complex {self.re + other.re, self.im + other.im}
@@ -74,7 +74,7 @@ local complex = terralib.memoize(function(T)
     end
     mathfun.conj:adddefinition(terra(x: complex) return x:conj() end)
 
-    if concept.Float(T) then
+    if concepts.Float(T) then
         terra complex:norm(): T
             return mathfun.sqrt(self:normsq())
         end
@@ -108,13 +108,13 @@ local complex = terralib.memoize(function(T)
         complex.staticmethods[name]:setinlined(true)
     end
 
-    if concept.Number(T) then
-        concept.Number.friends[complex] = true
-        concept.Complex.friends[complex] = true
+    if concepts.Number(T) then
+        concepts.Number.friends[complex] = true
+        concepts.Complex.friends[complex] = true
     end
 
-    if concept.Float(T) and concept.BLASNumber(T) then
-        concept.BLASNumber.friends[complex] = true
+    if concepts.Float(T) and concepts.BLASNumber(T) then
+        concepts.BLASNumber.friends[complex] = true
     end
 
     return complex

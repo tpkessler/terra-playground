@@ -5,7 +5,7 @@
 
 local base = require("base")
 local template = require("template")
-local concept = require("concept")
+local concepts = require("concepts")
 
 local generate_terrafun, parse_terraform_statement, process_free_function_statement, process_class_method_statement
 local namespace, process_method_name, process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing
@@ -21,7 +21,7 @@ end
 
 local conceptlang = {
 	name = "conceptlang";
-	entrypoints = {"terraform", "terrace"};
+	entrypoints = {"terraform", "concept"};
 	keywords = {"where"};
 	statement = 
 		function(self,lex)
@@ -36,7 +36,7 @@ local conceptlang = {
 						return process_free_function_statement(templ), { templ.path } -- create the statement: path = ctor(envfun)
 					end
 				end
-			elseif lex:matches("terrace") then
+			elseif lex:matches("concept") then
 				local templ = parse_concept_statement(self,lex)
 				return process_concept_statement(templ), { templ.path }
 			end
@@ -48,8 +48,9 @@ local conceptlang = {
 				if isfreefunctiontemplate(templ) then
 					return process_free_function_statement(templ), { templ.path } -- create the statement: path = ctor(envfun)
 				end
-			elseif lex:matches("terrace") then
-
+			elseif lex:matches("concept") then
+				local templ = parse_concept_statement(self,lex)
+				return process_concept_statement(templ), { templ.path }
 			end
 		end;
 }
@@ -81,7 +82,7 @@ end
 
 function parse_concept_statement(self,lex)
 	local templ = {}
-	lex:expect("terrace")
+	lex:expect("concept")
 	--process method path / class path
 	templ.path = process_namespace_indexing(lex)
 	templ.classname, templ.methodname = process_method_name(lex, templ.path)
@@ -217,7 +218,7 @@ function process_concept_statement(templ)
 		--get parameter-types list
 		local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
 		--get/register new template function
-		local templfun = localenv[templ.path] or concept.parametrizedconcept(templ.methodname)
+		local templfun = localenv[templ.path] or concepts.parametrizedconcept(templ.methodname)
 		--add current template method implementation
 		templfun[paramconceptlist] = terralib.memoize(generate_luafun(templ, localenv))
 		return templfun
@@ -264,11 +265,21 @@ namespace = {
 		end
 	end,
 }
+
 namespace.new = function(env)
-	env["Any"] = concept.Any
-	env["Vararg"] = concept.Vararg
+	env["Any"] = concepts.Any
+	env["Value"] = concepts.Value
+	env["Vararg"] = concepts.Vararg
 	local t = {env=env}
 	return setmetatable(t, namespace)
+end
+
+namespace.isa = function(t)
+	if type(t) == "table" and getmetatable(t) == namespace then
+		return true
+	else
+		return false
+	end
 end
 
 local function dereference(v)
@@ -285,16 +296,28 @@ function get_template_parameter_list(localenv, params, constraints)
 	for i,param in ipairs(params) do
 		local c = ctrs[param.typename]
 		local tp
-		if c then --c is either a concept or has been mutated to an integer that points to
-		--a concept already treated in uniqueparams
+		if c then --c is either a (parameterized) concepts or has been mutated to an integer that points to
+		--a concepts already treated in uniqueparams
 			if type(c)=="number" then
 				--already treated in uniqueparams, so insert number 'c' and do not
 				--change uniqueparams
 				pos:insert(c)
 				ref:insert(param.nref)
 			else
-				--get concept type
+				--get concepts type
 				tp = localenv[c.path] or error("Concept " .. tostring(c.name) .. " not found in current scope.")
+				--evaluate in case of a parametric concepts
+				if concepts.isparametrizedconcept(tp) or type(tp) == "function" then
+					local args = terralib.newlist()
+					for i,v in ipairs(c.fargs) do
+						if type(v) == "table" then
+							args:insert(localenv[v])
+						else
+							args:insert(v)
+						end
+					end
+					tp = tp(unpack(args))
+				end
 				ctrs[param.typename] = counter --update to a number in uniqueparams
 				--update tables defining template parameter list
 				uniqueparams:insert(tp)
@@ -351,7 +374,7 @@ function process_template_parameters(lex,classname)
 					nref = nref + 1
 				end
 				local paramtype = lex:expect(lex.name).value
-				lex:ref(paramtype) --if paramtype is a concrete type (not a concept), 
+				lex:ref(paramtype) --if paramtype is a concrete type (not a concepts), 
 				--then make it available in 'env'
 				params:insert({name=paramname, typename=paramtype, nref=nref}) 
 			elseif lex:nextif("...") then --expecting ...
@@ -370,20 +393,49 @@ function process_concept_template_parameters(lex)
 	local params = terralib.newlist()
 	if lex:nextif("(") then
 		repeat
-			local param = lex:expect(lex.name).value
-			lex:ref(param) --make param available in 'env'
-			params:insert({name="", typename=param, nref=0}) 
+			if lex:matches(lex.name) then
+				local param = lex:expect(lex.name).value
+				lex:ref(param) --make param available in 'env'
+				params:insert({name="", typename=param, nref=0})
+			end
 		until not lex:nextif(",")
 		lex:expect(")")
 	end
 	return params
 end
 
+local function processfunargs(lex)
+	if lex:nextif("(") then
+		local args = terralib.newlist()
+		repeat
+			if lex:matches(lex.name) then
+				local path, name = process_namespace_indexing(lex)
+				args:insert(path)
+			elseif lex:matches(lex.number) then
+				args:insert(lex:expect(lex.number).value)
+			elseif lex:matches(lex.string) then
+				args:insert(lex:expect(lex.string).value)
+			end
+		until not lex:nextif(",")
+		lex:expect(")")
+		return args
+	end
+end
+
 local function process_single_constraint(lex)
 	if lex:nextif(":") then
-		local path, name = process_namespace_indexing(lex)
-		lex:ref(path[1])
-		return {path=path, name=name}
+		if lex:matches(lex.name) then
+			local path, name = process_namespace_indexing(lex)
+			lex:ref(path[1])
+			local fargs = processfunargs(lex)
+			return {path=path, name=name, fargs=fargs}
+		elseif lex:matches(lex.string) then
+			return {path={"Value"}, name="Value", fargs={lex:expect(lex.string).value} }
+		elseif lex:matches(lex.number) then
+			return {path={"Value"}, name="Value", fargs={lex:expect(lex.number).value} }
+		else
+			error("ParseError: expected a concepts `name`, a string or a number.")
+		end
 	else
 		return {path = {"Any"}, name = "Any"}
 	end
@@ -398,7 +450,7 @@ function process_where_clause(lex)
 		lex:expect("{") 
 		repeat      
 			local param = lex:expect(lex.name).value
-			params[param] = process_single_constraint(lex)    
+			params[param] = process_single_constraint(lex)
 		until not lex:nextif(",")                                
 		lex:expect("}")                                
 	end

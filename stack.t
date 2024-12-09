@@ -7,7 +7,7 @@ require("terralibext")
 local base = require("base")
 local alloc = require("alloc")
 local err = require("assert")
-local concept = require("concept")
+local concepts = require("concepts")
 local range = require("range")
 local io = terralib.includec("stdio.h")
 
@@ -36,7 +36,7 @@ local StackBase = terralib.memoize(function(stack)
     }
 
     terra stack:getiterator()
-        return iterator{self, self.data.ptr}
+        return iterator{self, self:getdataptr()}
     end
 
     terra iterator:getvalue()
@@ -48,7 +48,7 @@ local StackBase = terralib.memoize(function(stack)
     end
 
     terra iterator:isvalid()
-        return self.ptr - self.parent.data.ptr < self.parent.size
+        return self.ptr - self.parent:getdataptr() < self.parent:size()
     end
     
     stack.iterator = iterator
@@ -70,7 +70,7 @@ local DynamicStack = terralib.memoize(function(T)
     stack.eltype = T
 
     --add methods, staticmethods and templates tablet and template fallback mechanism 
-    --allowing concept-based function overloading at compile-time
+    --allowing concepts-based function overloading at compile-time
     base.AbstractBase(stack)
 
     stack.staticmethods.new = terra(alloc : Allocator, capacity: size_t)
@@ -78,6 +78,10 @@ local DynamicStack = terralib.memoize(function(T)
         s.data = alloc:allocate(sizeof(T), capacity)
         s.size = 0
         return s
+    end
+
+    terra stack:getdataptr()
+        return self.data:getdataptr()
     end
 
     terra stack:size()
@@ -145,7 +149,7 @@ local DynamicStack = terralib.memoize(function(T)
     end
 
     --sanity check
-    assert(concept.DStack(stack), "Stack type does not satisfy the DStack concept.")
+    assert(concepts.DStack(stack), "Stack type does not satisfy the DStack concepts.")
 
     return stack
 end)

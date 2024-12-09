@@ -8,7 +8,7 @@ import "terraform"
 local factorization = require("factorization")
 local base = require("base")
 local err = require("assert")
-local concept = require("concept")
+local concepts = require("concepts")
 local matbase = require("matrix")
 local vecbase = require("vector")
 local veccont = require("vector_contiguous")
@@ -19,7 +19,7 @@ local lapack = require("lapack")
 
 local Matrix = matbase.Matrix
 local Vector = vecbase.Vector
-local Number = concept.Number
+local Number = concepts.Number
 terraform factorize(a: &M, u: &U) where {M: Matrix, U: Vector}
     var n = a:cols()
     for j = 0, n do
@@ -83,7 +83,7 @@ terraform householder(a: &M, x: &V, i: uint64) where {M: Matrix, V: Vector}
     end
 end
 
-local Bool = concept.Bool
+local Bool = concepts.Bool
 terraform solve(trans: B, a: &M, u: &U, x: &V)
     where {B: Bool, M: Matrix, U: Vector, V: Vector}
     var n = a:rows()
@@ -117,7 +117,7 @@ terraform solve(trans: B, a: &M, u: &U, x: &V)
 end
 
 local function get_trans(T)
-    if concept.Complex(T) then
+    if concepts.Complex(T) then
         return "C"
     else
         return "T"
@@ -181,7 +181,7 @@ local QRFactory = terralib.memoize(function(M, U)
         return solve(trans, self.a, self.u, x)
     end
 
-    local Number = concept.Number
+    local Number = concepts.Number
     terraform qr:apply(trans: B, a: T1, x: &V1, b: T2, y: &V2)
         where {B: Bool, T1: Number, V1: Vector, T2: Number, V2: Vector}
         self:solve(trans, x)

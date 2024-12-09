@@ -3,13 +3,13 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local concept = require("concept")
+local concepts = require("concepts")
 local stack = require("stack")
 local vecbase = require("vector")
 
-local struct VectorContiguous(concept.Base) {}
-local Integral = concept.Integral
-local Number = concept.Number
+local struct VectorContiguous(concepts.Base) {}
+local Integral = concepts.Integral
+local Number = concepts.Number
 VectorContiguous:inherit(vecbase.Vector)
 VectorContiguous.methods.getbuffer = {&VectorContiguous} -> {Integral, &Number}
 

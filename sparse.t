@@ -4,7 +4,7 @@
 -- SPDX-License-Identifier: MIT
 
 local alloc = require("alloc")
-local concept = require("concept")
+local concepts = require("concepts")
 local err = require("assert")
 local base = require("base")
 local vecbase = require("vector")
@@ -37,7 +37,7 @@ local CSRMatrix = terralib.memoize(function(T, I)
         return self.cols
     end
 
-    local Number = concept.Number
+    local Number = concepts.Number
     local Vector = vecbase.Vector
     terraform csr:apply(trans: bool, alpha: A, x: &V1, beta: B, y: &V2)
         where {A: Number, V1: Vector, B: Number, V2: Vector}
@@ -112,7 +112,7 @@ local CSRMatrix = terralib.memoize(function(T, I)
         end
     end
 
-    local Integral = concept.Integral
+    local Integral = concepts.Integral
     local new
     terraform new(alloc, rows: N, cols: M) where {N: Integral, M: Integral}
         var a = csr {}
