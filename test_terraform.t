@@ -20,6 +20,7 @@ local Float = concepts.Float
 local Number = concepts.Number
 local size_t = uint64
 
+
 testenv "terraforming free functions" do
 
     testset "concrete types" do
@@ -451,6 +452,66 @@ testenv "terraforming class methods" do
             var mybar = bbar{1}
         end
         test mybar:eval(1.) == 2
+    end
+
+end
+
+testenv "defining regular concepts" do
+
+    concept Stack
+        Self.methods.length = {&Self} -> concepts.Integral
+        Self.methods.get = {&Self, concepts.Integral} -> Any
+        Self.methods.set = {&Self, concepts.Integral , Any} -> {}
+    end
+
+    test [concepts.isconcept(Stack) == true]
+
+    concept VectorAny
+        local S = Stack
+        Self:inherit(S)
+        Self.methods.swap = {&Self, &S} -> {}
+        Self.methods.copy = {&Self, &S} -> {}
+    end
+
+    test [concepts.isconcept(VectorAny) == true]
+
+    concept VectorNumber
+        Self:inherit(VectorAny)
+        local S = Stack
+        Self.methods.fill = {&Self, Number} -> {}
+        Self.methods.clear = {&Self} -> {}
+        Self.methods.sum = {&Self} -> Number
+        Self.methods.axpy = {&Self, Number, &S} -> {}
+        Self.methods.dot = {&Self, &S} -> Number
+    end
+    
+    test [concepts.isconcept(VectorNumber) == true]
+
+    concept VectorFloat
+        Self:inherit(VectorNumber)
+        Self.methods.norm = {&Self} -> Float
+    end
+
+    test [concepts.isconcept(VectorFloat) == true]
+
+    testset "inheritance and specialization" do
+        test [VectorAny(Stack) == false]
+        test [concepts.is_specialized_over(&VectorAny, &Stack)]
+        test [Stack(VectorAny) == true]
+        test [Stack(VectorNumber) == true]
+        test [Stack(VectorFloat) == true]
+        test [VectorNumber(Stack) == false]
+        test [VectorAny(VectorNumber) == true]
+        test [VectorNumber(VectorAny) == false]
+        test [concepts.is_specialized_over(&VectorNumber, &VectorAny)]
+        test [VectorFloat(Stack) == false]
+        test [VectorAny(VectorNumber) == true]
+        test [VectorAny(VectorFloat) == true]
+        test [VectorAny(VectorNumber) == true]
+        test [VectorNumber(VectorFloat) == true]
+        test [VectorFloat(VectorNumber) == false]
+        test [VectorFloat(VectorAny) == false]
+        test [concepts.is_specialized_over(&VectorFloat, &VectorNumber)]
     end
 
 end
