@@ -86,10 +86,13 @@ function parse_concept_statement(self,lex)
 	--process method path / class path
 	templ.path = process_namespace_indexing(lex)
 	templ.classname, templ.methodname = process_method_name(lex, templ.path)
-	--process templatefunction parameters
+	--process template function parameters
 	templ.params = process_concept_template_parameters(lex)
-	--process template parameter constraints
-	templ.constraints = process_where_clause(lex)
+	--if a parametric concept then process constraints
+	if templ.params then
+		--process template parameter constraints
+		templ.constraints = process_where_clause(lex)
+	end
 	--process terra-block
 	templ.luastmts = lex:luastats()
 	--end of terra-block
@@ -140,9 +143,11 @@ function generate_luafun(templ, localenv)
 	return function(Self, ...)
 		localenv["Self"] = Self
 		local args = terralib.newlist{...}
-		for counter,param in ipairs(templ.params) do
-			--add variable to the local environment
-			localenv[param.typename] = args[counter]
+		if templ.params then
+			for counter,param in ipairs(templ.params) do
+				--add variable to the local environment
+				localenv[param.typename] = args[counter]
+			end
 		end
 		templ.luastmts(localenv)
 	end
@@ -215,13 +220,24 @@ function process_concept_statement(templ)
 		--initialize environment and allow easy searching in 'env' 
 		--of variables that are nested inside tables
 		local localenv = namespace.new(envfun())
-		--get parameter-types list
-		local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
-		--get/register new template function
-		local templfun = localenv[templ.path] or concepts.parametrizedconcept(templ.methodname)
-		--add current template method implementation
-		templfun[paramconceptlist] = terralib.memoize(generate_luafun(templ, localenv))
-		return templfun
+		--if a parametric concept then
+		if templ.params then
+			--get parameter-types list
+			local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
+			--get/register new template function
+			local templfun = localenv[templ.path] or concepts.parametrizedconcept(templ.methodname)
+			--add current template method implementation
+			templfun[paramconceptlist] = terralib.memoize(generate_luafun(templ, localenv))
+			--return parameterized concept
+			return templfun
+		--if a true concept then
+		else
+			local newconcept = concepts.newconcept(templ.methodname)
+			local imp = generate_luafun(templ, localenv)
+			--add implementation to `newconcept`
+			imp(newconcept)
+			return newconcept
+		end
 	end
 end
 
@@ -390,8 +406,8 @@ function process_template_parameters(lex,classname)
 end
 
 function process_concept_template_parameters(lex)
-	local params = terralib.newlist()
 	if lex:nextif("(") then
+		local params = terralib.newlist()
 		repeat
 			if lex:matches(lex.name) then
 				local param = lex:expect(lex.name).value
@@ -400,8 +416,8 @@ function process_concept_template_parameters(lex)
 			end
 		until not lex:nextif(",")
 		lex:expect(")")
+		return params
 	end
-	return params
 end
 
 local function processfunargs(lex)
