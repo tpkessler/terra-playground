@@ -8,7 +8,7 @@ local err = require("assert")
 local alloc = require("alloc")
 local base = require("base")
 local tmath = require("mathfuns")
-local concept = require("concept")
+local concepts = require("concepts")
 local array = require("arraybase")
 local vecbase = require("vector")
 local matbase = require("matrix")
@@ -150,7 +150,7 @@ local DArrayVectorBase = function(Array)
 
         Array.staticmethods.all = terralib.overloadedfunction("all", {all(size_t), all(Sizes)})
 
-        if concept.Number(T) then
+        if concepts.Number(T) then
             Array.staticmethods.zeros = terralib.overloadedfunction("zeros", {zeros(size_t), zeros(Sizes)})
             Array.staticmethods.ones = terralib.overloadedfunction("ones", {ones(size_t), ones(Sizes)})
         end
@@ -158,7 +158,7 @@ local DArrayVectorBase = function(Array)
     else
         Array.staticmethods.all = all(Sizes)
         
-        if concept.Number(T) then
+        if concepts.Number(T) then
             Array.staticmethods.zeros = zeros(Sizes)
             Array.staticmethods.ones = ones(Sizes)
         end
@@ -250,7 +250,7 @@ local DynamicVector = function(T)
 
     veccont.VectorContiguous:addimplementations{DVector}
 
-    if concept.BLASNumber(T) then
+    if concepts.BLASNumber(T) then
         terra DVector:getblasinfo()
             return self:length(), self:getdataptr(), 1
         end
@@ -289,7 +289,7 @@ local DynamicMatrix = function(T, options)
     --add linear operator functionality
     matbase.MatrixBase(DMatrix)
     
-    if concept.BLASNumber(T) then
+    if concepts.BLASNumber(T) then
         terra DMatrix:getblasdenseinfo()
             return self:size(0), self:size(1), self:getdataptr(), self:size(1)
         end
