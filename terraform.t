@@ -284,7 +284,7 @@ namespace = {
 
 namespace.new = function(env)
 	env["Any"] = concepts.Any
-	env["Value"] = concepts.Value
+	env["Value"] = concepts.ParametrizedValue
 	env["Vararg"] = concepts.Vararg
 	local t = {env=env}
 	return setmetatable(t, namespace)
@@ -429,6 +429,8 @@ local function processfunargs(lex)
 				args:insert(path)
 			elseif lex:matches(lex.number) then
 				args:insert(lex:expect(lex.number).value)
+			elseif lex:matches(lex.boolean) then
+				args:insert(lex:expect(lex.boolean).value)
 			elseif lex:matches(lex.string) then
 				args:insert(lex:expect(lex.string).value)
 			end
