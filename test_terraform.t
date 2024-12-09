@@ -605,14 +605,16 @@ testenv "defining parametrized concepts" do
         end
 
         concept SVec(T) where {T : concepts.Number}
-			Self:inherit(SVec())
 			Self.methods.axpy = {&Self, T, &Self} -> {}
+        end
+
+        concept SVec(T, N) where {T: concepts.Float, N: concepts.Value}
+            assert(type(N) == "number")
+			Self.traits.length = N
         end
 
         concept SVec(T, N) where {T : concepts.Float, N : 3}
 			assert(N == 3)
-			Self:inherit(SVec(T))
-			Self.traits.length = N
 			Self.methods.cross = {&Self, &Self} -> T
         end
 

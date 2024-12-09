@@ -354,6 +354,16 @@ end
 local struct Vararg {}
 Base(Vararg, function(self, ...) return true end)
 
+local Value = newconcept("Value")
+Value.traits.value = traittag
+--concept that carries a value, used to generate concept specialization
+--with values (like integers or strings) rather that concepts.
+local function ParametrizedValue(v)
+	local C = newconcept(("Value(%s)"):format(tostring(v)))
+	C.traits.value = v
+	return C
+end
+
 return {
     Base = Base,
     newconcept = newconcept,
@@ -361,6 +371,8 @@ return {
     is_specialized_over = is_specialized_over,
     Any = Any,
     Vararg = Vararg,
+    Value = Value,
+    ParametrizedValue = ParametrizedValue,
     traittag = traittag,
     methodtag = methodtag,
 }
