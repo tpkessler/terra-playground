@@ -12,6 +12,10 @@ local alloc = require('alloc')
 local dvector = require("dvector")
 local size_t = uint64
 
+local Real = concepts.Real
+local Integer = concepts.Integer
+local Float = concepts.Float
+local Number = concepts.Number
 
 import "terratest/terratest"
 

@@ -5,19 +5,13 @@
 
 local base = require("base")
 local template = require("template")
-local concepts = require("concepts")
+local concepts = {}
+concepts.impl = require("concept-impl")
+concepts.para =  require("concept-parametrized")
 
 local generate_terrafun, parse_terraform_statement, process_free_function_statement, process_class_method_statement
 local namespace, process_method_name, process_where_clause, process_template_parameters, get_template_parameter_list, process_namespace_indexing
 local isclasstemplate, isnamespacedfunctiontemplate, isfreefunctiontemplate, isstaticmethod, isvarargstemplate
-
-local printtable = function(tab)
-	for k,v in pairs(tab) do
-		print(k)
-		print(v)
-		print()
-	end
-end
 
 local conceptlang = {
 	name = "conceptlang";
@@ -225,14 +219,14 @@ function process_concept_statement(templ)
 			--get parameter-types list
 			local paramconceptlist = get_template_parameter_list(localenv, templ.params, templ.constraints)
 			--get/register new template function
-			local templfun = localenv[templ.path] or concepts.parametrizedconcept(templ.methodname)
+			local templfun = localenv[templ.path] or concepts.para.parametrizedconcept(templ.methodname)
 			--add current template method implementation
 			templfun[paramconceptlist] = terralib.memoize(generate_luafun(templ, localenv))
 			--return parameterized concept
 			return templfun
 		--if a true concept then
 		else
-			local newconcept = concepts.newconcept(templ.methodname)
+			local newconcept = concepts.impl.newconcept(templ.methodname)
 			local imp = generate_luafun(templ, localenv)
 			--add implementation to `newconcept`
 			imp(newconcept)
@@ -283,9 +277,9 @@ namespace = {
 }
 
 namespace.new = function(env)
-	env["Any"] = concepts.Any
-	env["Value"] = concepts.ParametrizedValue
-	env["Vararg"] = concepts.Vararg
+	env["Any"] = concepts.impl.Any
+	env["Value"] = concepts.impl.ParametrizedValue
+	env["Vararg"] = concepts.impl.Vararg
 	local t = {env=env}
 	return setmetatable(t, namespace)
 end
@@ -323,7 +317,7 @@ function get_template_parameter_list(localenv, params, constraints)
 				--get concepts type
 				tp = localenv[c.path] or error("Concept " .. tostring(c.name) .. " not found in current scope.")
 				--evaluate in case of a parametric concepts
-				if concepts.isparametrizedconcept(tp) or type(tp) == "function" then
+				if concepts.para.isparametrizedconcept(tp) or type(tp) == "function" then
 					local args = terralib.newlist()
 					for i,v in ipairs(c.fargs) do
 						if type(v) == "table" then
