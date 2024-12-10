@@ -112,7 +112,7 @@ local RangeBase = function(Range, iterator_t)
 end
 
 local floor
-terraform floor(v : T) where {T : concepts.Integer}
+terraform floor(v : T) where {T : concepts.Integral}
     return size_t(v)
 end
 
