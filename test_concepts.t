@@ -10,7 +10,7 @@ local paramlist = require("concept-parametrized").paramlist
 import "terratest/terratest"
 import "terraform"
 
-testenv "Collections" do
+testenv "Concrete concepts" do
 
     testset "Floats" do
         --concrete float
@@ -133,6 +133,28 @@ testenv "Collections" do
 		test [Vec3(E) == false]
 	end
 
+	testset "Overloaded terra function" do
+		--concept 1
+		local struct A(concepts.Base) {}
+		A.methods.size = {&A} -> {concepts.Integral}
+		--concept 2
+		local struct B(concepts.Base) {}
+		B.methods.size = {&B, concepts.Integral} -> {concepts.Integral}
+		--concept 3
+		local struct C(concepts.Base) {}
+		C.methods.size = {&C, concepts.Float, concepts.Integral} -> {concepts.Integral}
+		--struct definition
+		local struct hassize{}
+		--implementation of the size method as an overloaded function
+		hassize.methods.size = terralib.overloadedfunction("size",{
+			terra(self : &hassize) return 1 end,
+			terra(self : &hassize, i : int) return i end
+		})
+		test [ A(hassize) ]
+		test [ B(hassize) ]
+		test [ C(hassize) == false ]
+	end
+
 	testset "Traits - unconstrained" do
 		local struct Trai(concepts.Base) {}
 		Trai.traits.iscool = concepts.traittag
@@ -204,7 +226,7 @@ testenv "Collections" do
 	end
 end
 
-testenv "Parametrized Concepts" do
+testenv "Parametrized concepts" do
 	local Stack = concepts.parametrizedconcept("Stack")
 	Stack[paramlist.new({concepts.Any}, {1}, {0})] = function(C, T)
 	    C.methods.length = {&C} -> concepts.Integral

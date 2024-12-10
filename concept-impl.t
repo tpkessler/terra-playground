@@ -162,16 +162,32 @@ local function check(C, T, verbose)
     end
 
     local function check_method(method, ref_sig)
-        local func = C.methods[method]
-        if T.methods[method] then
-            if func ~= methodtag then
-                local sig = T.methods[method].type
-                return check_sig(ref_sig, sig)
-            end
-            return true
-        else
+        local conceptfun, typefun = C.methods[method], T.methods[method]
+        --early exit if method does not exist
+        if not typefun then
             return false
         end
+        --quick check for methodtag
+        if conceptfun == methodtag then
+            return true
+        end
+        --if we get to here then we exit with an error if we have a macro
+        --since we cannot check for its signature 
+        if terralib.ismacro(typefun) then
+            error("TypeCheckError: cannot typecheck a macro.")
+        end
+        --otherwise, check if right implementation exists for an
+        --overloaded function
+        if terralib.isoverloadedfunction(typefun) then
+            for _,f in ipairs(typefun.definitions) do
+                if check_sig(ref_sig, f.type) then
+                    return true
+                end
+            end
+            return false
+        end
+        --standard check
+        return check_sig(ref_sig, typefun.type)
     end
 
     local function check_template(method, ref_sig)
