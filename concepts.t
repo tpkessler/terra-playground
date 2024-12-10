@@ -3,6 +3,8 @@
 --
 -- SPDX-License-Identifier: MIT
 
+import "terraform"
+
 local impl = require("concept-impl")
 local para = require("concept-parametrized")
 
