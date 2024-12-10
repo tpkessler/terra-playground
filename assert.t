@@ -10,6 +10,8 @@ local C = terralib.includecstring [[
     #include <stdarg.h>
 ]]
 
+local uname = io.popen("uname", "r"):read("*a")
+
 local S = {}
 
 S.assert = macro(function(condition)
@@ -17,7 +19,12 @@ S.assert = macro(function(condition)
     return quote
         if not condition then
             C.printf("%s: assertion failed!\n", loc)
-            terralib.traceback(nil)
+            escape
+                --traceback currently does not work on macos
+                if uname == "Linux\n" then
+                    emit quote terralib.traceback(nil) end
+                end
+            end
             C.abort()
         end -- if
     end -- quote
