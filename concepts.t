@@ -82,16 +82,38 @@ for _, C in pairs({I.Integer, I.UInteger, Bool, Float}) do
 	append_friends(Primitive, C)
 end
 
-local Stack = newconcept("Stack")
-Stack.methods.get = {&Stack, Number} -> Any
-Stack.methods.set = {&Stack, Number, Any} -> {}
-Stack.methods.size = {&Stack} -> Number
+local concept Stack(T) where {T}
+    Self.methods.get  = {&Self, Integral} -> T
+    Self.methods.set  = {&Self, Integral, T} -> {}
+    Self.methods.size = {&Self} -> Integral
+end
 
-local DStack = newconcept("DStack")
-DStack:inherit(Stack)
-DStack.methods.push = {&DStack, Any} -> {}
-DStack.methods.pop = {&DStack} -> Any
-DStack.methods.capacity = {&DStack} -> Integral
+local concept DStack(T) where {T}
+    Self:inherit(Stack(T))
+    Self.methods.push     = {&Self, T} -> {}
+    Self.methods.pop      = {&Self} -> T
+    Self.methods.capacity = {&Self} -> Integral
+end
+
+local concept Vector(T) where {T}
+    Self:inherit(Stack(T))
+    Self.methods.fill  = {&Self, T} -> {}
+    Self.methods.clear = {&Self} -> {}
+    Self.methods.sum   = {&Self} -> T
+end
+
+concept Vector(T) where {T : Number}
+    Self.methods.copy = {&Self, &Stack} -> {}
+    Self.methods.swap = {&Self, &Stack} -> {}
+    Self.methods.scal = {&Self, T} -> {}
+    Self.methods.axpy = {&Self, T, &Stack} -> {}
+    Self.methods.dot  = {&Self, &Stack} -> {T}
+end
+
+concept Vector(T) where {T : Float}
+    Self.methods.norm = {&Self} -> {T}
+end
+
 
 return {
     Base = Base,
@@ -127,5 +149,6 @@ return {
     Number = Number,
     Primitive = Primitive,
     Stack = Stack,
-    DStack = DStack
+    DStack = DStack,
+    Vector = Vector
 }
