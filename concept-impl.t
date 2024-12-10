@@ -162,11 +162,20 @@ local function check(C, T, verbose)
     end
 
     local function check_method(method, ref_sig)
-        local func = C.methods[method]
-        if T.methods[method] then
-            if func ~= methodtag then
-                local sig = T.methods[method].type
-                return check_sig(ref_sig, sig)
+        local conceptfun = C.methods[method]
+        local typefun = T.methods[method]
+        if typefun then
+            if conceptfun ~= methodtag then
+                if terralib.isoverloadedfunction(typefun) then
+                    for _,f in ipairs(typefun.definitions) do
+                        if check_sig(ref_sig, f.type) then
+                            return true
+                        end
+					end
+                    return false
+                else
+                    return check_sig(ref_sig, typefun.type)
+                end
             end
             return true
         else

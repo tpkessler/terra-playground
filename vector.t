@@ -4,10 +4,9 @@
 -- SPDX-License-Identifier: MIT
 
 import "terraform"
-local stack = require("stack")
 local err = require("assert")
 local concepts = require("concepts")
-local mathfun = require("mathfuns")
+local tmath = require("mathfuns")
 
 
 local VectorBase = function(Vector)
@@ -88,10 +87,9 @@ local VectorBase = function(Vector)
 
     end
 
-	if concepts.Float(T) then
-		assert(concepts.Vector(Vector), "Incomplete implementation of vector base class")
-		concepts.Vector:addimplementations{Vector}
-	end
+    --sanity check: have we implemented the Vector concept interface?
+    local VectorConcept = concepts.Vector(T)
+    assert(VectorConcept(Vector), "Incomplete implementation of vector base class")
 
 end
 

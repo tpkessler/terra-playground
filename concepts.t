@@ -85,7 +85,7 @@ end
 local concept Stack(T) where {T}
     Self.methods.get  = {&Self, Integral} -> T
     Self.methods.set  = {&Self, Integral, T} -> {}
-    Self.methods.size = {&Self} -> Integral
+    Self.methods.length = {&Self} -> Integral
 end
 
 local concept DStack(T) where {T}
@@ -103,16 +103,50 @@ local concept Vector(T) where {T}
 end
 
 concept Vector(T) where {T : Number}
-    Self.methods.copy = {&Self, &Stack} -> {}
-    Self.methods.swap = {&Self, &Stack} -> {}
+    local S = Stack(T)
+    Self.methods.copy = {&Self, &S} -> {}
+    Self.methods.swap = {&Self, &S} -> {}
     Self.methods.scal = {&Self, T} -> {}
-    Self.methods.axpy = {&Self, T, &Stack} -> {}
-    Self.methods.dot  = {&Self, &Stack} -> {T}
+    Self.methods.axpy = {&Self, T, &S} -> {}
+    Self.methods.dot  = {&Self, &S} -> {T}
 end
 
 concept Vector(T) where {T : Float}
     Self.methods.norm = {&Self} -> {T}
 end
+
+local concept ContiguousVector(T) where {T}
+    Self:inherit(Vector(T))
+    Self.methods.getbuffer = {&Self} -> {Integral, &T}
+end
+
+local concept BLASVector(T) where {T : BLASNumber}
+    Self:inherit(ContiguousVector(T))
+    Self.methods.getblasinfo = {&Self} -> {Integral, BLASNumber, Integral}
+end
+
+local concept Operator(T) where {T}
+    Self.methods.rows = {&Self} -> Integral
+    Self.methods.cols = {&Self} -> Integral
+    Self.methods.apply = {&Self, Bool, T, &Vector(T), T, &Vector(T)} -> {}
+end
+
+local concept Matrix(T) where {T}
+    Self:inherit(Operator(T))
+    Self.methods.set = {&Self, Integral, Integral, T} -> {}
+    Self.methods.get = {&Self, Integral, Integral} -> {T}
+
+    Self.methods.fill = {&Self, T} -> {}
+    Self.methods.clear = {&Self} -> {}
+    Self.methods.copy = {&Self, Bool, &Self} -> {}
+    Self.methods.swap = {&Self, Bool, &Self} -> {}
+
+    Self.methods.scal = {&Self, T} -> {}
+    Self.methods.axpy = {&Self, T, Bool, &Self} -> {}
+    Self.methods.dot = {&Self, Bool, &Self} -> Number
+    Self.methods.mul = {&Self, T, T, Bool, &Self, Bool, &Self} -> {}
+end
+
 
 
 return {
@@ -150,5 +184,9 @@ return {
     Primitive = Primitive,
     Stack = Stack,
     DStack = DStack,
-    Vector = Vector
+    Vector = Vector,
+    Operator = Operator,
+    Matrix = Matrix,
+    ContiguousVector = ContiguousVector,
+    BLASVector = BLASVector
 }
