@@ -35,8 +35,8 @@ local function Value(v)
 end
 
 local function cast_to_concept(T)
-	if type(T) == "number" or type(T) == "string" then
-		return Value(T)
+	if not terralib.types.istype(T) then
+		return concepts.ParametrizedValue(T)
 	else
 		return T
 	end
