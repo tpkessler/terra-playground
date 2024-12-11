@@ -7,19 +7,29 @@ local alloc = require("alloc")
 local sparse = require("sparse")
 local nfloat = require("nfloat")
 local complex = require("complex")
+local dvector = require("dvector")
+local tmath = require("mathfuns")
 
 local complexDouble = complex.complex(double)
 local float256 = nfloat.FixedFloat(256)
 
 import "terratest/terratest"
 
-local Alloc = alloc.DefaultAllocator()
-for _, T in pairs({float, double, float256, complexDouble}) do
+local tols = {
+    [float] = `1e-7f,
+    [double] = `1e-15,
+    [float256] = `1e-30,
+    [complexDouble] = `1e-14,
+}
+
+local DefaultAlloc = alloc.DefaultAllocator()
+for T, tol in pairs(tols) do
     for _, I in pairs({int32, int64, uint32, uint64}) do
         local CSR = sparse.CSRMatrix(T, I)
-        testenv(T) "Sparse CSR Matrix" do
+        local Vec = dvector.DynamicVector(T)
+        testenv(T, I) "Sparse CSR Matrix" do
             terracode
-                var alloc: Alloc
+                var alloc: DefaultAlloc
                 var n = 3
                 var m = 4
                 var a = CSR.new(&alloc, n, m)
@@ -30,7 +40,6 @@ for _, T in pairs({float, double, float256, complexDouble}) do
                 test a:cols() == m
             end
 
-            local io = terralib.includec("stdio.h")
             testset "Set and Get" do
                 terracode
                     var i = 1
@@ -64,8 +73,33 @@ for _, T in pairs({float, double, float256, complexDouble}) do
                 test b:cols() == cols
                 for ii = 0, 2 do
                     for jj = 0, 1 do
-                        test b:get(ii, jj) == cols * ii + jj + 1
+                        test b:get(ii, jj) == data[cols * ii + jj]
                     end
+                end
+            end
+
+            testset "Apply" do
+                terracode
+                    var rows = 5
+                    var c = CSR.new(&alloc, rows, rows)
+                    for i = 0, rows do
+                        c:set(i, i, 2)
+                    end
+                    for i = 1, rows do
+                        c:set(i, i - 1, -1)
+                    end
+                    var xv = Vec.from(&alloc, 1, 2, 3, 4, 5)
+                    var yv = Vec.ones_like(&alloc, &xv)
+                    var yvref = Vec.from(&alloc, -1, -3, -5, -7, -9)
+                    var alpha: T = -2
+                    var beta: T = 3
+                    c:apply(false, alpha, &xv, beta, &yv)
+                end
+
+                test c:rows() == 5
+                test c:cols() == 5
+                for ii = 0, 5 -1 do
+                    test tmath.isapprox(yv(ii), yvref(ii), [tol])
                 end
             end
         end

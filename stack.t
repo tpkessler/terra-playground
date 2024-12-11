@@ -140,13 +140,15 @@ local DynamicStack = terralib.memoize(function(T)
 
     terra stack:insert(i: size_t, v: T)
         var sz = self:size()
-        err.assert(i < sz)
-        self:push(self:get(sz - 1))
-        for jj = 0, sz - i do
-            var j = sz - 1 - jj
-            self(j + 1) = self(j)
+        err.assert(i <= sz)
+        self:push(v)
+        if i < sz then
+            for jj = 0, sz - i do
+                var j = sz - 1 - jj
+                self(j + 1) = self(j)
+            end
+            self(i) = v
         end
-        self(i) = v
     end
 
     --add all methods from stack-base
