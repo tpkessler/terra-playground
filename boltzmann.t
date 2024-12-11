@@ -19,6 +19,7 @@ local gauss = require("gauss")
 local halfhermite = require("halfrangehermite")
 local lambda = require("lambda")
 local tmath = require("mathfuns")
+local sparse = require("sparse")
 local stack = require("stack")
 local qr = require("qr")
 local thread = setmetatable(
@@ -318,7 +319,7 @@ local function IntervalFactory(T)
         left: T
         right: T
     }
-    impl.metamethods.__tostring = function(self)
+    impl.metamethods.__typename = function(self)
         return ("Interval(%s)"):format(tostring(T))
     end
     base.AbstractBase(impl)
@@ -333,7 +334,7 @@ local ExpMom = terralib.memoize(function(T)
     local struct impl(base.AbstractBase) {
         a: T
     }
-    function impl.metamethods.__tostring(self)
+    function impl.metamethods.__typename(self)
         return ("ExpMom(%s)"):format(tostring(T))
     end
     base.AbstractBase(impl)
@@ -368,7 +369,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
     local struct impl {
         normal: SVec
     }
-    impl.metamethods.__tostring = function(self)
+    impl.metamethods.__typename = function(self)
         return ("HalfSpaceQuadrature(T)"):format(tostring(T))
     end
     base.AbstractBase(impl)
@@ -550,6 +551,12 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
     return impl
 end)
 
+local DefaultAlloc = alloc.DefaultAllocator()
+local dualDouble = dual.DualNumber(double)
+local ddVec = dvector.DynamicVector(dualDouble)
+local ddMat = dmatrix.DynamicMatrix(dualDouble)
+local CSR = sparse.CSRMatrix(double, int32)
+local HalfSpaceDual = HalfSpaceQuadrature(dualDouble)
 local terra outflow(
     num_threads: int64,
     -- Dimension of test space and the result arrays
@@ -572,10 +579,12 @@ local terra outflow(
     -- Sampled normals
     normal: &double,
     -- Point evaluation of spatial test functions at quadrature points
+    testnnz: int32
     testdata: &double,
     testrow: &int32,
     testcolptr: &int32,
     -- Point evaluation of spatial trial functions at quadrature points
+    trialnnz: int32
     trialdata: &double,
     trialcol: &int32,
     trialrowptr: &int32,
@@ -583,13 +592,23 @@ local terra outflow(
     test_powers: &int32,
     trial_powers: &int32
 )
+    var alloc: DefaultAlloc
+    var xvlhs = ddMat.new(&alloc, ntrialx, ntrialv)
+    for i = 0, ntrialx do
+        for j = 0, ntrialv do
+            var idx = j + ntrialv * i
+            xvlhs(i, j) = dualDouble {val[idx], tng[idx]}
+        end
+    end
+
+    var qxtrial = CSR.frombuffer(
+                    nqx, ntrialx, trialnnz, trialdata, trialcol, trialrowptr
+                  )
+    var qvlhs = ddMatrix.zeros(&alloc, nqx, ntrialv)
+    qvlhs:mul([dualDouble](0), [dualDouble](1), false, &qxtrial, false, &xvlhs)
 end
 
-local DefaultAlloc = alloc.DefaultAllocator()
-local dualDouble = dual.DualNumber(double)
-local ddVec = dvector.DynamicVector(dualDouble)
 local ddStack = stack.DynamicStack(dualDouble)
-local HalfSpaceDual = HalfSpaceQuadrature(dualDouble)
 local lib = terralib.includec("stdlib.h")
 terra main(argc: int, argv: &rawstring)
     var alloc: DefaultAlloc
