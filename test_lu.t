@@ -78,8 +78,8 @@ for _, Ts in pairs({float, double, float128, float1024}) do
                 var rand = Rand.from(2359586)
                 var a = DMat.new(&alloc, n, n)
                 var x = DVec.new(&alloc, n)
-                var y = DVec.like(&alloc, &x)
-                var yt = DVec.like(&alloc, &x)
+                var y = DVec.zeros_like(&alloc, &x)
+                var yt = DVec.zeros_like(&alloc, &x)
                 for i = 0, n do
                     x(i) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
                     for j = 0, n do
