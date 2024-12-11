@@ -67,6 +67,22 @@ testenv "DynamicStack" do
         test s:capacity() == 3
     end
 
+    testset "insert" do
+        terracode
+            s:push(1.0)
+            s:push(2.0)
+            s:push(3.0)
+            s:insert(1, 4.0)
+            s:insert(3, -2.0)
+        end
+        test s(0) == 1.0
+        test s(1) == 4.0
+        test s:get(2) == 2.0
+        test s:get(3) == -2.0
+        test s:get(4) == 3.0
+        test s:size() == 5
+    end
+
     testset "reallocate" do
         terracode
             s:push(1.0)

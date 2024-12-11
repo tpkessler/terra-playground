@@ -9,7 +9,6 @@ local alloc = require("alloc")
 local err = require("assert")
 local concepts = require("concepts")
 local range = require("range")
-local io = terralib.includec("stdio.h")
 
 local Allocator = alloc.Allocator
 
@@ -69,6 +68,10 @@ local DynamicStack = terralib.memoize(function(T)
 
     stack.eltype = T
 
+    stack.metamethods.__typename = function(self)
+        return ("DynamicStack(%s)"):format(tostring(T))
+    end
+
     --add methods, staticmethods and templates tablet and template fallback mechanism 
     --allowing concepts-based function overloading at compile-time
     base.AbstractBase(stack)
@@ -77,6 +80,13 @@ local DynamicStack = terralib.memoize(function(T)
         var s : stack
         s.data = alloc:allocate(sizeof(T), capacity)
         s.size = 0
+        return s
+    end
+
+    stack.staticmethods.frombuffer = terra(n: size_t, ptr: &T)
+        var s: stack
+        s.data = S.frombuffer(n, ptr)
+        s.size = n
         return s
     end
 
@@ -127,6 +137,17 @@ local DynamicStack = terralib.memoize(function(T)
             self.data(i)
         end
     end)
+
+    terra stack:insert(i: size_t, v: T)
+        var sz = self:size()
+        err.assert(i < sz)
+        self:push(self:get(sz - 1))
+        for jj = 0, sz - i do
+            var j = sz - 1 - jj
+            self(j + 1) = self(j)
+        end
+        self(i) = v
+    end
 
     --add all methods from stack-base
     StackBase(stack)
