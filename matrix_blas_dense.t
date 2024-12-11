@@ -10,18 +10,19 @@ local blas = require("blas")
 local vecblas = require("vector_blas")
 local err = require("assert")
 
-local BLASVector = vecblas.VectorBLAS
-local BLASNumber = concepts.BLASNumber
-local Complex = concepts.Complex
-local Bool = concepts.Bool
-local Integral = concepts.Integral
-
-local struct BLASDenseMatrix(concepts.Base) {}
-BLASDenseMatrix:inherit(matrix.Matrix)
-BLASDenseMatrix.methods.getblasdenseinfo = {&BLASDenseMatrix} -> {Integral, Integral, &BLASNumber, Integral}
-
 local function BLASDenseMatrixBase(M)
-    assert(BLASDenseMatrix(M))
+    
+    local T = M.eltype
+    local BLASDenseMatrix = concepts.BLASDenseMatrix(T)
+
+    local BLASVector = concepts.BLASVector(T)
+    local BLASNumber = concepts.BLASNumber
+    local Complex = concepts.Complex
+    local Bool = concepts.Bool
+    local Integral = concepts.Integral
+
+    --check if interfaces of BLASDenseMatrix is implemented
+    assert(BLASDenseMatrix(M), "CompileError: BLASDenseMatrix is not implemented.")
 
     local conjtrans = function(T)
         if Complex(T) then
@@ -119,6 +120,5 @@ local function BLASDenseMatrixBase(M)
 end
 
 return {
-    BLASDenseMatrix = BLASDenseMatrix,
-    BLASDenseMatrixBase = BLASDenseMatrixBase,
+    BLASDenseMatrixBase = BLASDenseMatrixBase
 }

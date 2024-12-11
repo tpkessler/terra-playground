@@ -7,7 +7,6 @@ import "terraform"
 local err = require("assert")
 local base = require("base")
 local vecbase = require("vector")
-local veccont = require("vector_contiguous")
 local vecblas = require("vector_blas")
 local concepts = require("concepts")
 
@@ -38,6 +37,8 @@ local StaticVector = terralib.memoize(function(T, N)
         base.AbstractBase(V)
         return V
     end
+
+    local ContiguousVector = concepts.ContiguousVector(T)
 
     local V = create_static_vector(T, N)
     V.eltype = T
@@ -116,25 +117,28 @@ local StaticVector = terralib.memoize(function(T, N)
 
     if T:isprimitive() then
 
-        terraform V:fill(a : S) where {S : concepts.Number}
+        terra V:fill(a : T)
             self.simd = a
         end
 
-        terraform V:copy(other : &V2) where {V2 : V.Self}
+        terra V:copy(other : &V)
             self.simd = other.simd
         end
 
-        terraform V:scal(a : S) where {S : concepts.Number}
+        terra V:scal(a : T)
             self.simd = a * self.simd
         end
 
-        terraform V:axpy(a : S, x : &V2) where {S : concepts.Number, V2 : V.Self}
+        terra V:axpy(a : T, x : &V)
             self.simd = self.simd + a * x.simd
         end
         -- dot impletation doesn't profit from a vectorized implementation
         -- as the operation works vertically and thus requires synchronization
         -- of the vector registers.
     end
+
+    assert(ContiguousVector(V))
+
 
     return V
 end)

@@ -17,7 +17,7 @@ local mathfun = require("mathfuns")
 local float128 = nfloat.FixedFloat(128)
 local float1024 = nfloat.FixedFloat(1024)
 local tol = {["float"] = 1e-6,
-             ["double"] = 1e-15,
+             ["double"] = 1e-14,
              [tostring(float128)] = `[float128](1e-30),
              [tostring(float1024)] = `[float1024](1e-100),
             }

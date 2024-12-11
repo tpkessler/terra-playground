@@ -91,10 +91,14 @@ local RangeBase = function(Range, iterator_t)
             end
         end
     end
+
+    local T = Range.value_t
+    local Stack = concepts.Stack(T)
+    local DStack = concepts.DStack(T)
     
     --containers that only implement the setter interface are using 'set'. Sufficient
     --space needs to be allocated before
-    terraform Range:collect(container : &S) where {S : concepts.Stack}
+    terraform Range:collect(container : &S) where {S : Stack}
         var i = 0
         for v in self do
             container:set(i, v)
@@ -103,7 +107,7 @@ local RangeBase = function(Range, iterator_t)
     end
 
     --dynamic stacks have a push
-    terraform Range:pushall(container : &S) where {S : concepts.DStack}
+    terraform Range:pushall(container : &S) where {S : DStack}
         for v in self do
             container:push(v)
         end

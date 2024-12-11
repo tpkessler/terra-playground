@@ -7,12 +7,17 @@ local alloc = require("alloc")
 local concepts = require("concepts")
 local err = require("assert")
 local base = require("base")
-local vecbase = require("vector")
 local matrix = require("matrix")
 
 import "terraform"
 
 local CSRMatrix = terralib.memoize(function(T, I)
+
+    local Integral = concepts.Integral
+    local Number = concepts.Number
+    local Vector = concepts.Vector(T)
+    local Matrix = concepts.Matrix(T)
+
     I = I or int64
     local ST = alloc.SmartBlock(T)
     local SI = alloc.SmartBlock(I)
@@ -27,6 +32,9 @@ local CSRMatrix = terralib.memoize(function(T, I)
     csr.metamethods.__tostring = function(self)
         return ("CSRMatrix(%s, %s)"):format(tostring(T), tostring(I))
     end
+
+    csr.eltype = T
+
     base.AbstractBase(csr)
 
     terra csr:rows()
@@ -37,10 +45,8 @@ local CSRMatrix = terralib.memoize(function(T, I)
         return self.cols
     end
 
-    local Number = concepts.Number
-    local Vector = vecbase.Vector
-    terraform csr:apply(trans: bool, alpha: A, x: &V1, beta: B, y: &V2)
-        where {A: Number, V1: Vector, B: Number, V2: Vector}
+    terraform csr:apply(trans: bool, alpha: T, x: &V1, beta: T, y: &V2)
+        where {V1: Vector, V2: Vector}
         if beta == 0 then
             y:fill(0)
         else
@@ -112,7 +118,6 @@ local CSRMatrix = terralib.memoize(function(T, I)
         end
     end
 
-    local Integral = concepts.Integral
     local new
     terraform new(alloc, rows: N, cols: M) where {N: Integral, M: Integral}
         var a = csr {}
@@ -143,7 +148,7 @@ local CSRMatrix = terralib.memoize(function(T, I)
     )
 
     matrix.MatrixBase(csr)
-    assert(matrix.Matrix(csr))
+    assert(Matrix(csr))
 
     return csr
 end)

@@ -8,7 +8,6 @@ local base = require("base")
 local concepts = require("concepts")
 local stack = require("stack")
 local vecbase = require("vector")
-local veccont = require("vector_contiguous")
 local vecblas = require("vector_blas")
 local range = require("range")
 local err = require("assert")
@@ -143,8 +142,7 @@ local DynamicVector = terralib.memoize(function(T)
             var inc = self.inc
             return n, data, inc
         end
-
-        vecblas.VectorBLASBase(V)
+        vecblas.BLASVectorBase(V)
     end
 
     local struct iterator{

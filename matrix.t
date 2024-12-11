@@ -4,32 +4,23 @@
 -- SPDX-License-Identifier: MIT
 
 import "terraform"
-local operator = require("operator")
 local concepts = require("concepts")
 local template = require("template")
 local err = require("assert")
-local vecbase = require("vector")
 
 local Bool = concepts.Bool
 local Integral = concepts.Integral
 local Number = concepts.Number
-local Vector = vecbase.Vector
 
-local struct Matrix(concepts.Base) {}
-Matrix:inherit(operator.Operator)
-Matrix.methods.set = {&Matrix, Integral, Integral, Number} -> {}
-Matrix.methods.get = {&Matrix, Integral, Integral} -> {Number}
-Matrix.methods.fill = {&Matrix, Number} -> {}
-Matrix.methods.clear = {&Matrix} -> {}
-Matrix.methods.copy = {&Matrix, Bool, &Matrix} -> {}
-Matrix.methods.swap = {&Matrix, Bool, &Matrix} -> {}
-Matrix.methods.scal = {&Matrix, Number} -> {}
-Matrix.methods.axpy = {&Matrix, Number, Bool, &Matrix} -> {}
-Matrix.methods.dot = {&Matrix, Bool, &Matrix} -> Number
-Matrix.methods.mul = {&Matrix, Number, Number, Bool, &Matrix, Bool, &Matrix} -> {}
 
 local function MatrixBase(M)
     local T = M.eltype
+
+    --operator concept
+    local Vector = concepts.Vector(T)
+    local Operator = concepts.Operator(T)
+    local Matrix = concepts.Matrix(T)
+
     local function get(A, atrans, i, j)
         if atrans then
             if concepts.Complex(T) then
@@ -42,8 +33,7 @@ local function MatrixBase(M)
         end
     end
     
-    terraform M:apply(trans : bool, alpha : S1, x : &V1, beta : S2, y : &V2) 
-                        where {S1 : Number, V1 :Vector, S2 : Number, V2 :Vector}
+    terraform M:apply(trans : bool, alpha : T, x : &V, beta : T, y : &V) where {V :Vector}
         if trans then
             var ns = self:rows()
             var ms = self:cols()
@@ -73,9 +63,10 @@ local function MatrixBase(M)
         end
     end
 
-    assert(operator.Operator(M))
+    --check if operator concept is implemented
+    assert(Operator(M))
     
-    terraform M:fill(a : S) where {S : Number}
+    terra M:fill(a : T)
         var rows = self:rows()
         var cols = self:cols()
         for i = 0, rows do
@@ -139,7 +130,7 @@ local function MatrixBase(M)
         end
     end
 
-    terraform M:scal(a : S) where {S : Number}
+    terra M:scal(a : T)
         var ns = self:rows()
         var ms = self:cols()
         for i = 0, ns do
@@ -149,7 +140,7 @@ local function MatrixBase(M)
         end
     end
 
-    terraform M:axpy(a : S, trans : bool, other : &M) where {S : Number, M : Matrix}
+    terraform M:axpy(a : T, trans : bool, other : &M) where {M : Matrix}
         var ns = self:rows()
         var ms = self:cols()
         var no = other:rows()
@@ -226,8 +217,8 @@ local function MatrixBase(M)
         end
     end
     
-    terraform M:mul(beta : S1, alpha : S2, atrans : bool, a : &M1, btrans : bool, b : &M2) 
-        where {S1 : Number, S2 : Number, M1 : Matrix, M2 : Matrix}
+    terraform M:mul(beta : T, alpha : T, atrans : bool, a : &Mat, btrans : bool, b : &Mat) 
+        where {Mat : Matrix}
         if atrans and btrans then
             err.assert(self:rows() == a:cols() and self:cols() == b:rows())
             err.assert(a:rows() == b:cols())
@@ -247,10 +238,10 @@ local function MatrixBase(M)
         end
     end
 
+    --check if the Matrix concept is satisfied
     assert(Matrix(M))
 end
 
 return {
-    Matrix = Matrix,
     MatrixBase = MatrixBase,
 }
