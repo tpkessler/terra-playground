@@ -9,25 +9,13 @@ local err = require("assert")
 local concepts = require("concepts")
 local mathfun = require("mathfuns")
 
-local Number = concepts.Number
-local Stack = concepts.Stack
-local struct Vector(concepts.Base) {}
-Vector:inherit(Stack)
-Vector.methods.fill = {&Vector, Number} -> {}
-Vector.methods.clear = {&Vector} -> {}
-Vector.methods.sum = {&Vector} -> Number
--- BLAS operations
-Vector.methods.copy = {&Vector, &Stack} -> {}
-Vector.methods.swap = {&Vector, &Stack} -> {}
-Vector.methods.scal = {&Vector, Number} -> {}
-Vector.methods.axpy = {&Vector, Number, &Stack} -> {}
-Vector.methods.dot = {&Vector, &Stack} -> {Number}
--- Vector.methods.norm = {&Vector} -> {Number}
 
 local VectorBase = function(V)
-	assert(Stack(V),
-		"A vector base implementation requires a valid stack implementation")
+
 	local T = V.eltype
+	local Stack = concepts.Stack(T)
+	local Vector = concepts.Vector(T)
+	assert(Stack(V), "A vector base implementation requires a valid stack implementation")
 
 	--adds:
 	--methods.reverse
@@ -40,14 +28,14 @@ local VectorBase = function(V)
 			var size = self:size()
 			err.assert(size <= other:size())
 			for i = 0, size do
-			other:set(i, f(self:get(i)))
+				other:set(i, f(self:get(i)))
 			end
 		in
 			other
 		end
 	end)
 
-	terraform V:fill(a : T) where {T : concepts.Number}
+	terra V:fill(a : T)
 		var size = self:size()
 		for i = 0, size do
 			self:set(i, a)
@@ -85,14 +73,14 @@ local VectorBase = function(V)
 		end
 	end
 
-	terraform V:scal(a : T) where {T : concepts.Number}
+	terra V:scal(a : T)
 		var size = self:size()
 		for i = 0, size do
 			self:set(i, a * self:get(i))
 		end
 	end
 
-	terraform V:axpy(a : T, x : &S) where {T : concepts.Number, S : Stack}
+	terraform V:axpy(a : T, x : &S) where {S : Stack}
 		err.assert(self:size() == x:size())
 		var size = self:size()
 		for i = 0, size do
@@ -117,11 +105,9 @@ local VectorBase = function(V)
 			return mathfun.sqrt(mathfun.real(self:dot(self)))
 		end
 	end
-
 	assert(Vector(V), "Incomplete implementation of vector base class")
 end
 
 return {
-    Vector = Vector,
     VectorBase = VectorBase
 }

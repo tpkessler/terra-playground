@@ -5,20 +5,24 @@
 
 import "terraform"
 
-local factorization = require("factorization")
 local base = require("base")
 local err = require("assert")
 local concepts = require("concepts")
 local matbase = require("matrix")
 local vecbase = require("vector")
-local veccont = require("vector_contiguous")
 local matblas = require("matrix_blas_dense")
-local vecblas = require("vector_blas")
 local mathfun = require("mathfuns")
 local lapack = require("lapack")
 
-local Matrix = matbase.Matrix
+local Bool   = concepts.Bool
 local Number = concepts.Number
+local Vector = concepts.Vector(Number)
+local Matrix = concepts.Matrix(Number)
+
+local BLASNumber = concepts.BLASNumber
+local BLASVector = concepts.BLASVector(BLASNumber)
+local BLASMatrix = concepts.BLASDenseMatrix(BLASNumber)
+
 terraform factorize(a: &M, tol: T) where {M: Matrix, T: Number}
     var n = a:rows()
     for i = 0, n do
@@ -38,16 +42,12 @@ terraform factorize(a: &M, tol: T) where {M: Matrix, T: Number}
     end
 end
 
-local MatBLAS = matblas.BLASDenseMatrix
-local BLASNumber = concepts.BLASNumber
-terraform factorize(a: &M, tol: T) where {M: MatBLAS, T: BLASNumber}
+terraform factorize(a: &M, tol: T) where {M: BLASMatrix, T: BLASNumber}
     var n, m, adata, lda = a:getblasdenseinfo()
     err.assert(n == m)
     lapack.potrf(lapack.ROW_MAJOR, @"L", n, adata, lda)
 end
 
-local Bool = concepts.Bool
-local Vector = vecbase.Vector
 local conj = mathfun.conj
 terraform solve(trans: B, a: &M, x: &V) where {B: Bool, M: Matrix, V: Vector}
     var n = a:rows()
@@ -67,9 +67,8 @@ terraform solve(trans: B, a: &M, x: &V) where {B: Bool, M: Matrix, V: Vector}
     end
 end
 
-local VectorBLAS = vecblas.VectorBLAS
 terraform solve(trans: B, a: &M, x: &V)
-    where {B: Bool, M: MatBLAS, V: VectorBLAS}
+    where {B: Bool, M: BLASMatrix, V: BLASVector}
     var n, m, adata, lda = a:getblasdenseinfo()
     err.assert(n == m)
     var nx, xdata, incx = x:getblasinfo()
@@ -77,9 +76,14 @@ terraform solve(trans: B, a: &M, x: &V)
 end
 
 local CholeskyFactory = terralib.memoize(function(M)
-    assert(matbase.Matrix(M), "Type " .. tostring(M)
-                              .. " does not implement the matrix interface")
+
     local T = M.eltype
+    local Vector = concepts.Vector(T)
+    local Matrix = concepts.Matrix(T)
+    local Factorization = concepts.Factorization(T)
+
+    assert(Matrix(M), "Type " .. tostring(M)
+                              .. " does not implement the matrix interface")
     local Ts = T
     local Ts = concepts.Complex(T) and T.traits.eltype or T
     local struct cho{
@@ -110,14 +114,14 @@ local CholeskyFactory = terralib.memoize(function(M)
         return solve(trans, self.a, x)
     end
 
-    terraform cho:apply(trans: B, a: T1, x: &V1, b: T2, y: &V2)
-        where {B: Bool, T1: Number, V1: Vector, T2: Number, V2: Vector}
+    terraform cho:apply(trans: B, a: T, x: &V1, b: T, y: &V2)
+        where {B: Bool, V1: Vector, V2: Vector}
         self:solve(trans, x)
         y:scal(b)
         y:axpy(a, x)
     end
 
-    assert(factorization.Factorization(cho))
+    assert(Factorization(cho))
 
     cho.staticmethods.new = terra(a: &M, tol: Ts)
         err.assert(a:rows() == a:cols())

@@ -82,16 +82,81 @@ for _, C in pairs({I.Integer, I.UInteger, Bool, Float}) do
 	append_friends(Primitive, C)
 end
 
-local Stack = newconcept("Stack")
-Stack.methods.get = {&Stack, Number} -> Any
-Stack.methods.set = {&Stack, Number, Any} -> {}
-Stack.methods.size = {&Stack} -> Number
+local concept Stack(T) where {T}
+    Self.methods.get  = {&Self, Integral} -> T
+    Self.methods.set  = {&Self, Integral, T} -> {}
+    Self.methods.size = {&Self} -> Integral
+end
 
-local DStack = newconcept("DStack")
-DStack:inherit(Stack)
-DStack.methods.push = {&DStack, Any} -> {}
-DStack.methods.pop = {&DStack} -> Any
-DStack.methods.capacity = {&DStack} -> Integral
+local concept DStack(T) where {T}
+    Self:inherit(Stack(T))
+    Self.methods.push     = {&Self, T} -> {}
+    Self.methods.pop      = {&Self} -> T
+    Self.methods.capacity = {&Self} -> Integral
+end
+
+local concept Vector(T) where {T}
+    Self:inherit(Stack(T))
+    Self.methods.fill  = {&Self, T} -> {}
+    Self.methods.clear = {&Self} -> {}
+    Self.methods.sum   = {&Self} -> T
+end
+
+concept Vector(T) where {T : Number}
+    local S = Stack(T)
+    Self.methods.copy = {&Self, &S} -> {}
+    Self.methods.swap = {&Self, &S} -> {}
+    Self.methods.scal = {&Self, T} -> {}
+    Self.methods.axpy = {&Self, T, &S} -> {}
+    Self.methods.dot  = {&Self, &S} -> {T}
+end
+
+concept Vector(T) where {T : Float}
+    Self.methods.norm = {&Self} -> {T}
+end
+
+local concept ContiguousVector(T) where {T}
+    Self:inherit(Vector(T))
+    Self.methods.getbuffer = {&Self} -> {Integral, &T}
+end
+
+local concept BLASVector(T) where {T : BLASNumber}
+    Self:inherit(ContiguousVector(T))
+    Self.methods.getblasinfo = {&Self} -> {Integral, BLASNumber, Integral}
+end
+
+local concept Operator(T) where {T}
+    Self.methods.rows = {&Self} -> Integral
+    Self.methods.cols = {&Self} -> Integral
+    Self.methods.apply = {&Self, Bool, T, &Vector(T), T, &Vector(T)} -> {}
+end
+
+local concept Matrix(T) where {T}
+    Self:inherit(Operator(T))
+    Self.methods.set = {&Self, Integral, Integral, T} -> {}
+    Self.methods.get = {&Self, Integral, Integral} -> {T}
+
+    Self.methods.fill = {&Self, T} -> {}
+    Self.methods.clear = {&Self} -> {}
+    Self.methods.copy = {&Self, Bool, &Self} -> {}
+    Self.methods.swap = {&Self, Bool, &Self} -> {}
+
+    Self.methods.scal = {&Self, T} -> {}
+    Self.methods.axpy = {&Self, T, Bool, &Self} -> {}
+    Self.methods.dot = {&Self, Bool, &Self} -> Number
+    Self.methods.mul = {&Self, T, T, Bool, &Self, Bool, &Self} -> {}
+end
+
+local concept BLASDenseMatrix(T) where {T : BLASNumber}
+    Self:inherit(Matrix(T))
+    Self.methods.getblasdenseinfo = {&Self} -> {Integral, Integral, &BLASNumber, Integral}
+end
+
+local concept Factorization(T) where {T}
+    Self:inherit(Operator(T))
+    Self.methods.factorize = {&Self} -> {}
+    Self.methods.solve = {&Self, Bool, &Vector(T)} -> {}
+end
 
 return {
     Base = Base,
@@ -127,5 +192,12 @@ return {
     Number = Number,
     Primitive = Primitive,
     Stack = Stack,
-    DStack = DStack
+    DStack = DStack,
+    Vector = Vector,
+    ContiguousVector = ContiguousVector,
+    BLASVector = BLASVector,
+    Operator = Operator,
+    Matrix = Matrix,
+    BLASDenseMatrix = BLASDenseMatrix,
+    Factorization = Factorization
 }

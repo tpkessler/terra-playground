@@ -5,27 +5,28 @@
 
 import "terraform"
 
-local factorization = require("factorization")
 local base = require("base")
 local err = require("assert")
 local concepts = require("concepts")
-local matbase = require("matrix")
-local vecbase = require("vector")
-local veccont = require("vector_contiguous")
-local matblas = require("matrix_blas_dense")
-local vecblas = require("vector_blas")
 local mathfun = require("mathfuns")
 local lapack = require("lapack")
 
-local Matrix = matbase.Matrix
-local Vector = vecbase.Vector
+local Bool = concepts.Bool
 local Number = concepts.Number
-terraform factorize(a: &M, u: &U) where {M: Matrix, U: Vector}
+local Vector = concepts.Vector
+local Matrix = concepts.Matrix
+
+local BLASNumber = concepts.BLASNumber
+local BLASVector = concepts.BLASVector
+local BLASMatrix = concepts.BLASDenseMatrix
+local ContiguousVector = concepts.ContiguousVector
+
+terraform factorize(a: &M, u: &U) where {M: Matrix(Number), U: Vector(Number)}
     var n = a:cols()
     for j = 0, n do
         -- Compute the norm of column j.
         -- First, we compute the square and then take the square root.
-        var musqr = [a.type.type.eltype](0)
+        var musqr = [M.eltype](0)
         for k = j, n do
             musqr = musqr + a:get(k, j) * mathfun.conj(a:get(k, j))
         end
@@ -51,7 +52,7 @@ terraform factorize(a: &M, u: &U) where {M: Matrix, U: Vector}
         u:set(j, -lambda * mu)
         -- Apply the Householder reflection to the remaining columns
         for l = j + 1, n do
-            var dot = [a.type.type.eltype](0)
+            var dot = [M.eltype](0)
             for k = j, n do
                 dot = dot + mathfun.conj(a:get(k, j)) * a:get(k, l)
             end
@@ -62,9 +63,7 @@ terraform factorize(a: &M, u: &U) where {M: Matrix, U: Vector}
     end
 end
 
-local MatBLAS = matblas.BLASDenseMatrix
-local VectorContiguous = veccont.VectorContiguous
-terraform factorize(a: &M, u: &U) where {M: MatBLAS, U: VectorContiguous}
+terraform factorize(a: &M, u: &U) where {M: BLASMatrix(BLASNumber), U: ContiguousVector(BLASNumber)}
     var n, m, adata, lda = a:getblasdenseinfo()
     err.assert(n == m)
     var nu, udata = u:getbuffer()
@@ -72,7 +71,7 @@ terraform factorize(a: &M, u: &U) where {M: MatBLAS, U: VectorContiguous}
     lapack.geqrf(lapack.ROW_MAJOR, n, n, adata, lda, udata)
 end
 
-terraform householder(a: &M, x: &V, i: uint64) where {M: Matrix, V: Vector}
+terraform householder(a: &M, x: &V, i: uint64) where {M: Matrix(Number), V: Vector(Number)}
     var n = a:rows()
     var dot = [a.type.type.eltype](0)
     for k = i, n do
@@ -83,9 +82,8 @@ terraform householder(a: &M, x: &V, i: uint64) where {M: Matrix, V: Vector}
     end
 end
 
-local Bool = concepts.Bool
 terraform solve(trans: B, a: &M, u: &U, x: &V)
-    where {B: Bool, M: Matrix, U: Vector, V: Vector}
+    where {B: Bool, M: Matrix(Number), U: Vector(Number), V: Vector(Number)}
     var n = a:rows()
     if trans then
         for i = 0, n do
@@ -124,9 +122,8 @@ local function get_trans(T)
     end
 end
 
-local VectorBLAS = vecblas.VectorBLAS
 terraform solve(trans: B, a: &M, u: &U, x: &V)
-    where {B: Bool, M: MatBLAS, U: VectorContiguous, V: VectorBLAS}
+    where {B: Bool, M: BLASMatrix(BLASNumber), U: ContiguousVector(BLASNumber), V: BLASVector(BLASNumber)}
     var n, m, adata, lda = a:getblasdenseinfo()
     err.assert(n == m)
     var nu, udata = u:getbuffer()
@@ -148,9 +145,15 @@ terraform solve(trans: B, a: &M, u: &U, x: &V)
 end
 
 local QRFactory = terralib.memoize(function(M, U)
-    assert(matbase.Matrix(M), "Type " .. tostring(M)
+
+    local T = M.eltype
+    local Vector = concepts.Vector(T)
+    local Matrix = concepts.Matrix(T)
+    local Factorization = concepts.Factorization(T)
+
+    assert(Matrix(M), "Type " .. tostring(M)
                               .. " does not implement the matrix interface")
-    assert(vecbase.Vector(U), "Type " .. tostring(U)
+    assert(Vector(U), "Type " .. tostring(U)
                               .. " does not implement the vector interface")
 
     local struct qr{
@@ -177,19 +180,18 @@ local QRFactory = terralib.memoize(function(M, U)
         end
     end
 
-    terraform qr:solve(trans: B, x: &V) where {B: Bool, V: Vector}
+    terraform qr:solve(trans: B, x: &V) where {B: Bool, V: Vector(T)}
         return solve(trans, self.a, self.u, x)
     end
 
-    local Number = concepts.Number
-    terraform qr:apply(trans: B, a: T1, x: &V1, b: T2, y: &V2)
-        where {B: Bool, T1: Number, V1: Vector, T2: Number, V2: Vector}
+    terraform qr:apply(trans: B, a: T, x: &V1, b: T, y: &V2)
+        where {B: Bool, V1: Vector(T), V2: Vector(T)}
         self:solve(trans, x)
         y:scal(b)
         y:axpy(a, x)
     end
 
-    assert(factorization.Factorization(qr))
+    assert(Factorization(qr))
 
     qr.staticmethods.new = terra(a: &M, u: &U)
         err.assert(a:rows() == a:cols())

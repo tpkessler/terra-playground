@@ -102,7 +102,7 @@ for N=2,4 do
             terracode
                 var v = svec.from(1, 2, 3, 4, 5)
                 var w = svec.from(5, 4, 3, 2, 1)
-                w:axpy(1, &v)
+                w:axpy(T(1), &v)
             end
             test w:size() == 5
             for i = 0, 4 do
