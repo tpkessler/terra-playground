@@ -50,11 +50,20 @@ local CSRMatrix = terralib.memoize(function(T, I)
     terra csr:set(i: I, j: I, x: T)
         err.assert(i < self.rows and j < self.cols)
         var idx = self.rowptr(i)
-        var jref: I = 0
-        var is_new = true
-        while idx < self.rowptr(i + 1) and jref < j do
+        -- Initialize the column index with something outside of the index
+        -- range to avoid index collisions.
+        var jref: I = -1
+        while idx < self.rowptr(i + 1) do
             jref = self.col(idx)
-            idx = idx + 1            
+            -- Within each row we sort the indices in increasing order.
+            -- Hence, if the reference index jref is not smaller than j
+            -- we found the right global index idx to insert our entry in the
+            -- col and data stacks.
+            if jref >= j then
+                break
+            else
+                idx = idx + 1
+            end
         end
         if jref == j then
             self.data(idx) = x
@@ -103,31 +112,28 @@ local CSRMatrix = terralib.memoize(function(T, I)
     end
 
     local Alloc = alloc.Allocator
-    local io = terralib.includec("stdio.h")
     csr.staticmethods.new = terra(alloc: Alloc, rows: I, cols: I)
-        io.printf("New struct\n")
-        var a = csr {}
+        var a: csr
         a.rows = rows
         a.cols = cols
         var cap = rows  -- one entry per row
-        -- a.data = ST.new(alloc, cap)
-        -- a. col = SI.new(alloc, cap)
-        io.printf("Getting new rowptr\n")
+        a.data = ST.new(alloc, cap)
+        a. col = SI.new(alloc, cap)
         a.rowptr = SI.new(alloc, rows + 1)
         for i = 0, rows + 1 do
-            -- a.rowptr:push(0)
+            a.rowptr:push(0)
         end
         return a
     end
 
     csr.staticmethods.frombuffer = (
         terra(rows: I, cols: I, nnz: I, data: &T, col: &I, rowptr: &I)
-            var a = csr {}
+            var a: csr
             a.rows = rows
             a.cols = cols
-            -- a.data = ST.frombuffer(nnz, data)
-            -- a.col = SI.frombuffer(nnz, col)
-            -- a.rowptr = SI.frombuffer(rows + 1, rowptr)
+            a.data = ST.frombuffer(nnz, data)
+            a.col = SI.frombuffer(nnz, col)
+            a.rowptr = SI.frombuffer(rows + 1, rowptr)
             return a
         end
     )
