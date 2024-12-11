@@ -69,7 +69,7 @@ testenv "DynamicStack" do
 
     testset "insert" do
         terracode
-            s:push(1.0)
+            s:insert(0, 1.0)
             s:push(2.0)
             s:push(3.0)
             s:insert(1, 4.0)
