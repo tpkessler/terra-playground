@@ -7,11 +7,11 @@ local io = terralib.includec("stdio.h")
 local err = require("assert")
 local base = require("base")
 local tmath = require("mathfuns")
-local concept = require("concept")
+local concepts = require("concepts")
 local array = require("arraybase")
 local vecbase = require("vector")
-local veccont = require("vector_contiguous")
-local vecblas = require("vector_blas")
+--local veccont = require("vector_contiguous")
+--local vecblas = require("vector_blas")
 local range = require("range")
 
 local size_t = uint64
@@ -141,7 +141,7 @@ local SArrayVectorBase = function(Array)
         return A
     end
 
-    if concept.Number(T) then
+    if concepts.Number(T) then
 
         Array.staticmethods.zeros = terra()
             return Array.all(T(0))
@@ -260,13 +260,10 @@ local StaticVector = terralib.memoize(function(T, N)
     SArrayVectorBase(SVector)
     SArrayIteratorBase(SVector)
 
-    veccont.VectorContiguous:addimplementations{SVector}
-
-    if concept.BLASNumber(T) then
+    if concepts.BLASNumber(T) then
         terra SVector:getblasinfo()
             return self:length(), self:getdataptr(), 1
         end
-        vecblas.VectorBLAS:addimplementations{SVector}
     end
 
     return SVector
@@ -326,7 +323,7 @@ local StaticMatrix = terralib.memoize(function(T, Size, options)
         return [&SMatrix](self)
     end
 
-    --if concept.BLASNumber(T) then
+    --if concepts.BLASNumber(T) then
     --    terra SMatrix:getblasdenseinfo()
     --        return [ SMatrix.size[1] ], [ SMatrix.size[2] ], self:getdataptr(), [ SMatrix.ldim ]
     --    end

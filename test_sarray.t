@@ -3,7 +3,7 @@ local io = terralib.includec("stdio.h")
 local range = require("range")
 local sarray = require("sarray")
 local nfloat = require("nfloat")
-local concept = require("concept")
+local concepts = require("concepts")
 
 local float1024 = nfloat.FixedFloat(1024)
 
@@ -11,7 +11,7 @@ import "terratest/terratest"
 
 local checkall, checkallcartesian
 
-local Range = concept.Concept:new("Range", function(self, T) return T.isrange==true end)
+local Range = concepts.newconcept("Range", function(self, T) return T.isrange==true end)
 
 local SVector = sarray.StaticVector(float, 3)
 local SMatrix = sarray.StaticMatrix(float, {2, 3}, {perm={1,2}} )
@@ -60,7 +60,7 @@ terra main()
 end
 main()
 
-terraform checkall(A : &V, v : T) where {V : Range, T : concept.Number}
+terraform checkall(A : &V, v : T) where {V : Range, T : concepts.Number}
     for a in A do
         if a ~= v then
             return false
@@ -69,7 +69,7 @@ terraform checkall(A : &V, v : T) where {V : Range, T : concept.Number}
     return true
 end
 
-terraform checkallcartesian(A : &V, v : T) where {V : Range, T : concept.Number}
+terraform checkallcartesian(A : &V, v : T) where {V : Range, T : concepts.Number}
     for indices in A:cartesian_indices() do
         if A(unpacktuple(indices)) ~= v then
             return false

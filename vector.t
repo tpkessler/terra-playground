@@ -7,6 +7,7 @@ import "terraform"
 local err = require("assert")
 local concepts = require("concepts")
 local tmath = require("mathfuns")
+local range = require("range")
 
 
 local VectorBase = function(Vector)
