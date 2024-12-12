@@ -41,7 +41,7 @@ local StaticVector = terralib.memoize(function(T, N)
     local ContiguousVector = concepts.ContiguousVector(T)
 
     local V = create_static_vector(T, N)
-    V.eltype = T
+    V.traits.eltype = T
 
     terra V:getdataptr() : &T
         return &self.data[0]

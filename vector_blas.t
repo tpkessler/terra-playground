@@ -14,7 +14,7 @@ local BLASNumber = concepts.BLASNumber
 
 local function BLASVectorBase(V)
 
-    local T = V.eltype
+    local T = V.traits.eltype
     local BLASVector = concepts.BLASVector(T)
     local Number = concepts.Number
 
