@@ -5,13 +5,12 @@ local sarray = require("sarray")
 local nfloat = require("nfloat")
 local concepts = require("concepts")
 
-local float1024 = nfloat.FixedFloat(1024)
+local float256 = nfloat.FixedFloat(256)
 
 import "terratest/terratest"
 
 local checkall, checkallcartesian
-
-local Range = concepts.newconcept("Range", function(self, T) return T.isrange==true end)
+local Range = concepts.Range
 
 local SVector = sarray.StaticVector(float, 3)
 local SMatrix = sarray.StaticMatrix(float, {2, 3}, {perm={1,2}} )
@@ -78,8 +77,8 @@ terraform checkallcartesian(A : &V, v : T) where {V : Range, T : concepts.Number
     return true
 end
 
-terraform checkall(A : &V, rn : R) where {V, R : Range}
-    for t in range.zip(@A, rn) do
+terraform checkall(A : &V, rn : R) where {V : Range, R : Range}
+    for t in range.zip(A, rn) do
         var a, v = t
         if a ~= v then
             return false
@@ -98,6 +97,7 @@ terraform checkallcartesian(A : &V, rn : R) where {V : Range, R : Range}
     return true
 end
 
+--testing 3D array of one fixed size {2,3,4} and different permutations
 for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
     for _,T in ipairs{int, double} do
 
@@ -204,6 +204,122 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
 end
 
 
+--testing static vectors of different length and type
+for _,T in ipairs{int32,float,double,float256} do
+    for N=2,4 do
+        testenv(N, T) "Static vector" do
+            
+            local SVector = sarray.StaticVector(T, N)
+
+            testset "new, size, get, set" do
+                terracode
+                    var v = SVector.new()
+                    for i=0,N do              
+                        v:set(i, i+1)
+                    end                     
+                end
+                test v:length()==N
+                for i=0,N-1 do              
+                    test v:get(i) == T(i+1)
+                end 
+            end
+            
+            testset "zeros" do                       
+                terracode                                  
+                    var v = SVector.zeros()
+                end
+                test v:length()==N
+                for i=0,N-1 do              
+                    test v:get(i) == 0
+                end 
+            end 
+        
+            testset "ones" do                       
+                terracode                                  
+                    var v = SVector.ones()
+                end 
+                test v:length()==N
+                for i=0,N-1 do              
+                    test v:get(i) == T(1)
+                end 
+            end 
+
+            testset "all" do                       
+                terracode                                  
+                    var v = SVector.all(T(3))
+                end 
+                test v:length()==N
+                for i=0,N-1 do              
+                    test v:get(i) == T(3)
+                end 
+            end 
+            
+        end
+    end --N
+
+    testenv "Fixed N" do
+
+        testset "from (N=2)" do
+            local SVector = sarray.StaticVector(T, 2)
+            terracode
+                var v = SVector.from{1, 2}
+            end
+            test v:length() == 2
+            test v:get(0) == 1
+            test v:get(1) == 2
+        end
+
+        testset "from (N=3)" do
+            local SVector = sarray.StaticVector(T, 3)
+            terracode
+                var v = SVector.from{1, 2, 3}
+            end
+            test v:length() == 3
+            test v:get(0) == 1
+            test v:get(1) == 2
+            test v:get(2) == 3
+        end
+
+        testset "copy (N=4)" do
+            local SVector = sarray.StaticVector(T, 4)
+            terracode
+                var v = SVector.from{1, 2, 3, 4}
+                var w = SVector.new()
+                w:copy(&v)
+            end
+            test w:length() == 4
+            for i = 0, 3 do
+                test w:get(i) == i + 1
+            end
+        end
+
+        testset "axpy (N=5)" do
+            local SVector = sarray.StaticVector(T, 5)
+            terracode
+                var v = SVector.from{1, 2, 3, 4, 5}
+                var w = SVector.from{5, 4, 3, 2, 1}
+                w:axpy(T(1), &v)
+            end
+            test w:length() == 5
+            for i = 0, 4 do
+                test w:get(i) == 6
+            end
+        end
+
+        testset "dot (N=6)" do
+            local SVector = sarray.StaticVector(T, 6)
+            terracode
+                var v = SVector.from{1, 2, 3, 4, 5, 6}
+                var w = SVector.from{5, 4, 3, 2, 1, 0}
+                var res = w:dot(&v)
+            end
+            test res == 35
+        end
+    end
+
+end --T
+
+
 for _,T in ipairs{int, double} do
 
     testenv(T) "Matrix views" do
@@ -230,7 +346,6 @@ for _,T in ipairs{int, double} do
                 end
             end
         end
-
     end
 
 end

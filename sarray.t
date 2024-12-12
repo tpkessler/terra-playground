@@ -10,8 +10,8 @@ local tmath = require("mathfuns")
 local concepts = require("concepts")
 local array = require("arraybase")
 local vecbase = require("vector")
---local veccont = require("vector_contiguous")
---local vecblas = require("vector_blas")
+local matblas = require("matrix_blas_dense")
+local vecblas = require("vector_blas")
 local range = require("range")
 
 local size_t = uint64
@@ -240,9 +240,19 @@ local StaticArray = function(T, Size, options)
     SArrayVectorBase(Array)
     SArrayIteratorBase(Array)
 
+    --overload calls by level-1 BLAS calls when appropriate
+    if concepts.BLASNumber(T) then
+        terra Array:getblasinfo()
+            return self:length(), self:getdataptr(), 1
+        end
+        vecblas.BLASVectorBase(Array)
+    end
+
     return Array
 end
 
+--StaticVector is reimplemented separately from 'Array' because otherwise
+--SVector.metamethods.__typename is memoized incorrectly
 local StaticVector = terralib.memoize(function(T, N)
     
     --generate the raw type
@@ -260,10 +270,12 @@ local StaticVector = terralib.memoize(function(T, N)
     SArrayVectorBase(SVector)
     SArrayIteratorBase(SVector)
 
+    --overload calls by BLAS calls when appropriate
     if concepts.BLASNumber(T) then
         terra SVector:getblasinfo()
             return self:length(), self:getdataptr(), 1
         end
+        vecblas.BLASVectorBase(SVector)
     end
 
     return SVector
@@ -290,6 +302,14 @@ local TransposedSMatrix = function(ParentMatrix)
     SArrayStackBase(SMatrix)
     SArrayVectorBase(SMatrix)
     SArrayIteratorBase(SMatrix)
+
+    --overload calls by BLAS calls when appropriate
+    if concepts.BLASNumber(T) then
+        terra SVector:getblasinfo()
+            return self:length(), self:getdataptr(), 1
+        end
+        vecblas.BLASVectorBase(SVector)
+    end
 
     return SMatrix
 end
@@ -323,13 +343,12 @@ local StaticMatrix = terralib.memoize(function(T, Size, options)
         return [&SMatrix](self)
     end
 
-    --if concepts.BLASNumber(T) then
-    --    terra SMatrix:getblasdenseinfo()
-    --        return [ SMatrix.size[1] ], [ SMatrix.size[2] ], self:getdataptr(), [ SMatrix.ldim ]
-    --    end
-    --    local matblas = require("matrix_blas_dense")
-    --    matblas.BLASDenseMatrixBase(SMatrix)
-    --end
+    if concepts.BLASNumber(T) then
+        terra SMatrix:getblasdenseinfo()
+            return [ SMatrix.size[1] ], [ SMatrix.size[2] ], self:getdataptr(), [ SMatrix.ldim ]
+        end
+        matblas.BLASDenseMatrixBase(SMatrix)
+    end
 
     return SMatrix
 end)

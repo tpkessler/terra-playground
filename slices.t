@@ -160,7 +160,7 @@ terra main()
     })
     A:print()
 
-    var B = A(2, {1,2,-1})
+    var B = A(2, {1,4,-1})
     B:print()
 
 end

@@ -18,7 +18,6 @@ local function BLASVectorBase(V)
     local BLASVector = concepts.BLASVector(T)
     local Number = concepts.Number
 
-
     assert(BLASVector(V), 
         "Type " .. tostring(V) .. " does not implement the BLASVector interface")
 

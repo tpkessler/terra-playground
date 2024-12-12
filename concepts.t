@@ -82,6 +82,16 @@ for _, C in pairs({I.Integer, I.UInteger, Bool, Float}) do
 	append_friends(Primitive, C)
 end
 
+local concept Iterator
+    Self.methods.getvalue = methodtag
+    Self.methods.next = methodtag
+    Self.methods.isvalid = methodtag
+end
+
+local concept Range
+    Self.methods.getiterator = {&Self} -> {Iterator}
+end
+
 local concept Stack(T) where {T}
     Self.methods.get  = {&Self, Integral} -> T
     Self.methods.set  = {&Self, Integral, T} -> {}
@@ -191,6 +201,8 @@ return {
     BLASNumber = BLASNumber,
     Number = Number,
     Primitive = Primitive,
+    Iterator = Iterator,
+    Range = Range,
     Stack = Stack,
     DStack = DStack,
     Vector = Vector,
