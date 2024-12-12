@@ -14,7 +14,7 @@ concepts.Base(concepts.Complex)
 concepts.Complex.traits.iscomplex = true
 concepts.Complex.traits.eltype = concepts.traittag
 
-local complex = terralib.memoize(function(T)
+local complex = terralib.memoize(function(T, conjugated)
 
     local struct complex{
         re: T

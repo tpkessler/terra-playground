@@ -22,7 +22,7 @@ local function BLASDenseMatrixBase(M)
     local Integral = concepts.Integral
 
     --check if interfaces of BLASDenseMatrix is implemented
-    assert(BLASDenseMatrix(M), "CompileError: BLASDenseMatrix is not implemented.")
+    assert(BLASDenseMatrix(M, true), "CompileError: BLASDenseMatrix is not implemented.")
 
     local conjtrans = function(T)
         if Complex(T) then

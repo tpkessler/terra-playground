@@ -12,7 +12,7 @@ local range = require("range")
 
 local VectorBase = function(Vector)
 
-	local T = Vector.eltype
+	local T = Vector.traits.eltype
 	local Concept = {
 		Stack = concepts.Stack(T),
 		Vector = concepts.Vector(T)
@@ -97,7 +97,7 @@ end
 
 local IteratorBase = function(Vector)
 
-    local T = Vector.eltype
+    local T = Vector.traits.eltype
 
     local struct iterator{
         -- Reference to vector over which we iterate.

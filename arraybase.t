@@ -87,33 +87,33 @@ local function checkperm(perm)
 end
 
 local function isstatic(Array)
-    return Array.size ~= nil
+    return Array.traits.size ~= nil
 end
 
 local function isdynamic(Array)
-    return Array.size == nil
+    return Array.traits.size == nil
 end
 
 
 --ArrayBase collects some common utilities used to built 
 --static and dynamic Array types. The following traits
 --and methods are assumed
---  Array.eltype
---  Array.ndims
---  Array.perm
+--  Array.traits.eltype
+--  Array.traits.ndims
+--  Array.traits.perm
 --  Array.methods.length
 --  Array.methods.size
 --  Array.methods.cumsize
 --  self:data
 local ArrayBase = function(Array)
 
-    local T = Array.eltype
-    local N = Array.ndims
+    local T = Array.traits.eltype
+    local N = Array.traits.ndims
 
     local Unitrange = range.Unitrange(size_t)
 
     --local terra array holding the permutation array
-    local __perm = terralib.constant(terralib.new(size_t[N], Array.perm))
+    local __perm = terralib.constant(terralib.new(size_t[N], Array.traits.perm))
     local rowmajorperm = defaultperm(N) --the standard permutation
     
     --given multi-indices {i_1, i_2, ..., i_D}
@@ -135,7 +135,7 @@ local ArrayBase = function(Array)
         if isstatic(Array) then
             --static array
             Array.methods.cumsize = macro(function(self, i)
-                return `[ Array.cumsize[i:asvalue()+1] ]
+                return `[ Array.traits.cumsize[i:asvalue()+1] ]
             end)
         else
             --dynamic array
@@ -150,7 +150,7 @@ local ArrayBase = function(Array)
     if not Array.methods.slice then
         Array.methods.slice = macro(function(self, k, ...)
             local indices = terralib.newlist{...}
-            local i = Array.perm[k:asvalue()+1]
+            local i = Array.traits.perm[k:asvalue()+1]
             return `[ indices[i] ]
         end)
     end
@@ -286,7 +286,7 @@ local ArrayBase = function(Array)
         --case of a static array we check if the sizes are consistent with the input
         local checkarraysize = function(arraysize)
             for k = 1, N do
-                assert(arraysize[k] == Array.size[k], "ArgumentError: sizes in dimension " .. tostring(k) .. " is not consistent with array dimensions.")
+                assert(arraysize[k] == Array.traits.size[k], "ArgumentError: sizes in dimension " .. tostring(k) .. " is not consistent with array dimensions.")
             end
         end
         --case static array, no allocator

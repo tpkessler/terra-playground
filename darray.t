@@ -42,18 +42,21 @@ local DArrayRawType = function(T, Dimension, options)
         cumsize : size_t[Dimension] --cumulative product dimensions - is ordered according to 'perm'
     }
 
+    --add base functionality
+    base.AbstractBase(Array)
+
     --global type traits
-    Array.eltype = T
-    Array.ndims = Dimension
-    Array.perm = Perm
+    Array.traits.eltype = T
+    Array.traits.ndims = Dimension
+    Array.traits.perm = Perm
 
     return Array
 end
 
 local DArrayStackBase = function(Array)
 
-    local T = Array.eltype
-    local N = Array.ndims
+    local T = Array.traits.eltype
+    local N = Array.traits.ndims
 
     terra Array:length() : size_t
         return self.cumsize[ [N-1] ]
@@ -79,10 +82,10 @@ local DArrayStackBase = function(Array)
     local terra getcumsize(size : size_t[N])
         var cumsize : size_t[N]
         escape
-            local p = Array.perm[1]
+            local p = Array.traits.perm[1]
             emit quote cumsize[0] = size[ [p-1] ] end
             for k = 2, N do
-                local p = Array.perm[k]
+                local p = Array.traits.perm[k]
                 emit quote cumsize[ [k-1] ] = cumsize[ [k-2] ] * size[ [p - 1] ] end
             end
         end
@@ -114,8 +117,8 @@ end
 
 local DArrayVectorBase = function(Array)
 
-    local T = Array.eltype
-    local N = Array.ndims
+    local T = Array.traits.eltype
+    local N = Array.traits.ndims
     local Sizes = tup.ntuple(size_t, N)
 
     vecbase.VectorBase(Array) --add fall-back routines
@@ -165,8 +168,8 @@ end
 
 local DArrayIteratorBase = function(Array)
 
-    local T = Array.eltype
-    local N = Array.ndims
+    local T = Array.traits.eltype
+    local N = Array.traits.ndims
     local Unitrange = range.Unitrange(int)
 
     --get lowlevel base functionality for nd arrays
@@ -188,7 +191,7 @@ local DArrayIteratorBase = function(Array)
     --return cartesian indices product range
     terra Array:cartesian_indices()
         var K = unitranges(self)
-        return range.product(unpacktuple(K), {perm = {[Array.perm]}})
+        return range.product(unpacktuple(K), {perm = {[Array.traits.perm]}})
     end
 
     terra Array:rowmajor_cartesian_indixes()
@@ -210,15 +213,12 @@ local DynamicArray = function(T, Dimension, options)
     function Array.metamethods.__typename(self)
         local sizes = "{"
         local perm = "{"
-        for i = 1, Array.ndims-1 do
-            perm = perm .. tostring(Array.perm[i]) .. ","
+        for i = 1, Array.traits.ndims-1 do
+            perm = perm .. tostring(Array.traits.perm[i]) .. ","
         end
-        perm = perm .. tostring(Array.perm[Array.ndims]) .. "}"
-        return "DynamicArray(" .. tostring(T) ..", " .. tostring(Array.ndims) .. ", perm = " .. perm .. ")"
+        perm = perm .. tostring(Array.traits.perm[Array.traits.ndims]) .. "}"
+        return "DynamicArray(" .. tostring(T) ..", " .. tostring(Array.traits.ndims) .. ", perm = " .. perm .. ")"
     end
-    
-    --add base functionality
-    base.AbstractBase(Array)
 
     --implement interfaces
     DArrayStackBase(Array)

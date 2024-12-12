@@ -82,25 +82,28 @@ local SArrayRawType = function(T, Size, options)
         }
     end
 
+    --add base functionality
+    base.AbstractBase(Array)
+
     --global type traits
-    Array.eltype = T
-    Array.ndims = Dimension
-    Array.length = Length
-    Array.size = Size
-    Array.perm = Perm
-    Array.ldim = SizeL
-    Array.cumsize = Cumsize
+    Array.traits.eltype = T
+    Array.traits.ndims = Dimension
+    Array.traits.length = Length
+    Array.traits.size = Size
+    Array.traits.perm = Perm
+    Array.traits.ldim = SizeL
+    Array.traits.cumsize = Cumsize
 
     return Array
 end
 
 local SArrayStackBase = function(Array)
 
-    local T = Array.eltype
-    local N = Array.ndims
+    local T = Array.traits.eltype
+    local N = Array.traits.ndims
     
     terra Array:length() : size_t
-        return [Array.length]
+        return [Array.traits.length]
     end
 
     Array.methods.data = macro(function(self, i)
@@ -108,7 +111,7 @@ local SArrayStackBase = function(Array)
     end)
 
     --method size calls static data __size
-    local __size = terralib.constant(terralib.new(size_t[N], Array.size))
+    local __size = terralib.constant(terralib.new(size_t[N], Array.traits.size))
     Array.methods.size = terralib.overloadedfunction("size", {
         terra(self : &Array, i : size_t)
             return __size[i]
@@ -129,7 +132,7 @@ end
 
 local SArrayVectorBase = function(Array)
 
-    local T = Array.eltype
+    local T = Array.traits.eltype
 
     vecbase.VectorBase(Array) --add fall-back routines
 
@@ -184,15 +187,15 @@ end
 
 local SArrayIteratorBase = function(Array)
 
-    local T = Array.eltype
-    local N = Array.ndims
+    local T = Array.traits.eltype
+    local N = Array.traits.ndims
     local Unitrange = range.Unitrange(int)
 
-    local __uranges = Array.size:map(function(s) return terralib.constant( terralib.new(Unitrange, {0, s}) ) end)
+    local __uranges = Array.traits.size:map(function(s) return terralib.constant( terralib.new(Unitrange, {0, s}) ) end)
 
     --return linear indices product range
     terra Array:linear_indices()
-        return Unitrange{0, [Array.length]}
+        return Unitrange{0, [Array.traits.length]}
     end
 
     --return linear indices product range
@@ -202,7 +205,7 @@ local SArrayIteratorBase = function(Array)
 
     --return cartesian indices product range
     terra Array:cartesian_indices()
-        return range.product([__uranges], {perm = {[Array.perm]}})
+        return range.product([__uranges], {perm = {[Array.traits.perm]}})
     end
 
     terra Array:rowmajor_cartesian_indixes()
@@ -211,6 +214,29 @@ local SArrayIteratorBase = function(Array)
 
     --standard iterator is added in VectorBase
     vecbase.IteratorBase(Array) --add fall-back routines
+
+end
+
+local SArrayMatrixBase = function(SMatrix)
+
+    local T = SMatrix.traits.eltype
+
+    --matbase.MatrixBase(SMatrix) --add fall-back routines
+
+    terra SMatrix:rows()
+        return [ SMatrix.traits.size[2] ]
+    end
+
+    terra SMatrix:cols()
+        return [ SMatrix.traits.size[1] ]
+    end
+
+    if concepts.BLASNumber(T) then
+        terra SMatrix:getblasdenseinfo()
+            return [ SMatrix.traits.size[1] ], [ SMatrix.traits.size[2] ], self:getdataptr(), [ SMatrix.traits.ldim ]
+        end
+        --matblas.BLASDenseMatrixBase(SMatrix)
+    end
 
 end
 
@@ -223,17 +249,14 @@ local StaticArray = function(T, Size, options)
     function Array.metamethods.__typename(self)
         local sizes = "{"
         local perm = "{"
-        for i = 1, Array.ndims-1 do
-            sizes = sizes .. tostring(Array.size[i]) .. ","
-            perm = perm .. tostring(Array.perm[i]) .. ","
+        for i = 1, Array.traits.ndims-1 do
+            sizes = sizes .. tostring(Array.traits.size[i]) .. ","
+            perm = perm .. tostring(Array.traits.perm[i]) .. ","
         end
-        sizes = sizes .. tostring(Array.size[Array.ndims]) .. "}"
-        perm = perm .. tostring(Array.perm[Array.ndims]) .. "}"
+        sizes = sizes .. tostring(Array.traits.size[Array.traits.ndims]) .. "}"
+        perm = perm .. tostring(Array.traits.perm[Array.traits.ndims]) .. "}"
         return "StaticArray(" .. tostring(T) ..", " .. sizes .. ", perm = " .. perm .. ")"
     end
-    
-    --add base functionality
-    base.AbstractBase(Array)
 
     --implement interfaces
     SArrayStackBase(Array)
@@ -262,9 +285,6 @@ local StaticVector = terralib.memoize(function(T, N)
         return ("StaticVector(%s, %d)"):format(tostring(T), N)
     end
     
-    --add base functionality
-    base.AbstractBase(SVector)
-
     --implement interfaces
     SArrayStackBase(SVector)
     SArrayVectorBase(SVector)
@@ -283,20 +303,17 @@ end)
 
 local TransposedSMatrix = function(ParentMatrix)
 
-    assert(ParentMatrix.ndims == 2)
+    assert(ParentMatrix.traits.ndims == 2)
 
-    local T = ParentMatrix.eltype
-    local Size = terralib.newlist{ParentMatrix.size[2], ParentMatrix.size[1]}
-    local Perm = terralib.newlist{ParentMatrix.perm[2], ParentMatrix.perm[1]}
+    local T = ParentMatrix.traits.eltype
+    local Size = terralib.newlist{ParentMatrix.traits.size[2], ParentMatrix.traits.size[1]}
+    local Perm = terralib.newlist{ParentMatrix.traits.perm[2], ParentMatrix.traits.perm[1]}
 
     local SMatrix = SArrayRawType(T, Size, {perm=Perm} )
 
     function SMatrix.metamethods.__typename(self)
-        return ("Transpose{SMatrix(%s, {%d, %d})}"):format(tostring(T), ParentMatrix.size[1], ParentMatrix.size[2])
+        return ("Transpose{SMatrix(%s, {%d, %d})}"):format(tostring(T), ParentMatrix.traits.size[1], ParentMatrix.traits.size[2])
     end
-
-    --add base functionality
-    base.AbstractBase(SMatrix)
 
     --implement interfaces
     SArrayStackBase(SMatrix)
@@ -305,10 +322,10 @@ local TransposedSMatrix = function(ParentMatrix)
 
     --overload calls by BLAS calls when appropriate
     if concepts.BLASNumber(T) then
-        terra SVector:getblasinfo()
+        terra SMatrix:getblasinfo()
             return self:length(), self:getdataptr(), 1
         end
-        vecblas.BLASVectorBase(SVector)
+        vecblas.BLASVectorBase(SMatrix)
     end
 
     return SMatrix
@@ -319,19 +336,17 @@ local StaticMatrix = terralib.memoize(function(T, Size, options)
     local SMatrix = SArrayRawType(T, Size, options)
 
     --check that a matrix-type was generated
-    assert(SMatrix.ndims == 2, "ArgumentError: second argument should be a table with matrix dimensions.")
+    assert(SMatrix.traits.ndims == 2, "ArgumentError: second argument should be a table with matrix dimensions.")
 
     function SMatrix.metamethods.__typename(self)
         return ("StaticMatrix(%s, {%d, %d})"):format(tostring(T), Size{1}, Size{2})
     end
 
-    --add base functionality
-    base.AbstractBase(SMatrix)
-
     --implement interfaces
     SArrayStackBase(SMatrix)
     SArrayVectorBase(SMatrix)
     SArrayIteratorBase(SMatrix)
+    SArrayMatrixBase(SMatrix)
 
     local TransposedType = TransposedSMatrix(SMatrix)
 
@@ -343,24 +358,15 @@ local StaticMatrix = terralib.memoize(function(T, Size, options)
         return [&SMatrix](self)
     end
 
-    if concepts.BLASNumber(T) then
-        terra SMatrix:getblasdenseinfo()
-            return [ SMatrix.size[1] ], [ SMatrix.size[2] ], self:getdataptr(), [ SMatrix.ldim ]
-        end
-        matblas.BLASDenseMatrixBase(SMatrix)
-    end
-
     return SMatrix
 end)
 
 local SlicedSMatrix = function(ParentMatrix, ISlice, JSlice)
 
-    assert(ParentMatrix.ndims == 2)
-    local T = ParentMatrix.eltype
-    local Size = ParentMatrix.size
-    local Perm = ParentMatrix.perm
-
-
+    assert(ParentMatrix.traits.ndims == 2)
+    local T = ParentMatrix.traits.eltype
+    local Size = ParentMatrix.traits.size
+    local Perm = ParentMatrix.traits.perm
 
 end
 
