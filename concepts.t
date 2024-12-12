@@ -83,6 +83,7 @@ for _, C in pairs({I.Integer, I.UInteger, Bool, Float}) do
 end
 
 local concept Stack(T) where {T}
+    Self.traits.eltype = traittag
     Self.methods.get  = {&Self, Integral} -> T
     Self.methods.set  = {&Self, Integral, T} -> {}
     Self.methods.size = {&Self} -> Integral

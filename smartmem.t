@@ -29,7 +29,7 @@ local function Base(block, T)
     --type traits
     block.isblock = true
     block.type = block
-    block.eltype = T
+    block.traits.eltype = T
     block.elsize = T==opaque and 1 or sizeof(T)
 
     block.methods.getdataptr = terra(self : &block)
@@ -109,6 +109,8 @@ function block.metamethods.__typename(self)
     return "block"
 end
 
+base.AbstractBase(block)
+
 --add base functionality
 Base(block, opaque)
 
@@ -136,6 +138,8 @@ local SmartBlock = terralib.memoize(function(T)
         return ("SmartBlock(%s)"):format(tostring(T))
     end
 
+    base.AbstractBase(block)
+
     -- Cast block from one type to another
     function block.metamethods.__cast(from, to, exp)
         local function passbyvalue(to, from)
@@ -153,7 +157,7 @@ local SmartBlock = terralib.memoize(function(T)
         --perform cast
         if byvalue then
             --case when to.eltype is a managed type
-            if ismanaged{type=to.eltype, method="__init"} then
+            if ismanaged{type=to.traits.eltype, method="__init"} then
                 return quote
                     var tmp = exp
                     --debug check if sizes are compatible, that is, is the
@@ -161,13 +165,13 @@ local SmartBlock = terralib.memoize(function(T)
                     err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
                     --loop over all elements of blk and initialize their entries 
                     var size = tmp:size_in_bytes() / [to.elsize]
-                    var ptr = [&to.eltype](tmp.ptr)
+                    var ptr = [&to.traits.eltype](tmp.ptr)
                     for i = 0, size do
                         ptr:__init()
                         ptr = ptr + 1
                     end
                 in
-                    [to.type]{[&to.eltype](tmp.ptr), tmp.nbytes, tmp.alloc}
+                    [to.type]{[&to.traits.eltype](tmp.ptr), tmp.nbytes, tmp.alloc}
                 end
             --simple case when to.eltype is not managed
             else
@@ -177,7 +181,7 @@ local SmartBlock = terralib.memoize(function(T)
                     --remainder zero after integer division
                     err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
                 in
-                    [to.type]{[&to.eltype](tmp.ptr), tmp.nbytes, tmp.alloc}
+                    [to.type]{[&to.traits.eltype](tmp.ptr), tmp.nbytes, tmp.alloc}
                 end
             end
         else

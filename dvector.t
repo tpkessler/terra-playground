@@ -24,13 +24,14 @@ local DynamicVector = terralib.memoize(function(T)
         size: size_t
         inc: size_t
     }
-    V.eltype = T
 
     function V.metamethods.__typename(self)
         return ("DynamicVector(%s)"):tostring(T)
     end
 
     base.AbstractBase(V)
+
+    V.traits.eltype = T
 
     terra V:getdataptr()
         return self.data:getdataptr()

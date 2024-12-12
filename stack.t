@@ -16,7 +16,7 @@ local size_t = uint64
 
 local StackBase = terralib.memoize(function(stack)
 
-    local T = stack.eltype
+    local T = stack.traits.eltype
 
 	terra stack:reverse()
 		var size = self:size()
@@ -66,8 +66,6 @@ local DynamicStack = terralib.memoize(function(T)
         size : size_t
     }
 
-    stack.eltype = T
-
     stack.metamethods.__typename = function(self)
         return ("DynamicStack(%s)"):format(tostring(T))
     end
@@ -75,6 +73,8 @@ local DynamicStack = terralib.memoize(function(T)
     --add methods, staticmethods and templates tablet and template fallback mechanism 
     --allowing concepts-based function overloading at compile-time
     base.AbstractBase(stack)
+
+    stack.traits.eltype = T
 
     stack.staticmethods.new = terra(alloc : Allocator, capacity: size_t)
         var s : stack

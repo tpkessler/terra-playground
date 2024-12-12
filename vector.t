@@ -12,7 +12,7 @@ local mathfun = require("mathfuns")
 
 local VectorBase = function(V)
 
-	local T = V.eltype
+	local T = V.traits.eltype
 	local Stack = concepts.Stack(T)
 	local Vector = concepts.Vector(T)
 	assert(Stack(V), "A vector base implementation requires a valid stack implementation")

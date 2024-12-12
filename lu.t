@@ -177,7 +177,6 @@ local LUFactory = terralib.memoize(function(M, P)
     assert(VectorIntegral(P), "Type " .. tostring(P)
                               .. " does not implement the vector interface")
     
-    local Ts = T
     local Ts = concepts.Complex(T) and T.traits.eltype or T
     local struct lu{
         a: &M
