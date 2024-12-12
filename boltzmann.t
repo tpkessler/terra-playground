@@ -8,7 +8,6 @@ import "terraform"
 local alloc = require("alloc")
 local base = require("base")
 local concepts = require("concepts")
-local vecbase = require("vector")
 local svector = require("svector")
 local dvector = require("dvector")
 local dmatrix = require("dmatrix")
@@ -144,10 +143,11 @@ terraform l2inner(f, g, q)
     return res
 end
 
-local Vector = vecbase.Vector
+local Vector = concepts.Vector
+local Number = concepts.Number
 local local_maxwellian
 terraform local_maxwellian(basis, coeff: &V, quad)
-    where {I: concepts.Integral, V: Vector}
+    where {I: concepts.Integral, V: Vector(Number)}
     var m1: coeff.type.type.eltype = 0
     var m2 = [svector.StaticVector(m1.type, VDIM)].zeros()
     var m3: m1.type = 0
@@ -197,15 +197,14 @@ local RecDiff = concepts.newconcept("RecDiff")
 RecDiff.traits.ninit = concepts.traittag
 RecDiff.traits.depth = concepts.traittag
 RecDiff.traits.eltype = concepts.traittag
-local Stack = concepts.Stack
+local Stack = concepts.Stack(Number)
 RecDiff.methods.getcoeff = {&RecDiff, concepts.Integral, &Stack} -> {}
 RecDiff.methods.getinit = {&RecDiff, &Stack} -> {}
 
 local Integer = concepts.Integer
 local olver
-local io = terralib.includec("stdio.h")
 terraform olver(alloc, rec: &R, yn: &V)
-    where {R: RecDiff, S: Stack, V: Vector}
+    where {R: RecDiff, S: Stack, V: Vector(Number)}
     var y0 = [svector.StaticVector(R.traits.eltype, R.traits.ninit)].zeros()
     var nmax = yn:size()
     var n0 = y0:size()
@@ -257,7 +256,7 @@ terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
     var x = [dvector.DynamicVector(I.traits.eltype)].new(alloc, n)
     ([range.Unitrange(int)].new(0, n)
         >> range.transform(
-            [terra(i: int, n: int)
+            [terra(i: int, n: int): I.traits.eltype
                 return tmath.cos(tmath.pi * (2 * i + 1) / (2 * n))
             end],
             {n = n})
@@ -400,7 +399,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
     impl.staticmethods.new = new
 
     local reverse
-    terraform reverse(w: &V) where {V: Vector}
+    terraform reverse(w: &V) where {V: Vector(concepts.Any)}
         for i = 0, w:size() / 2 do
             var j = w:size() - 1 - i
             var tmp = w(i)
@@ -414,7 +413,8 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
     local VecT = dvector.DynamicVector(T)
 
     local castvector
-    terraform castvector(dest: &V1, src: &V2) where {V1: Vector, V2: Vector}
+    terraform castvector(dest: &V1, src: &V2)
+        where {V1: Vector(concepts.Any), V2: Vector(concepts.Any)}
         (
             @src >> range.transform([
                 terra(x: V2.eltype)
@@ -425,13 +425,14 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
     end
 
     local normalize
-    terraform normalize(v: &V) where {V: Vector}
+    terraform normalize(v: &V) where {V: Vector(concepts.Real)}
         var nrmsqr = v:dot(v) + 1e-15
         v:scal(1 / tmath.sqrt(nrmsqr))
     end
 
     local householder
-    terraform householder(v: &V1, h: &V2) where {V1: Vector, V2: Vector}
+    terraform householder(v: &V1, h: &V2)
+        where {V1: Vector(Number), V2: Vector(Number)}
         var dot = v:dot(h)
         for i = 0, v:size() do
             v(i) = v(i) - 2 * dot * h(i)
@@ -555,7 +556,8 @@ local DefaultAlloc = alloc.DefaultAllocator()
 local dualDouble = dual.DualNumber(double)
 local ddVec = dvector.DynamicVector(dualDouble)
 local ddMat = dmatrix.DynamicMatrix(dualDouble)
-local CSR = sparse.CSRMatrix(double, int32)
+local dStack = stack.DynamicStack(dualDouble)
+local CSR = sparse.CSRMatrix(dualDouble, int32)
 local HalfSpaceDual = HalfSpaceQuadrature(dualDouble)
 local terra outflow(
     num_threads: int64,
@@ -579,12 +581,12 @@ local terra outflow(
     -- Sampled normals
     normal: &double,
     -- Point evaluation of spatial test functions at quadrature points
-    testnnz: int32
+    testnnz: int32,
     testdata: &double,
     testrow: &int32,
     testcolptr: &int32,
     -- Point evaluation of spatial trial functions at quadrature points
-    trialnnz: int32
+    trialnnz: int32,
     trialdata: &double,
     trialcol: &int32,
     trialrowptr: &int32,
@@ -601,10 +603,15 @@ local terra outflow(
         end
     end
 
+    var dualtrialdata = dStack.new(&alloc, trialnnz)
+    for i = 0, trialnnz do
+        dualtrialdata:push(trialdata[i])
+    end
     var qxtrial = CSR.frombuffer(
-                    nqx, ntrialx, trialnnz, trialdata, trialcol, trialrowptr
+                    nqx, ntrialx, trialnnz,
+                    &dualtrialdata(0), trialcol, trialrowptr
                   )
-    var qvlhs = ddMatrix.zeros(&alloc, nqx, ntrialv)
+    var qvlhs = ddMat.zeros(&alloc, nqx, ntrialv)
     qvlhs:mul([dualDouble](0), [dualDouble](1), false, &qxtrial, false, &xvlhs)
 end
 
@@ -616,7 +623,6 @@ terra main(argc: int, argv: &rawstring)
     if argc > 1 then
         n = lib.strtol(argv[1], nil, 10)
     end
-    io.printf("Number of quadrature points is %d\n", n)
     var qh = hermite(&alloc, n)
     var rule = gauss.productrule(&qh, &qh, &qh)
     var quad = range.zip(&rule.x, &rule.w)
