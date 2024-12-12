@@ -221,7 +221,7 @@ function process_concept_statement(templ)
 			--get/register new template function
 			local templfun = localenv[templ.path] or concepts.para.parametrizedconcept(templ.methodname)
 			--add current template method implementation
-			templfun[paramconceptlist] = terralib.memoize(generate_luafun(templ, localenv))
+			templfun:adddefinition({[paramconceptlist] = terralib.memoize(generate_luafun(templ, localenv))})
 			--return parameterized concept
 			return templfun
 		--if a true concept then
