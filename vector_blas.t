@@ -8,41 +8,47 @@ local blas = require("blas")
 local concepts = require("concepts")
 local err = require("assert")
 
-local function BLASVectorBase(Vector)
+local Integral = concepts.Integral
+local BLASNumber = concepts.BLASNumber
 
-    local T = Vector.eltype
+
+local function BLASVectorBase(V)
+
+    local T = V.eltype
     local BLASVector = concepts.BLASVector(T)
+    local Number = concepts.Number
 
-    assert(BLASVector(Vector), 
-        "Type " .. tostring(Vector) .. " does not implement the BLASVector interface")
 
-    terraform Vector:copy(x : &X) where {X : BLASVector}
+    assert(BLASVector(V), 
+        "Type " .. tostring(V) .. " does not implement the BLASVector interface")
+
+    terraform V:copy(x : &X) where {X : BLASVector}
         var ny, ydata, incy = self:getblasinfo()
         var nx, xdata, incx = x:getblasinfo()
         err.assert(ny == nx)
         blas.copy(ny, xdata, incx, ydata, incy)
     end
 
-    terraform Vector:swap(x : &X) where {X : BLASVector}
+    terraform V:swap(x : &X) where {X : BLASVector}
         var ny, ydata, incy = self:getblasinfo()
         var nx, xdata, incx = x:getblasinfo()
         err.assert(ny == nx)
         blas.swap(ny, xdata, incx, ydata, incy)
     end
 
-    terraform Vector:scal(a : S) where {S : concepts.Number}
+    terraform V:scal(a : S) where {S : Number}
         var ny, ydata, incy = self:getblasinfo()
         blas.scal(ny, a, ydata, incy)
     end
 
-    terraform Vector:axpy(a : S, x : &X) where {S : concepts.Number, X : BLASVector}
+    terraform V:axpy(a : S, x : &X) where {S : Number, X : BLASVector}
         var ny, ydata, incy = self:getblasinfo()
         var nx, xdata, incx = x:getblasinfo()
         err.assert(ny == nx)
         blas.axpy(ny, a, xdata, incx, ydata, incy)      
     end
 
-    terraform Vector:dot(x : &X) where {X : BLASVector}
+    terraform V:dot(x : &X) where {X : BLASVector}
         var ny, ydata, incy = self:getblasinfo()
         var nx, xdata, incx = x:getblasinfo()
         err.assert(ny == nx)
@@ -51,5 +57,5 @@ local function BLASVectorBase(Vector)
 end
 
 return {
-    BLASVectorBase = BLASVectorBase,
+    BLASVectorBase = BLASVectorBase
 }

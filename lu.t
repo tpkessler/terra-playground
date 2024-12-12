@@ -5,32 +5,19 @@
 
 import "terraform"
 
-local factorization = require("factorization")
 local base = require("base")
 local err = require("assert")
 local concepts = require("concepts")
-local template = require("template")
-local matbase = require("matrix")
-local vecbase = require("vector")
-local veccont = require("vector_contiguous")
-local matblas = require("matrix_blas_dense")
-local vecblas = require("vector_blas")
 local mathfun = require("mathfuns")
 local lapack = require("lapack")
 
-local Matrix = matbase.Matrix
-local Vector = vecbase.Vector
+local Matrix = concepts.Matrix
+local Vector = concepts.Vector
 local Number = concepts.Number
+local Integral = concepts.Integral
 
-terraform factorize(a: &M, p: &P, tol: T)
-    where {M: Matrix, P: Vector, T: Number}
-    escape
-        local ptype = p.type.type
-        assert(
-            concepts.Integral(ptype.eltype),
-            "Permutation array doesn't have integral type"
-        )
-    end
+terraform factorize(a : &M, p : &P, tol : T)
+    where {M : Matrix(Number), P : Vector(Integral), T : Number}
     var n = a:rows()
     for i = 0, n do
         p:set(i, i)
@@ -71,16 +58,12 @@ terraform factorize(a: &M, p: &P, tol: T)
     end
 end
 
-local MatBLAS = matblas.BLASDenseMatrix
-local VectorContiguous = veccont.VectorContiguous
+local BLASMatrix = concepts.BLASDenseMatrix
+local ContiguousVector = concepts.ContiguousVector
 local BLASNumber = concepts.BLASNumber
 
 terraform factorize(a: &M, p: &P, tol: T)
-    where {M: MatBLAS, P: VectorContiguous, T: BLASNumber}
-    escape
-        local ptype = p.type.type
-        assert(ptype.eltype == int32, "Only 32 bit LAPACK interface supported")
-    end
+    where {M: BLASMatrix(BLASNumber), P: ContiguousVector(int32), T: BLASNumber}
     var n, m, adata, lda = a:getblasdenseinfo()
     err.assert(n == m)
     var np, pdata = p:getbuffer()
@@ -92,14 +75,7 @@ end
 local Bool = concepts.Bool
 local conj = mathfun.conj
 terraform solve(trans: B, a: &M, p: &P, x: &V)
-    where {B: Bool, M: Matrix, P: Vector, V: Vector}
-    escape
-        local ptype = p.type.type
-        assert(
-            concepts.Integral(ptype.eltype),
-            "Permutation array doesn't have integral type"
-        )
-    end
+    where {B: Bool, M: Matrix(Number), P: Vector(Integral), V: Vector(Number)}
     var n = a:rows()
     if not trans then
         for i = 0, n do
@@ -161,16 +137,9 @@ local function get_trans(T)
     end
 end
 
-local VectorBLAS = vecblas.VectorBLAS
+local BLASVector = concepts.BLASVector
 terraform solve(trans: B, a: &M, p: &P, x: &V)
-    where {B: Bool, M: MatBLAS, P: VectorContiguous, V: VectorBLAS}
-    escape
-        local ptype = p.type.type
-        assert(
-            ptype.eltype == int32,
-            "Only 32 bit LAPACK interface supported"
-        )
-    end
+    where {B: Bool, M: BLASMatrix(BLASNumber), P: ContiguousVector(int32), V: BLASVector(BLASNumber)}
     var n, m, adata, lda = a:getblasdenseinfo()
     err.assert(n == m)
     var np, pdata = p:getbuffer()
@@ -196,13 +165,18 @@ terraform solve(trans: B, a: &M, p: &P, x: &V)
 end
 
 local LUFactory = terralib.memoize(function(M, P)
-    assert(matbase.Matrix(M), "Type " .. tostring(M)
-                              .. " does not implement the matrix interface")
-    assert(vecbase.Vector(P), "Type " .. tostring(P)
-                              .. " does not implement the vector interface")
-    assert(concepts.Integral(P.eltype), "Permutation vector has to be of integer type")
 
     local T = M.eltype
+    local Vector = concepts.Vector(T)
+    local VectorIntegral = concepts.Vector(Integral)
+    local Matrix = concepts.Matrix(T)
+    local Factorization = concepts.Factorization(T)
+
+    assert(Matrix(M), "Type " .. tostring(M)
+                              .. " does not implement the matrix interface")
+    assert(VectorIntegral(P), "Type " .. tostring(P)
+                              .. " does not implement the vector interface")
+    
     local Ts = T
     local Ts = concepts.Complex(T) and T.traits.eltype or T
     local struct lu{
@@ -230,19 +204,18 @@ local LUFactory = terralib.memoize(function(M, P)
         end
     end
 
-    terraform lu:solve(trans: B, x:& V) where {B: Bool, V: Vector}
+    terraform lu:solve(trans: B, x: &V) where {B: Bool, V: Vector}
         solve(trans, self.a, self.p, x)
     end
 
-    local Number = concepts.Number
-    terraform lu:apply(trans: B, a: T1, x: &V1, b: T2, y: &V2)
-        where {B: Bool, T1: Number, V1: Vector, T2: Number, V2: Vector}
+    terraform lu:apply(trans: B, a: T, x: &V1, b: T, y: &V2)
+        where {B: Bool, V1: Vector, V2: Vector}
         self:solve(trans, x)
         y:scal(b)
         y:axpy(a, x)
     end
 
-    assert(factorization.Factorization(lu))
+    assert(Factorization(lu))
 
     lu.staticmethods.new = terra(a: &M, p: &P, tol: Ts)
         err.assert(a:rows() == a:cols())

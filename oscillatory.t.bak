@@ -1,0 +1,281 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
+local alloc = require("alloc")
+local complex = require("complex")
+local cheb = require("cheb")
+local blas = require("blas")
+local lapack = require("lapack")
+local math = terralib.includec("math.h")
+local io = terralib.includec("stdio.h")
+local timer = require("timing")
+terralib.linklibrary("libopenblas.so")
+
+local complexDouble = complex.complex(double)
+
+--[[
+    Evaluate the matrix of an ODE system.
+
+    x: double evaluation point
+    k: double frequency
+    a: &complexDouble storage for result, pointer to an s times s matrix,
+       where the size s depends on the actual implementation.
+    ld: int Leading dimension of a
+--]]
+local ODE = {double, double, &complexDouble, int} -> {}
+--[[
+    Evaluate the oscillatory part of an integrand
+
+    x: double evaluation point
+    k: double frequency
+    w: &complexDouble storage for result, pointer to a vector of size s,
+       where s depends on the actual implementation.
+    inc: int Linear increment for indexing w
+--]]
+local FastScale = {double, double, &complexDouble, int} -> {}
+--[[
+    Evaluate the slowly varaying part of an integrand
+
+    x: double evaluation point
+    f: &complexDouble storage for result, pointer to a vector of size s,
+       where s depends on the actual implementation.
+    inc: int Linear increment for indexing f
+--]]
+local SlowScale = {double, &complexDouble, int} -> {}
+--[[
+    Representation of an oscillatory integral discretized with Levin's method
+
+    sys: ODE ODE system for the highly oscillatory part of the integrand
+    fast: FastScale point evaluations of the highly oscillatory part
+    slow: SlowScale point evaluations of the slowly varying part
+    size: int size of the ODE system
+--]]
+local struct oscillatory_integral {
+    sys: ODE
+    fast: FastScale
+    slow: SlowScale
+    size: int
+}
+
+-- Result of one bisesction step
+local BiRes = tuple(double, double, complexDouble)
+--[[
+    Compute the oscillatory integral with Levin's method for a given frequency
+    
+    a: double Left limit of integration
+    b: double right limit of integration
+    L: double Scaling factor for points and integral
+    k: double frequency of oscillation
+    n: Number of Chebyshev nodes on each element
+    tol: Absolute tolerance for adaptive integration  
+--]]
+terra oscillatory_integral:compute_adaptive(a: double, b: double,
+                                            L: double, k: double,
+                                            n: int, tol: double)
+    var val = complexDouble(0.0)
+    var val0 = self:compute_fixed(a, b, L, k, n)
+    -- HACK size has to grow dynamically
+    var buf = 2028
+    var A: alloc.Default
+    var interval = [&BiRes](A:alloc(sizeof(BiRes) * buf))
+    defer A:free(interval)
+    var size = 0
+    interval[size] = {a, b, val0}
+    size = size + 1
+    while size > 0 and size < buf - 2 do
+        var a0, b0, val0 = unpacktuple(interval[size - 1])
+        size = size - 1
+        var c0 = (a0 + b0) / 2
+        var valL = self:compute_fixed(a0, c0, L, k, n)
+        var valR = self:compute_fixed(c0, b0, L, k, n)
+        if (val0 - valL - valR):norm() < tol then
+            val = val + val0
+        else
+            interval[size] = {a0, c0, valL}
+            size = size + 1
+            interval[size] = {c0, b0, valR}
+            size = size + 1
+        end
+    end
+
+    return val
+end
+
+--[[
+    Compute the oscillatory integral with Levin's method for a given frequency
+    
+    a: double Left limit of integration
+    b: double Right limit of integration
+    L: double Scaling factor for points and integral
+    k: double frequency of oscillation
+    n: Number of Chebyshev nodes on each element
+--]]
+terra oscillatory_integral:compute_fixed(a: double, b: double,
+                                         L: double, k: double,
+                                         n: int)
+    var A: alloc.Default
+
+    var val = [&double](A:alloc(sizeof(double) * n * n))
+    defer A:free(val)
+    cheb.collocation(n, val, n)
+
+    var der = [&double](A:alloc(sizeof(double) * n * n))
+    defer A:free(der)
+    cheb.derivative(n, der, n)
+
+    var x = [&double](A:alloc(sizeof(double) * n))
+    defer A:free(x)
+    cheb.nodes(n, a, b, x)
+
+    var s = self.size
+    var ld = n * s
+    var sys = [&complexDouble](A:alloc(sizeof(complexDouble) * ld * ld))
+    defer A:free(sys)
+    var a_loc = [&complexDouble](A:alloc(sizeof(complexDouble) * s * s))
+    defer A:free(a_loc)
+    for i = 0, n do
+        self.sys(x[i], L * k, a_loc, s)
+        for alpha = 0, s do
+            var idx = alpha + s * i
+            for j = 0, n do
+                for beta = 0, s do
+                    var jdx = beta + s * j
+                    var aux = a_loc[beta * s + alpha] * val[i * n + j]
+                    if alpha == beta then
+                        aux = aux + 2.0 / (b - a) * der[i * n + j]
+                    end
+                    sys[jdx + ld * idx] = aux
+                end
+            end
+        end
+    end
+
+    var rhs = [&complexDouble](A:alloc(sizeof(complexDouble) * ld))
+    defer A:free(rhs)
+    for i = 0, n do
+        self.slow(L * x[i], rhs + s * i, 1)
+    end
+
+    var tau = [&complexDouble](A:alloc(sizeof(complexDouble) * ld))
+    defer A:free(tau)
+    var jpvt = [&int](A:alloc(sizeof(int) * ld))
+    defer A:free(jpvt)
+    for i = 0, ld do
+      jpvt[i] = 0
+    end
+    qrp(ld, sys, ld, jpvt, tau)
+    qrp_solve(ld, sys, ld, jpvt, tau, rhs, 1)
+
+    var wb = [&complexDouble](A:alloc(sizeof(complexDouble) * s))
+    defer A:free(wb)
+
+    self.fast(b, L * k, wb, 1)
+    var res = complexDouble(0.0)
+    for alpha = 0, s do
+        var sum = complexDouble(0.0)
+        for i = 0, n do
+            sum = sum + rhs[s * i + alpha]
+        end
+        res = res + wb[alpha] * sum
+    end
+
+    self.fast(a, L * k, wb, 1)
+    for alpha = 0, s do
+    var sum = complexDouble(0.0)
+    for i = 0, n do
+        if i % 2 == 0 then
+            sum = sum + rhs[s * i + alpha]
+        else
+            sum = sum - rhs[s * i + alpha]
+        end
+    end
+        res = res - wb[alpha] * sum
+    end
+
+    return L * res
+end
+
+--[[
+    Compute a QR factorization with column pivoting
+
+    n: int Dimension of the square input matrix
+    r: &complexDouble input matrix, is overwritten with the values of R
+    ldr: int leading dimension of the input matrix
+    jpvt: &int Stores the column permutation. WARNING: One-based indices!
+    tau: &complexDouble Stores scaling factors of reflections for Q
+--]]
+local terra qrp(n: int, r: &complexDouble, ldr: int, jpvt: &int, tau: &complexDouble)
+  var info = lapack.geqp3(lapack.ROW_MAJOR, n, n, r, ldr, jpvt, tau)
+  return info
+end
+
+--[[
+    Solve a linear system with a column pivoted QR decomposition
+
+    n: int Dimension of the linear system
+    r: &complexDouble upper triangular matrix R and parts of Q
+    ldr: int Leading dimension of R
+    jpvt: &int Colunm permutation of the initial linear linear
+    tau: &complexDouble Stores scaling factors of reflections for Q
+    x: &complexDouble right hand side of the linear system, overwritten by the solution
+    incx: int Linear index increment for x
+--]]
+local terra qrp_solve(n: int, r: &complexDouble, ldr: int, jpvt: &int,
+                      tau: &complexDouble, x: &complexDouble, incx: int)
+    var A: alloc.Default
+    var tol = 1e-15
+    var rank = 0
+    while rank < n and r[rank + ldr * rank]:norm() > tol * r[0]:norm() do
+        rank = rank + 1
+    end
+    var y = [&complexDouble](A:alloc(sizeof(complexDouble) * n))
+    defer A:free(y)
+    blas.copy(n, x, incx, y, 1)
+    var info = lapack.ormqr(lapack.ROW_MAJOR, @'L', @'C', n, 1, n, r, ldr, tau, y, 1)
+    blas.trsv(blas.RowMajor, blas.Upper, blas.NoTrans, blas.NonUnit, rank,
+              r, ldr, y, 1)
+    for i = rank, n do
+        y[i] = 0.0
+    end
+    for i = 0, n do
+        x[ jpvt[i] - 1 ] = y[i]
+    end
+    return info
+end
+
+local function expOsc()
+    local terra A(x: double, k: double, a: &complexDouble, ld: int)
+        a[0] = complexDouble.I * k
+    end
+
+    local terra W(x: double, k: double, w: &complexDouble, inc: int)
+        w[0] = math.cos(k * x) + complexDouble.I * math.sin(k * x)
+    end
+
+    local terra F(x: double, f: &complexDouble, inc: int)
+        f[0] = 1.0 / (1.0 + x * x)
+    end
+
+    return `oscillatory_integral {A, W, F, 1}
+end
+
+terra main()
+    var osc = [expOsc()]
+    var a = 0.0
+    var b = 1.0
+    var L = 1.0
+    var k = 2.0
+    var n = 12
+    var tol = 1e-15
+    var sw = timer.parallel_timer.new()
+    sw:start()
+    var res = osc:compute_adaptive(a, b, L, k, n, tol)
+    var t = sw:stop()
+
+    io.printf("%.2lf %.15e %.15e\n", 1e3 * t, res:real(), res:imag())
+end
+
+main()
+

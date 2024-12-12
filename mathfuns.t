@@ -3,6 +3,9 @@
 --
 -- SPDX-License-Identifier: MIT
 
+import "terraform"
+local concepts = require("concepts")
+
 local math = {}
 local C = terralib.includecstring[[
     #include <stdio.h>
@@ -123,20 +126,15 @@ for _, T in ipairs{int32, int64, float, double} do
     math.max:adddefinition(terra(x : T, y : T) return terralib.select(x > y, x, y) end)
 end
 
-math.dist = terralib.overloadedfunction("dist")
-for _, T in pairs({float, double}) do
-    math.dist:adddefinition(terra(x: T, y: T) return math.abs(x - y) end)
+terraform math.dist(a: T, b: T) where {T: concepts.Number}
+    return math.abs(a - b)
 end
 
---comparing functions
-math.isapprox = terralib.overloadedfunction("isapprox")
-for _, T in pairs({float, double}) do
-    math.isapprox:adddefinition(
-        terra(a: T, b: T, atol: T)
-            return math.dist(a, b) < atol
-        end
-    )
-end
+-- comparing functions
+terraform math.isapprox(a: T, b: T, atol: S)
+    where {T: concepts.Any, S: concepts.Any}
+    return math.dist(a, b) < atol
+ end
 
 for _, name in pairs({"real", "imag", "conj"}) do
     math[name] = terralib.overloadedfunction(name)

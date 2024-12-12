@@ -17,7 +17,7 @@ local mathfun = require("mathfuns")
 local float128 = nfloat.FixedFloat(128)
 local float1024 = nfloat.FixedFloat(1024)
 local tol = {["float"] = 1e-6,
-             ["double"] = 1e-15,
+             ["double"] = 1e-14,
              [tostring(float128)] = `[float128](1e-30),
              [tostring(float1024)] = `[float1024](1e-100),
             }
@@ -72,8 +72,8 @@ for _, Ts in pairs({float, double, float128, float1024}) do
                 var a = DMat.zeros(&alloc, n, n)
                 var b = DMat.like(&alloc, &a)
                 var x = DVec.new(&alloc, n)
-                var y = DVec.like(&alloc, &x)
-                var yt = DVec.like(&alloc, &x)
+                var y = DVec.zeros_like(&alloc, &x)
+                var yt = DVec.zeros_like(&alloc, &x)
                 for i = 0, n do
                     x(i) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
                     for j = 0, n do

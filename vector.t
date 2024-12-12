@@ -13,9 +13,12 @@ local range = require("range")
 local VectorBase = function(Vector)
 
 	local T = Vector.eltype
-	local Stack = concepts.Stack(T)
+	local Concept = {
+		Stack = concepts.Stack(T),
+		Vector = concepts.Vector(T)
+	}
 
-	assert(Stack(Vector), "A vector base implementation requires a valid stack implementation.")
+	assert(Concept.Stack(Vector), "A vector base implementation requires a valid stack implementation")
 
     terra Vector:getbuffer()
         return self:length(), self:getdataptr()
@@ -27,13 +30,13 @@ local VectorBase = function(Vector)
         end
     end
 
-    terraform Vector:copy(other : &S) where {S : Stack}
+    terraform Vector:copy(other : &S) where {S : Concept.Stack}
         for i = 0, self:length() do
             self:set(i, other:get(i))
         end
     end
 
-	terraform Vector:swap(other : &S) where {S : Stack}
+	terraform Vector:swap(other : &S) where {S : Concept.Stack}
 		err.assert(self:length() == other:length())
 		for i = 0, self:length() do
 			var tmp = other:get(i)
@@ -82,16 +85,13 @@ local VectorBase = function(Vector)
 
         if concepts.Float(T) then
             terra Vector:norm() : T
-                return tmath.sqrt(self:norm())
+                return tmath.sqrt(self:norm2())
             end
 		end
 
     end
 
-    --sanity check: have we implemented the Vector concept interface?
-    local VectorConcept = concepts.Vector(T)
-    assert(VectorConcept(Vector), "Incomplete implementation of vector base class")
-
+	assert(Concept.Vector(Vector), "Incomplete implementation of vector base class")
 end
 
 
@@ -129,7 +129,6 @@ end
 
 
 return {
-    Vector = concepts.Vector,
     VectorBase = VectorBase,
     IteratorBase = IteratorBase
 }

@@ -85,7 +85,7 @@ end
 local concept Stack(T) where {T}
     Self.methods.get  = {&Self, Integral} -> T
     Self.methods.set  = {&Self, Integral, T} -> {}
-    Self.methods.length = {&Self} -> Integral
+    Self.methods.size = {&Self} -> Integral
 end
 
 local concept DStack(T) where {T}
@@ -147,7 +147,16 @@ local concept Matrix(T) where {T}
     Self.methods.mul = {&Self, T, T, Bool, &Self, Bool, &Self} -> {}
 end
 
+local concept BLASDenseMatrix(T) where {T : BLASNumber}
+    Self:inherit(Matrix(T))
+    Self.methods.getblasdenseinfo = {&Self} -> {Integral, Integral, &BLASNumber, Integral}
+end
 
+local concept Factorization(T) where {T}
+    Self:inherit(Operator(T))
+    Self.methods.factorize = {&Self} -> {}
+    Self.methods.solve = {&Self, Bool, &Vector(T)} -> {}
+end
 
 return {
     Base = Base,
@@ -185,8 +194,10 @@ return {
     Stack = Stack,
     DStack = DStack,
     Vector = Vector,
+    ContiguousVector = ContiguousVector,
+    BLASVector = BLASVector,
     Operator = Operator,
     Matrix = Matrix,
-    ContiguousVector = ContiguousVector,
-    BLASVector = BLASVector
+    BLASDenseMatrix = BLASDenseMatrix,
+    Factorization = Factorization
 }
