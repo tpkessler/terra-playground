@@ -803,7 +803,7 @@ gauss.jacobi = terralib.overloadedfunction("jacobi",
         return qr
     end
 })
-local io = terralib.includec("stdio.h")
+
 --affine scaling of quadrature rule
 local terra hermitescaling(x : &dvec, w : &dvec, o : double, s : double)
     for i = 0, x:size() do
