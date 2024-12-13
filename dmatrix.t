@@ -115,6 +115,17 @@ local DynamicMatrix = terralib.memoize(function(T)
         end
     end)
 
+    M.staticmethods.frombuffer = (
+        terra(rows: size_t, cols: size_t, data: &T, ld: size_t)
+            var m: M
+            m.rows = rows
+            m.cols = cols
+            m.ld = ld
+            m.data = S.frombuffer(rows * ld, data)
+            return m
+        end
+    )
+
     return M
 end)
 
