@@ -88,23 +88,27 @@ local function check(C, T, verbose)
     -- and not a primitive type
     assert(T:isstruct())
 
-    for trait, value in pairs(C.traits) do
+    for trait, desired in pairs(C.traits) do
         assert(
             T.traits[trait] ~= nil,
             (
                 "Concept %s requires trait %s but that was not found for %s"
             ):format(tostring(C), trait, tostring(T))
         )
-        if value ~= traittag then
+        if desired ~= traittag then
+            local actual = T.traits[trait]
             assert(
-                T.traits[trait] == value,
+                -- Traits can also be lua values (numbers or strings).
+                -- Thus, we first check for equality and then for concept
+                -- specialization.
+                actual == desired or is_specialized_over(actual, desired),
                 (
                     "Concept %s requires value %s for trait %s but found %s"
                 ):format(
                     tostring(C),
-                    tostring(value),
+                    tostring(desired),
                     tostring(trait),
-                    tostring(T.traits[trait])
+                    tostring(actual)
                 )
             )
         end

@@ -183,6 +183,25 @@ testenv "Concrete concepts" do
 		test [Trai(T2) == false]
 	end
 
+	testset "Traits - parametrized" do
+		concept MyVector(T) where {T}
+			Self.traits.eltype = T
+		end
+
+		concept MySpecialVector
+			Self.traits.eltype = concepts.BLASNumber
+		end
+
+		local struct MyConcreteVector(base.AbstractBase) {}
+		MyConcreteVector.traits.eltype = float
+
+		local MyVectorNumber = MyVector(concepts.Number)
+
+		test [MyVectorNumber(MySpecialVector)]
+		test [MyVectorNumber(MyConcreteVector)]
+		test [MySpecialVector(MyConcreteVector)]
+	end
+
 	testset "Entries" do
 		local struct Ent(concepts.Base) {
 			x: concepts.Float
