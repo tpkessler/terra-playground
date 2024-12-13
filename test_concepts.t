@@ -99,8 +99,12 @@ testenv "Concrete concepts" do
 		test [Vec(V)]
 
 		local struct W {}
-		terra W:axpy(x: float, v: &V): {} end
+		terra W:axpy(x: float, v: &W): {} end
 		test [Vec(W)]
+
+		local struct WT {}
+		terraform WT:axpy(x: S, v: &WT) where {S: concepts.Float32} end
+		test [Vec(WT)]
 
 		local struct Z {}
 		terra Z:axpy(x: float, v: &int): {} end
@@ -118,6 +122,7 @@ testenv "Concrete concepts" do
 	testset "Self-referencing interface on terraform methods" do
 		local struct Vec3(concepts.Base) {}
 		test [concepts.isconcept(Vec3)]
+		Vec3.methods.dot = concepts.methodtag
 		Vec3.methods.axpy = {&Vec3, concepts.Real, &Vec3} -> {}
 
 		local struct F(base.AbstractBase) {}
@@ -125,11 +130,13 @@ testenv "Concrete concepts" do
 		end
 		terraform F:axpy(a: I, x: &V) where {I: concepts.Real, V: Vec3}
 		end
+		terraform F:dot(x: &V) where {V: Vec3} end
 		test[Vec3(F)]
 
 		local struct E(base.AbstractBase) {}
 		terraform E:axpy(x: float)
 		end
+		terra E:dot() end
 		test [Vec3(E) == false]
 	end
 

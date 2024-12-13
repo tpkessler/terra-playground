@@ -165,56 +165,68 @@ local function check(C, T, verbose)
         return ok and ret
     end
 
-    local function check_method(method, ref_sig)
+    local function check_overloaded_method(Cfunc, Tlist)
+        local ref_sig = Cfunc.type
+        local res = fun.any(
+                        function(func)
+                            local sig = func.type
+                            return check_sig(ref_sig, sig)
+                		end,
+                        Tlist
+                    )
+        return res
+    end
+
+    local function check_method(method)
         local conceptfun, typefun = C.methods[method], T.methods[method]
-        --early exit if method does not exist
         if not typefun then
             return false
         end
-        --quick check for methodtag
         if conceptfun == methodtag then
             return true
         end
-        --if we get to here then we exit with an error if we have a macro
-        --since we cannot check for its signature 
-        if terralib.ismacro(typefun) then
-            error("TypeCheckError: cannot typecheck a macro.")
-        end
-        --otherwise, check if right implementation exists for an
-        --overloaded function
+        assert(
+            not terralib.ismacro(typefun),
+            (
+                "%s requires concrete method for %s but type %s " ..
+                "defines it as a macro"
+            ):format(tostring(C), method, tostring(T))
+        )
         if terralib.isoverloadedfunction(typefun) then
-            for _,f in ipairs(typefun.definitions) do
-                if check_sig(ref_sig, f.type) then
-                    return true
-                end
-            end
-            return false
+            return check_overloaded_method(conceptfun, typefun.definitions)
+        else
+            local ref_sig = conceptfun.type
+            return check_sig(ref_sig, typefun.type)
         end
-        --standard check
-        return check_sig(ref_sig, typefun.type)
     end
 
-    local function check_template(method, ref_sig)
-        if T.templates and T.templates[method] then
-            local methods = T.templates[method].methods
-            local res = fun.any(
-                function(func)
-                    local sig = func.type
-                    return check_sig(ref_sig, sig)
-    			end,
-    			fun.map(function(k, v) return k:signature() end, methods)
-    		)
-            return res
-        else
+    local function check_template(method)
+        if not T.templates then
             return false
         end
+        local conceptfun, typefun = C.methods[method], T.templates[method]
+        if not typefun then
+            return false
+        end
+        if conceptfun == methodtag then
+            return true
+        end
+        local res = check_overloaded_method(
+                        conceptfun,
+                        fun.map(
+                            function(sig, func)
+                                return sig:signature()
+                            end,
+                            typefun.methods
+                        )
+                    )
+        return res
     end
 
     local res = fun.all(
         function(method, func)
-            local ref_sig = func.type
             assert(
-                check_method(method, ref_sig) or check_template(method, ref_sig),
+                check_method(method) or check_template(method),
                 (
                     "Concept %s requires the method %s " ..
                     "but that was not found for %s"
