@@ -21,6 +21,13 @@ import "terratest/terratest"
 
 testenv "terraforming free functions" do
 
+    testset "no args" do
+        terraform foo()
+            return 2
+        end
+        test foo() == 2
+    end
+
     testset "concrete types" do
         terraform foo(a : double, b : double)
             return a * b + 2
@@ -254,6 +261,13 @@ testenv "terraforming class methods" do
 
     terracode
         var mybar = bar{1}
+    end
+
+    testset "no args" do
+        terraform bar:foo()
+            return 2
+        end
+        test mybar:foo() == 2
     end
 
     testset "duck-typing" do

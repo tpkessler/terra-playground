@@ -375,24 +375,26 @@ function process_template_parameters(lex,classname)
 		params:insert({name="self", typename=classname, nref=1})
 	end
 	if lex:nextif("(") then
-		repeat      
-			local paramname = lex:expect(lex.name).value
-			if lex:nextif(":") then
-				--is this a reference to a type?
-				local nref = 0
-				while lex:nextif("&") do
-					nref = nref + 1
-				end
-				local paramtype = lex:expect(lex.name).value
-				lex:ref(paramtype) --if paramtype is a concrete type (not a concepts), 
-				--then make it available in 'env'
-				params:insert({name=paramname, typename=paramtype, nref=nref}) 
-			elseif lex:nextif("...") then --expecting ...
-				params:insert({name=paramname, typename="__varargs__", nref=0})
-				break --... is the last argument in the loop
-			else
-				params:insert({name=paramname, typename="__ducktype__", nref=0})
-			end   
+		repeat
+			if lex:matches(lex.name) then
+				local paramname = lex:expect(lex.name).value
+				if lex:nextif(":") then
+					--is this a reference to a type?
+					local nref = 0
+					while lex:nextif("&") do
+						nref = nref + 1
+					end
+					local paramtype = lex:expect(lex.name).value
+					lex:ref(paramtype) --if paramtype is a concrete type (not a concepts), 
+					--then make it available in 'env'
+					params:insert({name=paramname, typename=paramtype, nref=nref}) 
+				elseif lex:nextif("...") then --expecting ...
+					params:insert({name=paramname, typename="__varargs__", nref=0})
+					break --... is the last argument in the loop
+				else
+					params:insert({name=paramname, typename="__ducktype__", nref=0})
+				end 
+			end
 		until not lex:nextif(",")
 		lex:expect(")")
 	end

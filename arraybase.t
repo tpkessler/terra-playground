@@ -126,10 +126,6 @@ local ArrayBase = function(Array)
     --    Size[D] * Size[D-1] * ... * Size[2] * i_{1}
     local Indices = rowmajorperm:map(function(v) return symbol(size_t) end)
 
-    terra Array:getdataptr() : &T
-        return &self:data(0)
-    end
-
     --cumulative sizes as a terra method
     if not Array.methods.cumsize then
         if isstatic(Array) then
@@ -205,12 +201,12 @@ local ArrayBase = function(Array)
 
     local get = terra(self : &Array, index : size_t)
         self:boundscheck(index)
-        return self:data(index)
+        return self:getdata(index)
     end
     
     local set = terra(self : &Array, index : size_t, x : T)
         self:boundscheck(index)
-        self:data(index) = x
+        self:setdata(index, x)
     end
     
     if N == 1 then
@@ -221,7 +217,7 @@ local ArrayBase = function(Array)
         {
             get,
             terra(self : &Array, [Indices])
-                return self:data( self:getlinearindex([Indices]) )
+                return self:getdata(self:getlinearindex([Indices]))
             end
         })
         
@@ -229,7 +225,7 @@ local ArrayBase = function(Array)
         {
             set, 
             terra(self : &Array, [Indices], x : T)
-                self:data( self:getlinearindex([Indices]) ) = x
+                self:setdata(self:getlinearindex([Indices]), x)
             end
         })
     end
@@ -237,16 +233,14 @@ local ArrayBase = function(Array)
     if not Array.metamethods.__apply then
         Array.metamethods.__apply = macro(function(self, ...)
             local indices = terralib.newlist{...}
-            if #indices == 1 then
-                if indices[1].tree.type.convertible == "tuple" then
-                    return `self:data( self:getlinearindex(unpacktuple([indices])) )
-                else
-                    local index = indices[1] 
-                    return `self:data( [index] )
-                end
-            else   
-                return `self:data( self:getlinearindex([indices]) )
-            end
+            return `self:get([indices])
+        end)
+    end
+
+    if not Array.metamethods.__update then
+        Array.metamethods.__update = macro(function(self, ...)
+            local args = terralib.newlist{...}
+            return `self:set([args])
         end)
     end
 

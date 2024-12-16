@@ -3,8 +3,19 @@ local io = terralib.includec("stdio.h")
 local range = require("range")
 local sarray = require("sarray")
 local nfloat = require("nfloat")
+local complex = require("complex")
 local concepts = require("concepts")
 
+local complex = require("complex")
+local nfloat = require("nfloat")
+local concepts = require("concepts")
+local tmath = require("mathfuns")
+
+local cfloat = complex.complex(float)
+local cdouble = complex.complex(double)
+local cint = complex.complex(int)
+local float128 = nfloat.FixedFloat(128)
+local cfloat128 = complex.complex(float128)
 local float256 = nfloat.FixedFloat(256)
 
 import "terratest/terratest"
@@ -16,6 +27,10 @@ local SVector = sarray.StaticVector(float, 3)
 local SMatrix = sarray.StaticMatrix(float, {2, 3}, {perm={1,2}} )
 local SArray3f = sarray.StaticArray(float, {2, 3, 4}, {perm={1,2,3}} )
 local SArray4i = sarray.StaticArray(int, {2, 2, 2, 3}, {perm={1,2,3,4}} )
+
+local SMatrix23ci = sarray.StaticMatrix(cfloat128, {2, 3}, {perm={1,2}} )
+
+im = complex.unit
 
 terra main()
     var v = SVector.from({1, 2, 3})
@@ -54,8 +69,15 @@ terra main()
         {1, 2, 3},
         {4, 5, 6},
     }}})
-
+    io.printf("re(I) = %0.0f\n", im:real())
+    io.printf("im(I) = %0.0f\n", im:imag())
     C:print()
+
+    var D = SMatrix23ci.zeros()
+    D(0, 1) = 2.0*im + 1.0
+    var E = D:transpose()
+    D:print()
+    E:print()
 end
 main()
 
@@ -68,9 +90,10 @@ terraform checkall(A : &V, v : T) where {V : Range, T : concepts.Number}
     return true
 end
 
-terraform checkallcartesian(A : &V, v : T) where {V : Range, T : concepts.Number}
-    for indices in A:cartesian_indices() do
-        if A(unpacktuple(indices)) ~= v then
+terraform checkall(A : &V, rn : &R) where {V : Range, R : Range}
+    for t in range.zip(A, rn) do
+        var a, v = t
+        if a ~= v then
             return false
         end
     end
@@ -78,9 +101,12 @@ terraform checkallcartesian(A : &V, v : T) where {V : Range, T : concepts.Number
 end
 
 terraform checkall(A : &V, rn : R) where {V : Range, R : Range}
-    for t in range.zip(A, rn) do
-        var a, v = t
-        if a ~= v then
+    return checkall(A, &rn)
+end
+
+terraform checkallcartesian(A : &V, v : T) where {V : Range, T : concepts.Number}
+    for indices in A:cartesian_indices() do
+        if A(unpacktuple(indices)) ~= v then
             return false
         end
     end
@@ -207,7 +233,7 @@ end
 --testing static vectors of different length and type
 for _,T in ipairs{int32,float,double,float256} do
     for N=2,4 do
-        testenv(N, T) "Static vector" do
+        testenv(N, T) "Static Vector" do
             
             local SVector = sarray.StaticVector(T, N)
 
@@ -257,7 +283,7 @@ for _,T in ipairs{int32,float,double,float256} do
         end
     end --N
 
-    testenv "Fixed N" do
+    testenv "Static Vector - Fixed N" do
 
         testset "from (N=2)" do
             local SVector = sarray.StaticVector(T, 2)
@@ -319,25 +345,92 @@ for _,T in ipairs{int32,float,double,float256} do
 
 end --T
 
+--testing static vectors of different length and type
+for _,T in ipairs{double, cdouble} do
+    for N=2,4 do
+        
+        testenv(N, T) "Static Matrix" do
 
-for _,T in ipairs{int, double} do
+            local SMatrix = sarray.StaticMatrix(T, {N, N})
 
-    testenv(T) "Matrix views" do
+            testset "new, size, get, set" do
+                terracode
+                    var A = SMatrix.new()
+                    A:fill(2)                
+                end
+                test A:size(0) == N and A:size(1) == N and A:length() == N * N
+                test checkall(&A, T(2))
+            end
+            
+            testset "zeros" do                       
+                terracode                                  
+                    var A = SMatrix.zeros()
+                end
+                test A:size(0) == N and A:size(1) == N and A:length() == N * N
+                test checkall(&A, T(0))
+            end 
+        
+            testset "ones" do                       
+                terracode                                  
+                    var A = SMatrix.ones()
+                end
+                test A:size(0) == N and A:size(1) == N and A:length() == N * N
+                test checkall(&A, T(1))
+            end 
+
+        end
+
+    end --N
+
+    testenv(T) "Static Matrix - fixed N" do
+
+        local SMatrix = sarray.StaticMatrix(T, {3, 2})
+        local CVector = concepts.Vector(T)
+
+        --test basic concepts
+        test [ CVector(SMatrix)]
+        test [ Range(SMatrix) ]
+
+        local SVec2 = sarray.StaticVector(T, 2)
+        local SVec3 = sarray.StaticVector(T, 3)
+
+        testset "Apply" do
+            terracode
+                var A = SMatrix.from{{1, 2}, {3, 4}, {5, 6}}
+                var x = SVec2.from{1, -1}
+                var y = SVec3.zeros()
+                var yref = SVec3.from{-1, -1, -1}
+                A:apply(T(1), &x, T(0), &y)
+            end
+            test checkall(&y, &yref)
+        end
+    end
+
+
+    testenv(T) "Transposed Static matrix - fixed N" do
 
         local SMatrix = sarray.StaticMatrix(T, {2, 3}, {perm={1,2}} )
+        local CVector = concepts.Vector(T)
+
+        --test basic concepts
+        test [ CVector(SMatrix)]
+        test [ Range(SMatrix) ]
 
         terracode
             var A = SMatrix.from({
                 {1, 2, 3},
                 {4, 5, 6}
             })
+            var B = A:transpose()
         end
+
+        --check of transpose type isa Range
+        test [ CVector(B.type.type)]
+        test [ Range(B.type.type) ]
 
         testset "transpose" do
             terracode
-                var B = A:transpose()
-                B(0,0) = -1 --By checking that A and B are eachothers transpose
-                --we can see that B is a trnasposed view of A, not a copy
+                B(0,0) = -1 --By mutating B we can check that B is a transposed view of A, not a copy
             end
             test B:size(1) == A:size(0) and B:size(0) == A:size(1)
             for i = 0, 1 do
@@ -346,7 +439,28 @@ for _,T in ipairs{int, double} do
                 end
             end
         end
+
+        testset "transpose of transpose" do
+            terracode
+                var C = B:transpose()
+            end
+            test C:size(0) == A:size(0) and C:size(1) == A:size(1)
+            test checkall(&A, C)
+        end
+
+        local SVec2 = sarray.StaticVector(T, 2)
+        local SVec3 = sarray.StaticVector(T, 3)
+
+        testset "Apply" do
+            terracode
+                var x = SVec2.from{1, -1}
+                var y = SVec3.zeros()
+                var yref = SVec3.from{-3, -3, -3}
+                B:apply(T(1), &x, T(0), &y)
+            end
+            test checkall(&y, &yref)
+        end
     end
 
-end
+end --T
 

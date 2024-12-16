@@ -19,7 +19,7 @@ else
 end
 
 local base = require("base")
-local mathfun = require("mathfuns")
+local tmath = require("mathfuns")
 local concepts = require("concepts")
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
@@ -101,7 +101,7 @@ local terra shiftandscale(n : uint64, e : int)
         k = k + 1
         n = n << 1
     end
-    return mathfun.ldexp(double(res >> 64 - k), e-k)
+    return tmath.ldexp(double(res >> 64 - k), e-k)
 end
 
 
@@ -141,8 +141,8 @@ local FixedFloat = terralib.memoize(function(N)
     end
     local from = terralib.overloadedfunction("from", {from_double, from_str})
 
-    local to_str = macro(function(x)
-        local digits = math.floor(N * (math.log(2) / math.log(10)))
+    local to_str = macro(function(x, digits)
+        local digits = digits or math.floor(N * (math.log(2) / math.log(10)))
         return quote
                 var str: rawstring
                 -- TODO: Fix memory leak
@@ -188,7 +188,7 @@ local FixedFloat = terralib.memoize(function(N)
         flint.nfloat_sub(&tmp.data, &value.data, &tmp.data, ctx)
         return tmp
     end
-    mathfun["fmod"]:adddefinition(fmod)
+    tmath["fmod"]:adddefinition(fmod)
 
     nfloat.metamethods.__mod = terra(self: nfloat, other: nfloat)
         return fmod(self, other)
@@ -211,14 +211,13 @@ local FixedFloat = terralib.memoize(function(N)
             flint.nfloat_cmp(&res, self, other, ctx)
             return res == sign
         end
-
         return impl
     end
 
     local boolean = {
         __eq = cmp(0),
         __lt = cmp(-1),
-        __gt = cmp(1),
+        __gt = cmp(1)
     }
 
     for key, method in pairs(boolean) do
@@ -235,12 +234,16 @@ local FixedFloat = terralib.memoize(function(N)
         return self > other or self == other
     end
 
+    nfloat.metamethods.__ne = terra(self: nfloat, other: nfloat)
+        return not (self == other)
+    end
+
     local terra round(value : nfloat)
         value = value + 0.5
         flint.nfloat_floor(&value, &value, ctx)
         return value
     end
-    mathfun["round"]:adddefinition(round)
+    tmath["round"]:adddefinition(round)
 
     local terra pi()
         var res = new()
@@ -255,6 +258,14 @@ local FixedFloat = terralib.memoize(function(N)
         return s * shiftandscale(m, e)
     end
 
+    terra nfloat:tostr()
+        return tmath.numtostr(self:truncatetodouble())
+    end   
+
+    tmath.numtostr:adddefinition(terra(v : nfloat)
+        return v:tostr()
+    end)
+
     for _, func in pairs(unary_math) do
         local name = "nfloat_" .. func
         local terra impl(x: nfloat)
@@ -262,7 +273,7 @@ local FixedFloat = terralib.memoize(function(N)
             flint.[name](&y.data, &x.data, ctx)
             return y
         end
-        mathfun[func]:adddefinition(impl)
+        tmath[func]:adddefinition(impl)
     end
 
     for _, func in pairs(binary_math) do
@@ -272,24 +283,24 @@ local FixedFloat = terralib.memoize(function(N)
             flint.[name](&z.data, &x.data, &y.data, ctx)
             return z
         end
-        mathfun[func]:adddefinition(impl)
+        tmath[func]:adddefinition(impl)
     end
 
-    mathfun.min:adddefinition(terra(x : nfloat, y : nfloat)
+    tmath.min:adddefinition(terra(x : nfloat, y : nfloat)
                                   return terralib.select(x < y, x, y)
                               end)
-    mathfun.max:adddefinition(terra(x : nfloat, y : nfloat)
+    tmath.max:adddefinition(terra(x : nfloat, y : nfloat)
                                   return terralib.select(x > y, x, y)
                               end)
-    mathfun.conj:adddefinition(terra(x: nfloat) return x end)
-    mathfun.real:adddefinition(terra(x: nfloat) return x end)
-    mathfun.imag:adddefinition(terra(x: nfloat) return [nfloat](0) end)
+    tmath.conj:adddefinition(terra(x: nfloat) return x end)
+    tmath.real:adddefinition(terra(x: nfloat) return x end)
+    tmath.imag:adddefinition(terra(x: nfloat) return [nfloat](0) end)
 
     do
         local terra impl(x: nfloat, y: nfloat, z: nfloat)
             return x * y + z
         end
-        mathfun.fusedmuladd:adddefinition(impl)
+        tmath.fusedmuladd:adddefinition(impl)
     end
 
     for k, v in pairs({from = from, tostr = to_str, pi = pi}) do
