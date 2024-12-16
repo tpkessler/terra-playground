@@ -538,14 +538,6 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
     return impl
 end)
 
-local DefaultAlloc = alloc.DefaultAllocator()
-local dualDouble = dual.DualNumber(double)
-local ddVec = dvector.DynamicVector(dualDouble)
-local ddMat = dmatrix.DynamicMatrix(dualDouble)
-local ddStack = stack.DynamicStack(dualDouble)
-local CSR = sparse.CSRMatrix(dualDouble, int32)
-local HalfSpaceDual = HalfSpaceQuadrature(dualDouble)
-
 local TensorBasis = terralib.memoize(function(T)
     local I = int32
     local iMat = dmatrix.DynamicMatrix(I)
@@ -581,15 +573,21 @@ local TensorBasis = terralib.memoize(function(T)
 
     terraform tensor_basis.staticmethods.frombuffer(
         alloc,
-        nq: I,
-        nx: I,
-        nnz: I,
+        nq: I1,
+        nx: I2,
+        nnz: I3,
         data: &S,
         col: &int32,
         rowptr: &I,
-        nv: I,
+        nv: I4,
         ptr: &I)
-        where {S: concepts.Number}
+        where {
+                S: concepts.Number,
+                I1: concepts.Integral,
+                I2: concepts.Integral,
+                I3: concepts.Integral,
+                I4: concepts.Integral
+              }
         var cast = Stack.new(alloc, nnz)
         for i = 0, nnz do
             -- Explicit cast as possibly S ~= T
@@ -600,7 +598,7 @@ local TensorBasis = terralib.memoize(function(T)
         tb.space = space
         tb.cast = cast
 
-        tb.velocity = iMat.frombuffer(nv, VDIM, ptr, VDIM)
+        tb.velocity = MonomialBasis.new(iMat.frombuffer(nv, VDIM, ptr, VDIM))
 
         return tb
     end
@@ -608,11 +606,113 @@ local TensorBasis = terralib.memoize(function(T)
     return tensor_basis
 end)
 
--- local terraform outflow_impl()
+local terraform inflow(alloc, trialb, qvlhs: &C, qmaxwellian) where {C}
+    -- TODO Inflow over fixed Maxwellian in different function.
+    -- Keep the quadrature loop in outflow_impl
+    var lhs = [dmatrix.DynamicMatrix(C.eltype)].new(&alloc, qvlhs:cols())
+    var maxtestdegree = testb:maxpartialdegree()
+    for i = 0, qvlhs:rows() do
+        for j = 0, qvlhs:cols() do
+            lhs(j) = qvlhs(i, j)
+        end
+        var rho, u, theta = local_maxwellian(trialb, &lhs, qmaxwellian)
+        var loc_normal: C.eltype[VDIM]
+        for k = 0, ndim do
+            -- The half space quadrature is defined on the positive half space,
+            -- dot(v, n) > 0. For the boundary condition we need to compute
+            -- the integral over the inflow part of the boundary, that is
+            -- dot(v, n) < 0. One way to archive is to define the half space
+            -- with the negative normal, -n.
+            loc_normal[k] = -normal[k + ndim * i]
+        end
+        for k = ndim, VDIM do
+            loc_normal[k] = 0
+        end
+        var hs = [HalfSpaceQuadrature(C.eltype)].new(&loc_normal[0])
+        -- include one extra point for flux weight dot(v, n)
+        var qhalf = escape
+            emit quote
+                var x, w = (
+                    hs:maxwellian(&alloc, maxtestdegree + 1, rho, &u, theta)
+                )
+            in
+                range.zip(x, w)
+            end
+        end
+        var vn = lambda.new([
+                terra(x: &C.eltype, normal: &C.eltype)
+                    var res: C.eltype = 0
+                    escape
+                        for k = 0, VDIM - 1 do
+                            emit quote res = res + x[k] * normal[k] end
+                        end
+                    end
+                    return res
+                end
+            ],
+            {normal = &loc_normal[0]})
+        for j, b in range.enumerate(testbasis) do
+            -- Because we integrate over dot(v, -n) > 0 the weight dot(v, n)
+            -- has the wrong sign, so we need to correct it after quadrature.
+            halfmom(i, j) = -l2inner(b, vn, &qhalf)
+        end
+    end
+end
 
+local terraform outflow_impl(alloc, testb, trialb, xvlhs: &C, normal) where {C}
+    -- The nonlinear boundary condition that we have to compute is a nested
+    -- integral of space and velocity. First, we discretize the spatial integral
+    -- with quadrature. For this, we need the point evaluation of the spatial
+    -- basis in the quadrature point, stored as a sparse matrix.
+    -- With the coefficients in matrix form and the point evaluation of the spatial
+    -- basis we obtain, for each quadrature point, that is row in qvlhs,
+    -- the partially evaluated distribution function, that is the coefficients
+    -- of the velocity basis at each quadrature point. With this information
+    -- we can compute the velocity integrals.
+    var nq = normal:rows()
+    var nv = xvlhs:cols()
+    var qvlhs = [dmatrix.DynamicMatrix(C.eltype)].zeros(alloc, nq, nv)
+    qvlhs:mul(
+            [C.eltype](0),
+            [C.eltype](1),
+            false,
+            &trialb.space,
+            false,
+            &xvlhs
+    )
+    -- Qudrature for the computation of the local Maxwellian.
+    -- We need to integrate a polynomial times (1, v, |v|^2) exactly.
+    -- For the Gauß-Hermite quadrature we only need deg / 2 + 1 points to integrate
+    -- polynomials up to degree deg exactly. We account for (1, v, |v|^2)
+    -- by using two more points.
+    var maxtrialdegree = trialb:maxpartialdegree()
+    var q1dmaxwellian = gauss.hermite(
+                        &alloc,
+                        maxtrialdegree / 2 + 1 + 2,
+                        {origin = 0.0, scaling = tmath.sqrt(2.)}
+                      )
+    var qmaxwellian = escape 
+        local arg = {}
+        for i = 1, VDIM do
+            arg[i] = `&q1dmaxwellian
+        end
+        emit quote
+                 var p = gauss.productrule([arg])
+             in
+                 range.zip(&p.x, &p.w)
+             end
+    end
+
+    var maxtestdegree = testb:maxpartialdegree()
+    var halfmom = ddMat.new(&alloc, qvlhs:rows(), ptest:rows())
+    var halfintegral = inflow(alloc, trialb)
+    var lhs = [dmatrix.DynamicMatrix(C.eltype)].new(&alloc, qvlhs:cols())
+end
+
+local DefaultAlloc = alloc.DefaultAllocator()
+local dualDouble = dual.DualNumber(double)
 local TensorBasisDual = TensorBasis(dualDouble)
 local terra outflow(
-    num_threads: int64,
     -- Dimension of test space and the result arrays
     ntestx: int64,
     ntestv: int64,
@@ -631,7 +731,7 @@ local terra outflow(
     -- Spatial dimension
     ndim: int64,
     -- Sampled normals
-    normal: &double,
+    normalq: &double,
     -- Point evaluation of spatial test functions at quadrature points
     testnnz: int32,
     testdata: &double,
@@ -647,7 +747,35 @@ local terra outflow(
     trial_powers: &int32
 )
     var alloc: DefaultAlloc
-    var trialbasis = TensorBasisDual.frombuffer()
+    var testbasis = TensorBasisDual.frombuffer(
+                                        &alloc,
+                                        nqx,
+                                        ntestx,
+                                        testnnz,
+                                        testdata,
+                                        testrow,
+                                        testcolptr,
+                                        ntestv,
+                                        test_powers
+                                    )
+    var trialbasis = TensorBasisDual.frombuffer(
+                                        &alloc,
+                                        nqx,
+                                        ntrialx,
+                                        trialnnz,
+                                        trialdata,
+                                        trialcol,
+                                        trialrowptr,
+                                        ntrialv,
+                                        trial_powers
+                                    )
+
+    var normal = [dmatrix.DynamicMatrix(dualDouble)].zeros(&alloc, nqx, VDIM)
+    for i = 0, nqx do
+        for j = 0, ndim do
+            normal(i, j) = normalq[j + i * ndim]
+        end
+    end
     -- When solving the linear systems arising from Newton's method for
     --
     -- F(x) = 0
@@ -666,7 +794,11 @@ local terra outflow(
     -- way to represent the unknown coefficients and their dual number
     -- representation is in matrix form with the spatial dof as row and the
     -- velocity dof as column indices.
-    var xvlhs = ddMat.new(&alloc, ntrialx, ntrialv)
+    var xvlhs = [dmatrix.DynamicMatrix(dualDouble)].new(
+                                                        &alloc,
+                                                        ntrialx,
+                                                        ntrialv
+                                                    )
     for i = 0, ntrialx do
         for j = 0, ntrialv do
             var idx = j + ntrialv * i
@@ -674,6 +806,9 @@ local terra outflow(
         end
     end
 
+    outflow_impl(&alloc, &testbasis, &trialbasis, &xvlhs, &normal)
+
+    --[==[
     -- The nonlinear boundary condition that we have to compute is a nested
     -- integral of space and velocity. First, we discretize the spatial integral
     -- with quadrature. For this, we need the point evaluation of the spatial
@@ -792,6 +927,7 @@ local terra outflow(
             restng[idx] = res(i, j).tng
         end
     end
+    --]==]
 end
 
 local ddStack = stack.DynamicStack(dualDouble)
