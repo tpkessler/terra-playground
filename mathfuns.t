@@ -18,7 +18,7 @@ math.pi = constant(3.14159265358979323846264338327950288419716939937510)
 function float:eps() return 0x1p-23 end
 function double:eps() return 0x1p-52 end
 
-local funs_single_var = {
+local funs = {
     sin = "sin",
     cos = "cos",
     tan = "tan",
@@ -46,43 +46,27 @@ local funs_single_var = {
     abs = "fabs",
     floor = "floor",
     ceil = "ceil",
-    round = "round"
-}
-
-local funs_two_var = {
+    round = "round",
+    j0 = "j0",
+    j1 = "j1",
+    jn = "jn",
     pow = "pow",
     atan2 = "atan2",
     hypot = "hypot",
-    fmod = "fmod"
+    fmod = "fmod",
+    fusedmuladd = "fma",
 }
 
-local funs_three_var = {
-    fusedmuladd = "fma"
-}
-
-for tname, cname in pairs(funs_single_var) do
+for tname, cname in pairs(funs) do
     local f = terralib.overloadedfunction(tname)
     for _, T in ipairs{float,double} do
-        local cfun = T==float and C[cname.."f"] or C[cname]
-        f:adddefinition(terra(x : T) return cfun(x) end)
-    end
-    math[tname] = f
-end
-
-for tname, cname in pairs(funs_two_var) do
-    local f = terralib.overloadedfunction(tname)
-    for _, T in ipairs{float,double} do
-        local cfun = T==float and C[cname.."f"] or C[cname]
-        f:adddefinition(terra(x : T, y : T) return cfun(x, y) end)
-    end
-    math[tname] = f
-end
-
-for tname, cname in pairs(funs_three_var) do
-    local f = terralib.overloadedfunction(tname)
-    for _, T in ipairs{float,double} do
-        local cfun = T==float and C[cname.."f"] or C[cname]
-        f:adddefinition(terra(x : T, y : T, z : T) return cfun(x, y, z) end)
+        local cfun = (T == float and C[cname.."f"] or C[cname])
+        local sig = cfun.type
+        local arg = sig.parameters
+        local sym = arg:map(function(T) return symbol(T) end)
+        local impl = terra([sym]) return cfun([sym]) end
+        impl:setinlined(true)
+        f:adddefinition(impl)
     end
     math[tname] = f
 end
@@ -91,7 +75,7 @@ math.beta = terralib.overloadedfunction("beta")
 for _, T in ipairs{float,double} do
     math.beta:adddefinition(
         terra(x : T, y : T) : T
-            return math.gamma(x) * math.gamma(y) / math.gamma(x+y)
+            return math.gamma(x) * math.gamma(y) / math.gamma(x + y)
         end
     )
 end

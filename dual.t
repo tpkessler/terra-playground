@@ -97,6 +97,27 @@ local DualNumber = terralib.memoize(function(T)
             return dual {mathfun.sqrt(x.val), 1 / (2 * mathfun.sqrt(x.val)) * x.tng}
         end
 
+        terra fun.j0(x: dual)
+            return dual {mathfun.j0(x.val), -mathfun.j1(x.val) * x.tng}
+        end
+
+        terra fun.jn(n: int32, x: dual)
+            if n == 0 then
+                return fun.j0(x)
+            else
+                var val = mathfun.jn(n, x.val)
+                var tng = (
+                    (mathfun.jn(n - 1, x.val) - mathfun.jn(n + 1, x.val)) / 2
+                    * x.tng
+                )
+                return dual {val, tng}
+            end
+        end
+
+        terra fun.j1(x: dual)
+            return fun.jn(1, x)
+        end
+
         terra fun.abs(x: dual)
             return dual {mathfun.abs(x.val), mathfun.sign(x.val) * x.tng}
         end
@@ -140,6 +161,32 @@ local DualNumber = terralib.memoize(function(T)
             var res = mathfun.pow(x.val, y.val)
             return dual {res, res * (x.tng * y.val / x.val + y.tng * mathfun.log(x.val))}
         end)
+    end
+
+    dual.metamethods.__eq = terra(x: dual, y: dual)
+        return x.val == y.val and x.tng == y.tng
+    end
+
+    --[=[
+        WARNING These comparison functions are only useful for measuring the
+        relative distance of two dual numbers, that is |x - y|^2 < eps
+        for a given tolerance eps. It uses the partial ordering implied
+        by the embedding of dual numbers into the Euclidean space R^2
+    --]=]
+    dual.metamethods.__lt = terra(x: dual, y: dual)
+        return x.val * x.val + x.tng * x.tng < y.val * y.val + y.tng * y.tng
+    end
+
+    dual.metamethods.__le = terra(x: dual, y: dual)
+        return x == y or x < y
+    end
+
+    dual.metamethods.__gt = terra(x: dual, y: dual)
+        return -x < -y
+    end
+
+    dual.metamethods.__ge = terra(x: dual, y: dual)
+        return x == y or x > y
     end
 
     if concepts.Real(T) then
