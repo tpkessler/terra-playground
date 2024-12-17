@@ -93,7 +93,7 @@ local significant_part_mantissa = macro(function(value)
     end
 end)
 
---shift significat 64-bit part of mantissa
+--shift significant 64-bit part of mantissa
 local terra shiftandscale(n : uint64, e : int)
     var res = n
     var k = 0
@@ -106,10 +106,32 @@ end
 
 
 local FixedFloat = terralib.memoize(function(N)
+    
+    --float_type[N] stores the high-precision number using the following layout
+    --local M = N / 64
+    --struct float_type
+    --  head : uint64[2]
+    --  d : uint64[M-1]
+    --end
+    --here the 'head' stores the exponent and sign
+    --  head[0] --exponent
+    --  head[1] --sign
+    --and 'd' the mantissa:
+    --  d[0]
+    --   ...
+    --  d[M-1]
+    --example: N = 128, M = 2, representing the value 1
+    --x.data.head[0] = 1
+    --x.data.head[1] = 0
+    --x.data.d[0]    = 0
+    --x.data.d[1]    = uint64(1) << 63
     local ctype = float_type[N]
     assert(ctype, "No support for precision " .. N .. " in FixedFloat")
+
+    --get the context corresponding to precision N
     local ctx = context[N]:get()
 
+    --arbitrary precision float is a wrapper around 'ctype'
     local struct nfloat {
         data: ctype
     }
@@ -122,6 +144,35 @@ local FixedFloat = terralib.memoize(function(N)
 
     --type traits
     nfloat.traits.precision = N
+    local M = N / 64 --precision in quadwords
+
+    --generate the 'head' and 'd' for 'ctype' representing zero
+    --one, and eps
+    local function genfloat(value)
+        --initialize mantissa
+        local d = {}
+        for i = 1, M do
+            d[i] = 0ULL
+        end
+        if value == 0 then
+            return {{9223372036854775808ULL, 0ULL}, d}
+        elseif value == 1 then
+            d[M] = 9223372036854775808ULL
+            return {{1ULL, 0ULL}, d}
+        elseif value == "eps" then
+            d[M] = 9223372036854775808ULL
+            return {{-N, 0ULL}, d}
+        end
+    end
+    
+    local zero = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat(0))}))
+    local unit = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat(1))}))
+    local eps = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat("eps"))}))
+    
+    function nfloat:zero() return zero end
+    function nfloat:unit() return unit end
+    --distance from 1.0 to next floating point value
+    function nfloat:eps() return eps end
 
     local terra new()
         var data: ctype
@@ -258,12 +309,8 @@ local FixedFloat = terralib.memoize(function(N)
         return s * shiftandscale(m, e)
     end
 
-    terra nfloat:tostr()
-        return tmath.numtostr(self:truncatetodouble())
-    end   
-
     tmath.numtostr:adddefinition(terra(v : nfloat)
-        return v:tostr()
+        return tmath.numtostr(v:truncatetodouble())
     end)
 
     for _, func in pairs(unary_math) do

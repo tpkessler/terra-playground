@@ -5,7 +5,7 @@
 
 import "terratest/terratest"
 
-local math = require('mathfuns')
+local tmath = require('mathfuns')
 
 local funs_single_var = {
     "sin",
@@ -33,10 +33,11 @@ local funs_single_var = {
     "abs"
 }
 
-testenv "All single variable math functions" do
+
+testenv "All single variable tmath functions" do
     --test correctness of output type
     for k,f in ipairs(funs_single_var) do
-        local mathfun = math[f]
+        local mathfun = tmath[f]
         testset(f) "fun " do
             terracode
                 var xfloat = mathfun([float](0))
@@ -48,26 +49,35 @@ testenv "All single variable math functions" do
     end
 end
 
-testenv "Correctness of selected math functions" do
+testenv "Correctness of selected tmath functions" do
+    testset "special values" do
+        for _, T in ipairs({float, double, int8, int16, int32, int64, uint8, uint16, uint32, uint64}) do
+            test [T:zero()] == 0
+            test [T:unit()] == 1
+        end
+        test tmath.isapprox(tmath.pi, math.pi, 1e-15)
+        test [float:eps()] == 0x1p-23
+        test [double:eps()] == 0x1p-52
+    end
     --test if result is correct
     testset "sqrt" do
-        test math.isapprox(math.sqrt([float](4)), 2.0f, 1e-7f) 
-        test math.isapprox(math.sqrt([double](4)), 2.0, 1e-15) 
+        test tmath.isapprox(tmath.sqrt([float](4)), 2.0f, 1e-7f) 
+        test tmath.isapprox(tmath.sqrt([double](4)), 2.0, 1e-15) 
     end
 
     testset "log" do
-        test math.isapprox(math.log([float](1)), 0, 1e-7f) 
-        test math.isapprox(math.log([double](1)), 0, 1e-15) 
+        test tmath.isapprox(tmath.log([float](1)), 0, 1e-7f) 
+        test tmath.isapprox(tmath.log([double](1)), 0, 1e-15) 
     end
 
     testset "sin" do
-        test math.isapprox(math.sin([float](math.pi)), 0, 1e-7f) 
-        test math.isapprox(math.sin([double](math.pi)), 0, 1e-15) 
+        test tmath.isapprox(tmath.sin([float](tmath.pi)), 0, 1e-7f) 
+        test tmath.isapprox(tmath.sin([double](tmath.pi)), 0, 1e-15) 
     end
 
     testset "cos" do
-        test math.isapprox(math.cos([float](math.pi)), -1, 1e-7f) 
-        test math.isapprox(math.cos([double](math.pi)), -1, 1e-15) 
+        test tmath.isapprox(tmath.cos([float](tmath.pi)), -1, 1e-7f) 
+        test tmath.isapprox(tmath.cos([double](tmath.pi)), -1, 1e-15) 
     end
 
 end

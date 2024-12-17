@@ -17,8 +17,17 @@ local C = terralib.includecstring[[
 --constants
 math.pi = constant(3.14159265358979323846264338327950288419716939937510)
 
-function float:eps() return 0x1p-23 end
-function double:eps() return 0x1p-52 end
+function float:eps() return constant(float, 0x1p-23) end
+function double:eps() return constant(double, 0x1p-52) end
+
+for _,T in ipairs({float, double, int8, int16, int32, int64, uint8, uint16, uint32, uint64}) do
+    function T:zero()
+        return constant(T, 0)
+    end
+    function T:unit()
+        return constant(T, 1)
+    end
+end
 
 local funs_single_var = {
     sin = "sin",
