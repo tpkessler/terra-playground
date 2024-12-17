@@ -6,12 +6,20 @@
 import "terratest/terratest"
 
 local nfloat = require("nfloat")
-local mathfun = require("mathfuns")
+local tmath = require("mathfuns")
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
 for _, N in pairs(suffix) do
     testenv(N) "Float" do
         local T = nfloat.FixedFloat(N)
+        testset "constants: zero, one" do
+            local zero = T:zero()
+            local unit = T:unit()
+            local eps = T:eps()
+            test zero == 0
+            test unit == 1
+            test [T:eps()] == 0.5 * tmath.pow(T(2), -N)
+        end
         testset "from" do
             terracode
                 var asdouble = T.from(3.5)
