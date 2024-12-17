@@ -164,14 +164,18 @@ local FixedFloat = terralib.memoize(function(N)
         end
     end
     
-    local zero = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat(0))}))
-    local unit = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat(1))}))
-    local eps = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat("eps"))}))
+    local zero = terralib.new(nfloat, {terralib.new(ctype, genfloat(0))})
+    local unit = terralib.new(nfloat, {terralib.new(ctype, genfloat(1))})
+    local eps = terralib.new(nfloat, {terralib.new(ctype, genfloat("eps"))})
     
-    function nfloat:zero() return zero end
-    function nfloat:unit() return unit end
+    function nfloat:__newzero() return zero end
+    function nfloat:__newunit() return unit end
+    function nfloat:__neweps() return eps end
+
+    function nfloat:zero() return constant(zero) end
+    function nfloat:unit() return constant(unit) end
     --distance from 1.0 to next floating point value
-    function nfloat:eps() return eps end
+    function nfloat:eps() return constant(eps) end
 
     local terra new()
         var data: ctype

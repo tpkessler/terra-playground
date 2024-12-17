@@ -3,11 +3,16 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local C = terralib.includec("math.h")
+local C = terralib.includecstring[[
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include <string.h>
+    #include <math.h>
+]]
 
 local base = require("base")
 local concepts = require("concepts")
-local mathfun = require("mathfuns")
+local tmath = require("mathfuns")
 
 concepts.Complex = terralib.types.newstruct("Complex")
 concepts.Base(concepts.Complex)
@@ -23,10 +28,13 @@ local complex = terralib.memoize(function(T)
 
     function complex.metamethods.__cast(from, to, exp)
         if to == complex then
-            return `complex {exp, [T](0)}
-        else
-            error("Invalid scalar type of complex data type conversion")
+            if concepts.Real(from) then
+                return `complex {exp, [T](0)}
+            elseif concepts.Complex(from) then
+                return `complex{exp.re, exp.im}
+            end
         end
+        error("Invalid conversion from " .. tostring(from) .. "to type " ..  tostring(to) .. ".")
     end
 
     function complex.metamethods.__typename()
@@ -62,24 +70,45 @@ local complex = terralib.memoize(function(T)
     terra complex:real()
         return self.re
     end
-    mathfun.real:adddefinition(terra(x: complex) return x:real() end)
+    tmath.real:adddefinition(terra(x: complex) return x:real() end)
 
     terra complex:imag()
         return self.im
     end
-    mathfun.imag:adddefinition(terra(x: complex) return x:imag() end)
+    tmath.imag:adddefinition(terra(x: complex) return x:imag() end)
 
     terra complex:conj()
         return complex {self.re, -self.im}
     end
-    mathfun.conj:adddefinition(terra(x: complex) return x:conj() end)
+    tmath.conj:adddefinition(terra(x: complex) return x:conj() end)
 
     if concepts.Float(T) then
         terra complex:norm(): T
-            return mathfun.sqrt(self:normsq())
+            return tmath.sqrt(self:normsq())
         end
-        mathfun.abs:adddefinition(terra(x: complex) return x:norm() end)
+        tmath.abs:adddefinition(terra(x: complex) return x:norm() end)
     end
+
+    terra complex:tostr()
+        var str : int8[16]
+        var re, im =  self:real(), self:imag()
+        if im < 0 then
+            im = -im
+            var s1, s2 = tmath.numtostr(re), tmath.numtostr(im)
+            C.strcpy(&str[0], s1)
+            C.strcat(&str[0], "-")
+            C.strcat(&str[0], s2)
+            C.strcat(&str[0], "im")
+        else
+            var s1, s2 = tmath.numtostr(re), tmath.numtostr(im)
+            C.strcpy(&str[0], s1)
+            C.strcat(&str[0], "+")
+            C.strcat(&str[0], s2)
+            C.strcat(&str[0], "im")
+        end
+        return str
+    end
+    tmath.numtostr:adddefinition(terra(x : complex) return x:tostr() end)
 
     terra complex:inverse()
        var nrmsq = self:normsq()
@@ -97,15 +126,29 @@ local complex = terralib.memoize(function(T)
     terra complex.metamethods.__eq(self: complex, other: complex)
         return self:real() == other:real() and self:imag() == other:imag()
     end
+    
+    terra complex.metamethods.__ne(self: complex, other: complex)
+        return self:real() ~= other:real() or self:imag() ~= other:imag()
+    end
 
     terra complex.staticmethods.from(x: T, y: T)
         return complex {x , y}
     end
-    
-    local I = `complex.from(0, 1)
-    for _, name in pairs({"I", "unit"}) do
-        complex.staticmethods[name] = terra() return complex.from(0, 1) end
-        complex.staticmethods[name]:setinlined(true)
+
+    if concepts.Primitive(T) then
+        function complex:zero()
+            return constant(complex, `complex{0, 0})
+        end
+        function complex:unit()
+            return constant(complex, `complex{0, 1})
+        end
+    elseif concepts.NFloat(T) then
+        function complex:zero()
+            return constant(terralib.new(complex, {T:__newzero(), T:__newzero()}))
+        end
+        function complex:unit()
+            return constant(terralib.new(complex, {T:__newzero(), T:__newunit()}))
+        end
     end
 
     if concepts.Number(T) then
