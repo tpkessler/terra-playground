@@ -28,7 +28,7 @@ for _,T in ipairs({float, double, int8, int16, int32, int64, uint8, uint16, uint
     end
 end
 
-local funs_single_var = {
+local funs = {
     sin = "sin",
     cos = "cos",
     tan = "tan",
@@ -56,43 +56,27 @@ local funs_single_var = {
     abs = "fabs",
     floor = "floor",
     ceil = "ceil",
-    round = "round"
-}
-
-local funs_two_var = {
+    round = "round",
+    j0 = "j0",
+    j1 = "j1",
+    jn = "jn",
     pow = "pow",
     atan2 = "atan2",
     hypot = "hypot",
-    fmod = "fmod"
+    fmod = "fmod",
+    fusedmuladd = "fma",
 }
 
-local funs_three_var = {
-    fusedmuladd = "fma"
-}
-
-for tname, cname in pairs(funs_single_var) do
+for tname, cname in pairs(funs) do
     local f = terralib.overloadedfunction(tname)
     for _, T in ipairs{float,double} do
-        local cfun = T==float and C[cname.."f"] or C[cname]
-        f:adddefinition(terra(x : T) return cfun(x) end)
-    end
-    tmath[tname] = f
-end
-
-for tname, cname in pairs(funs_two_var) do
-    local f = terralib.overloadedfunction(tname)
-    for _, T in ipairs{float,double} do
-        local cfun = T==float and C[cname.."f"] or C[cname]
-        f:adddefinition(terra(x : T, y : T) return cfun(x, y) end)
-    end
-    tmath[tname] = f
-end
-
-for tname, cname in pairs(funs_three_var) do
-    local f = terralib.overloadedfunction(tname)
-    for _, T in ipairs{float,double} do
-        local cfun = T==float and C[cname.."f"] or C[cname]
-        f:adddefinition(terra(x : T, y : T, z : T) return cfun(x, y, z) end)
+        local cfun = (T == float and C[cname.."f"] or C[cname])
+        local sig = cfun.type
+        local arg = sig.parameters
+        local sym = arg:map(function(T) return symbol(T) end)
+        local impl = terra([sym]) return cfun([sym]) end
+        impl:setinlined(true)
+        f:adddefinition(impl)
     end
     tmath[tname] = f
 end
