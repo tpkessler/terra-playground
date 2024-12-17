@@ -32,7 +32,7 @@ local io = terralib.includec("stdio.h")
 for _, Ts in pairs({float, double, float128, float1024}) do
     for _, is_complex in pairs({false, true}) do
         local T = is_complex and complex.complex(Ts) or Ts
-        local unit = is_complex and quote in T.unit() end or quote in 0 end
+        local unit = is_complex and T:unit() or 0
         local DMat = dmatrix.DynamicMatrix(T)
         local DVec = dvector.DynamicVector(T)
         local Alloc = alloc.DefaultAllocator()

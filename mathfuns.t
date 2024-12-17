@@ -159,6 +159,14 @@ end
 
 --numbers to string
 math.numtostr = terralib.overloadedfunction("numtostr")
+for _, T in ipairs{uint8, uint16, uint32, uint64} do
+    local impl = terra(v : T)
+        var str : int8[8]
+        C.sprintf(&str[0], "%u", v)
+        return str
+    end
+    math.numtostr:adddefinition(impl)
+end
 for _, T in ipairs{int8, int16, int32, int64} do
     local impl = terra(v : T)
         var str : int8[8]

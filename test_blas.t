@@ -22,8 +22,8 @@ local types = {
 local unit = {
 	["s"] = `float(0),
 	["d"] = `double(0),
-	["c"] = `complexFloat.I(),
-	["z"] = `complexDouble.I()}
+	["c"] = `[complexFloat:unit()],
+	["z"] = `[complexDouble:unit()]}
 
 import "terratest/terratest"
 
