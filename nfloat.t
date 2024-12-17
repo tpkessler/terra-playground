@@ -19,7 +19,7 @@ else
 end
 
 local base = require("base")
-local mathfun = require("mathfuns")
+local tmath = require("mathfuns")
 local concepts = require("concepts")
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
@@ -101,13 +101,34 @@ local terra shiftandscale(n : uint64, e : int)
         k = k + 1
         n = n << 1
     end
-    return mathfun.ldexp(double(res >> 64 - k), e-k)
+    return tmath.ldexp(double(res >> 64 - k), e-k)
 end
 
 
 local FixedFloat = terralib.memoize(function(N)
+
+    --float_type[N] stores the high-precision number using the following layout
+    --local M = N / 64
+    --struct float_type
+    --  head : uint64[2]
+    --  d : uint64[M-1]
+    --end
+    --here the 'head' stores the exponent and sign
+    --  head[0] --exponent
+    --  head[1] --sign
+    --and 'd' the mantissa:
+    --  d[0]
+    --   ...
+    --  d[M-1]
+    --example: N = 128, M = 2, representing the value 1
+    --x.data.head[0] = 1
+    --x.data.head[1] = 0
+    --x.data.d[0]    = 0
+    --x.data.d[1]    = uint64(1) << 63
     local ctype = float_type[N]
     assert(ctype, "No support for precision " .. N .. " in FixedFloat")
+    
+    --get the context corresponding to precision N
     local ctx = context[N]:get()
 
     local struct nfloat {
@@ -122,6 +143,35 @@ local FixedFloat = terralib.memoize(function(N)
 
     --type traits
     nfloat.traits.precision = N
+    local M = N / 64 --precision in quadwords
+
+    --generate the 'head' and 'd' for 'ctype' representing zero
+    --one, and eps
+    local function genfloat(value)
+        --initialize mantissa
+        local d = {}
+        for i = 1, M do
+            d[i] = 0ULL
+        end
+        if value == 0 then
+            return {{9223372036854775808ULL, 0ULL}, d}
+        elseif value == 1 then
+            d[M] = 9223372036854775808ULL
+            return {{1ULL, 0ULL}, d}
+        elseif value == "eps" then
+            d[M] = 9223372036854775808ULL
+            return {{-N, 0ULL}, d}
+        end
+    end
+    
+    local zero = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat(0))}))
+    local unit = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat(1))}))
+    local eps = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat("eps"))}))
+    
+    function nfloat:zero() return zero end
+    function nfloat:unit() return unit end
+    --distance from 1.0 to next floating point value
+    function nfloat:eps() return eps end
 
     local terra new()
         var data: ctype
@@ -188,7 +238,7 @@ local FixedFloat = terralib.memoize(function(N)
         flint.nfloat_sub(&tmp.data, &value.data, &tmp.data, ctx)
         return tmp
     end
-    mathfun["fmod"]:adddefinition(fmod)
+    tmath["fmod"]:adddefinition(fmod)
 
     nfloat.metamethods.__mod = terra(self: nfloat, other: nfloat)
         return fmod(self, other)
@@ -211,7 +261,6 @@ local FixedFloat = terralib.memoize(function(N)
             flint.nfloat_cmp(&res, self, other, ctx)
             return res == sign
         end
-
         return impl
     end
 
@@ -235,12 +284,16 @@ local FixedFloat = terralib.memoize(function(N)
         return self > other or self == other
     end
 
+    nfloat.metamethods.__ne = terra(self: nfloat, other: nfloat)
+        return not (self == other)
+    end
+
     local terra round(value : nfloat)
         value = value + 0.5
         flint.nfloat_floor(&value, &value, ctx)
         return value
     end
-    mathfun["round"]:adddefinition(round)
+    tmath["round"]:adddefinition(round)
 
     local terra pi()
         var res = new()
@@ -255,6 +308,10 @@ local FixedFloat = terralib.memoize(function(N)
         return s * shiftandscale(m, e)
     end
 
+    tmath.numtostr:adddefinition(terra(v : nfloat)
+        return tmath.numtostr(v:truncatetodouble())
+    end)
+
     for _, func in pairs(unary_math) do
         local name = "nfloat_" .. func
         local terra impl(x: nfloat)
@@ -262,7 +319,7 @@ local FixedFloat = terralib.memoize(function(N)
             flint.[name](&y.data, &x.data, ctx)
             return y
         end
-        mathfun[func]:adddefinition(impl)
+        tmath[func]:adddefinition(impl)
     end
 
     for _, func in pairs(binary_math) do
@@ -272,24 +329,24 @@ local FixedFloat = terralib.memoize(function(N)
             flint.[name](&z.data, &x.data, &y.data, ctx)
             return z
         end
-        mathfun[func]:adddefinition(impl)
+        tmath[func]:adddefinition(impl)
     end
 
-    mathfun.min:adddefinition(terra(x : nfloat, y : nfloat)
+    tmath.min:adddefinition(terra(x : nfloat, y : nfloat)
                                   return terralib.select(x < y, x, y)
                               end)
-    mathfun.max:adddefinition(terra(x : nfloat, y : nfloat)
+    tmath.max:adddefinition(terra(x : nfloat, y : nfloat)
                                   return terralib.select(x > y, x, y)
                               end)
-    mathfun.conj:adddefinition(terra(x: nfloat) return x end)
-    mathfun.real:adddefinition(terra(x: nfloat) return x end)
-    mathfun.imag:adddefinition(terra(x: nfloat) return [nfloat](0) end)
+    tmath.conj:adddefinition(terra(x: nfloat) return x end)
+    tmath.real:adddefinition(terra(x: nfloat) return x end)
+    tmath.imag:adddefinition(terra(x: nfloat) return [nfloat](0) end)
 
     do
         local terra impl(x: nfloat, y: nfloat, z: nfloat)
             return x * y + z
         end
-        mathfun.fusedmuladd:adddefinition(impl)
+        tmath.fusedmuladd:adddefinition(impl)
     end
 
     for k, v in pairs({from = from, tostr = to_str, pi = pi}) do
