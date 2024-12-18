@@ -18,6 +18,8 @@ else
     error("Not implemented for this OS.")
 end
 
+import "terraform"
+
 local base = require("base")
 local tmath = require("mathfuns")
 local concepts = require("concepts")
@@ -111,7 +113,7 @@ local FixedFloat = terralib.memoize(function(N)
     --local M = N / 64
     --struct float_type
     --  head : uint64[2]
-    --  d : uint64[M-1]
+    --  d : uint64[M]
     --end
     --here the 'head' stores the exponent and sign
     --  head[0] --exponent
@@ -153,13 +155,14 @@ local FixedFloat = terralib.memoize(function(N)
         for i = 1, M do
             d[i] = 0ULL
         end
+        local bitshiftone = bit.lshift(1ULL, 63)
         if value == 0 then
-            return {{9223372036854775808ULL, 0ULL}, d}
+            return {{bitshiftone, 0ULL}, d}
         elseif value == 1 then
-            d[M] = 9223372036854775808ULL
+            d[M] = bitshiftone
             return {{1ULL, 0ULL}, d}
         elseif value == "eps" then
-            d[M] = 9223372036854775808ULL
+            d[M] = bitshiftone
             return {{-N, 0ULL}, d}
         end
     end
@@ -312,9 +315,9 @@ local FixedFloat = terralib.memoize(function(N)
         return s * shiftandscale(m, e)
     end
 
-    tmath.numtostr:adddefinition(terra(v : nfloat)
+    terraform tmath.numtostr(v : nfloat)
         return tmath.numtostr(v:truncatetodouble())
-    end)
+    end
 
     for _, func in pairs(unary_math) do
         local name = "nfloat_" .. func

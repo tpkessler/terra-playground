@@ -8,6 +8,7 @@ import "terratest/terratest"
 local nfloat = require("nfloat")
 local tmath = require("mathfuns")
 
+
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
 for _, N in pairs(suffix) do
     testenv(N) "Float" do
