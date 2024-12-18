@@ -6,6 +6,7 @@
 import "terratest/terratest"
 
 local tmath = require('mathfuns')
+local io = terralib.includec("stdio.h")
 
 local funs_single_var = {
     "sin",
@@ -77,6 +78,19 @@ testenv "Correctness of selected math functions" do
     testset "cos" do
         test tmath.isapprox(tmath.cos([float](tmath.pi)), -1, 1e-7f) 
         test tmath.isapprox(tmath.cos([double](tmath.pi)), -1, 1e-15) 
+    end
+
+    testset "numtostr" do
+        tmath.numtostr.format.float = "%0.3f"
+        terracode
+            io.printf("value = %s\n", tmath.numtostr(1))
+            io.printf("value = %s\n", tmath.numtostr(1.999999999999))
+        end
+        tmath.numtostr.format.float = "%0.5f"
+        terracode
+            io.printf("value = %s\n", tmath.numtostr(1))
+            io.printf("value = %s\n", tmath.numtostr(1.999999999999))
+        end
     end
 
 end

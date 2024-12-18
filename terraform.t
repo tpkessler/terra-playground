@@ -157,7 +157,7 @@ function process_free_function_statement(templ)
 		--get/register new template function
 		local templfun = localenv[templ.path] or template.functiontemplate(templ.methodname)
 		--add current template method implementation
-		templfun:adddefinition({[paramconceptlist] = terralib.memoize(generate_terrafun(templ,localenv))})
+		templfun:adddefinition({[paramconceptlist] = generate_terrafun(templ,localenv)})
 		return templfun
 	end
 end
@@ -180,7 +180,7 @@ function process_namespaced_function_statement(templ)
 			templfun = localenv[templ.path] or template.functiontemplate(templ.methodname)
 		end
 		--add current template method implementation
-		templfun:adddefinition({[paramconceptlist] = terralib.memoize(generate_terrafun(templ,localenv))})
+		templfun:adddefinition({[paramconceptlist] = generate_terrafun(templ,localenv)})
 		--register method
 		if isstaticmethod(templ,localenv) then
 			local class = localenv(templ.path,1)
@@ -203,7 +203,7 @@ function process_class_method_statement(templ)
 		if not class["templates"] then base.AbstractBase(class) end --add base functionality
 		local templfun = class["templates"][templ.methodname] or template.Template:new(templ.methodname)
 		--add current template method implementation
-		templfun:adddefinition({[paramconceptlist] = terralib.memoize(generate_terrafun(templ,localenv))})
+		templfun:adddefinition({[paramconceptlist] = generate_terrafun(templ,localenv)})
 		--register class method
 		class["templates"][templ.methodname] = templfun
 	end
@@ -221,7 +221,7 @@ function process_concept_statement(templ)
 			--get/register new template function
 			local templfun = localenv[templ.path] or concepts.para.parametrizedconcept(templ.methodname)
 			--add current template method implementation
-			templfun:adddefinition({[paramconceptlist] = terralib.memoize(generate_luafun(templ, localenv))})
+			templfun:adddefinition({[paramconceptlist] = generate_luafun(templ, localenv)})
 			--return parameterized concept
 			return templfun
 		--if a true concept then
