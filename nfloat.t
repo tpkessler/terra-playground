@@ -20,6 +20,8 @@ end
 
 import "terraform"
 
+local C = terralib.includec("stdio.h")
+
 local base = require("base")
 local tmath = require("mathfuns")
 local concepts = require("concepts")
@@ -199,7 +201,7 @@ local FixedFloat = terralib.memoize(function(N)
     local from = terralib.overloadedfunction("from", {from_double, from_str})
 
     local to_str = macro(function(x)
-        local digits = math.floor(N * (math.log(2) / math.log(10)))
+        local digits = tmath.ndigits(N / 8)
         return quote
                 var str: rawstring
                 -- TODO: Fix memory leak
@@ -315,9 +317,18 @@ local FixedFloat = terralib.memoize(function(N)
         return s * shiftandscale(m, e)
     end
 
-    terraform tmath.numtostr(v : nfloat)
-        return tmath.numtostr(v:truncatetodouble())
-    end
+    --for now we format up to double precision.
+    --ToDo: specialized print.
+    local format = global(rawstring, "%0.2f")
+    local maxlen = tmath.ndigits(sizeof(double))
+    tmath.numtostr:adddefinition(
+        terra(v : nfloat)
+            var buffer : int8[maxlen]
+            var j = C.snprintf(buffer, maxlen, format, v:truncatetodouble())
+            return buffer
+        end
+    )
+    tmath.numtostr.format[nfloat] = format
 
     for _, func in pairs(unary_math) do
         local name = "nfloat_" .. func

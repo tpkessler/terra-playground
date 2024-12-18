@@ -12,6 +12,26 @@ local nfloat = require("nfloat")
 
 local float256 = nfloat.FixedFloat(256)
 
+if not __silent__ then
+
+    --some printing tests
+    local complex_t = complex.complex(double)
+    local format = tmath.numtostr.format[double]
+    terra main()
+		var x = complex_t.from(1, 2)
+		var y = complex_t.from(1, -2)
+		
+        io.printf("x = %s\n", tmath.numtostr(x))
+		io.printf("y = %s\n", tmath.numtostr(y))
+
+        format = "%0.3e"
+        io.printf("value = %s\n", tmath.numtostr(x))
+		io.printf("value = %s\n", tmath.numtostr(y))
+    end
+    main()
+
+end
+
 
 
 testenv "Complex numbers" do

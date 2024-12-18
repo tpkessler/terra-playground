@@ -21,6 +21,7 @@ concepts.Base(concepts.Complex)
 concepts.Complex.traits.iscomplex = true
 concepts.Complex.traits.eltype = concepts.traittag
 
+
 local complex = terralib.memoize(function(T)
 
     local struct complex{
@@ -91,29 +92,27 @@ local complex = terralib.memoize(function(T)
         tmath.abs:adddefinition(terra(x: complex) return x:norm() end)
     end
 
+    --maxlen is twice the size of T and twice one char for the sign
+    local maxlen = 2 * tmath.ndigits(sizeof(T)) + 2
     terra complex:tostr()
-        var str : int8[16]
+        var buffer : int8[maxlen]
         var re, im =  self:real(), self:imag()
         if im < 0 then
             im = -im
             var s1, s2 = tmath.numtostr(re), tmath.numtostr(im)
-            C.strcpy(&str[0], s1)
-            C.strcat(&str[0], "-")
-            C.strcat(&str[0], s2)
-            C.strcat(&str[0], "im")
+            var j = C.snprintf(buffer, maxlen, "%s-%sim", s1, s2)
         else
             var s1, s2 = tmath.numtostr(re), tmath.numtostr(im)
-            C.strcpy(&str[0], s1)
-            C.strcat(&str[0], "+")
-            C.strcat(&str[0], s2)
-            C.strcat(&str[0], "im")
+            var j = C.snprintf(buffer, maxlen, "%s+%sim", s1, s2)
         end
-        return str
+        return buffer
     end
 
-    terraform tmath.numtostr(x : complex) 
-        return x:tostr() 
-    end
+    tmath.numtostr:adddefinition(
+        terra(x : complex) 
+            return x:tostr() 
+        end
+    )
 
     terra complex:inverse()
        var nrmsq = self:normsq()
