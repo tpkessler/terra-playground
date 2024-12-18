@@ -19,10 +19,6 @@ concepts.Base(concepts.Complex)
 concepts.Complex.traits.iscomplex = true
 concepts.Complex.traits.eltype = concepts.traittag
 
-concepts.BLASComplex = terralib.types.newstruct("BLASComplex")
-concepts.Base(concepts.BLASComplex)
-concepts.BLASComplex.traits.iscomplex = true
-concepts.BLASComplex.traits.eltype = concepts.traittag
 
 local complex = terralib.memoize(function(T)
 
@@ -94,26 +90,27 @@ local complex = terralib.memoize(function(T)
         tmath.abs:adddefinition(terra(x: complex) return x:norm() end)
     end
 
+    --maxlen is twice the size of T and twice one char for the sign
+    local maxlen = 2 * tmath.ndigits(sizeof(T)) + 2
     terra complex:tostr()
-        var str : int8[16]
+        var buffer : int8[maxlen]
         var re, im =  self:real(), self:imag()
         if im < 0 then
             im = -im
             var s1, s2 = tmath.numtostr(re), tmath.numtostr(im)
-            C.strcpy(&str[0], s1)
-            C.strcat(&str[0], "-")
-            C.strcat(&str[0], s2)
-            C.strcat(&str[0], "im")
+            var j = C.snprintf(buffer, maxlen, "%s-%sim", s1, s2)
         else
             var s1, s2 = tmath.numtostr(re), tmath.numtostr(im)
-            C.strcpy(&str[0], s1)
-            C.strcat(&str[0], "+")
-            C.strcat(&str[0], s2)
-            C.strcat(&str[0], "im")
+            var j = C.snprintf(buffer, maxlen, "%s+%sim", s1, s2)
         end
-        return str
+        return buffer
     end
-    tmath.numtostr:adddefinition(terra(x : complex) return x:tostr() end)
+
+    tmath.numtostr:adddefinition(
+        terra(x : complex) 
+            return x:tostr() 
+        end
+    )
 
     terra complex:inverse()
        var nrmsq = self:normsq()
@@ -131,13 +128,29 @@ local complex = terralib.memoize(function(T)
     terra complex.metamethods.__eq(self: complex, other: complex)
         return self:real() == other:real() and self:imag() == other:imag()
     end
-
+    
     terra complex.metamethods.__ne(self: complex, other: complex)
         return self:real() ~= other:real() or self:imag() ~= other:imag()
     end
 
     terra complex.staticmethods.from(x: T, y: T)
         return complex {x , y}
+    end
+
+    if concepts.Primitive(T) then
+        function complex:zero()
+            return constant(complex, `complex{0, 0})
+        end
+        function complex:unit()
+            return constant(complex, `complex{0, 1})
+        end
+    elseif concepts.NFloat(T) then
+        function complex:zero()
+            return constant(terralib.new(complex, {T:__newzero(), T:__newzero()}))
+        end
+        function complex:unit()
+            return constant(terralib.new(complex, {T:__newzero(), T:__newunit()}))
+        end
     end
 
     if concepts.Number(T) then

@@ -18,6 +18,10 @@ else
     error("Not implemented for this OS.")
 end
 
+import "terraform"
+
+local C = terralib.includec("stdio.h")
+
 local base = require("base")
 local tmath = require("mathfuns")
 local concepts = require("concepts")
@@ -106,12 +110,11 @@ end
 
 
 local FixedFloat = terralib.memoize(function(N)
-    
     --float_type[N] stores the high-precision number using the following layout
     --local M = N / 64
     --struct float_type
     --  head : uint64[2]
-    --  d : uint64[M-1]
+    --  d : uint64[M]
     --end
     --here the 'head' stores the exponent and sign
     --  head[0] --exponent
@@ -127,7 +130,7 @@ local FixedFloat = terralib.memoize(function(N)
     --x.data.d[1]    = uint64(1) << 63
     local ctype = float_type[N]
     assert(ctype, "No support for precision " .. N .. " in FixedFloat")
-
+    
     --get the context corresponding to precision N
     local ctx = context[N]:get()
 
@@ -154,25 +157,30 @@ local FixedFloat = terralib.memoize(function(N)
         for i = 1, M do
             d[i] = 0ULL
         end
+        local bitshiftone = bit.lshift(1ULL, 63)
         if value == 0 then
-            return {{9223372036854775808ULL, 0ULL}, d}
+            return {{bitshiftone, 0ULL}, d}
         elseif value == 1 then
-            d[M] = 9223372036854775808ULL
+            d[M] = bitshiftone
             return {{1ULL, 0ULL}, d}
         elseif value == "eps" then
-            d[M] = 9223372036854775808ULL
+            d[M] = bitshiftone
             return {{-N, 0ULL}, d}
         end
     end
     
-    local zero = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat(0))}))
-    local unit = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat(1))}))
-    local eps = constant(terralib.new(nfloat, {terralib.new(ctype, genfloat("eps"))}))
+    local zero = terralib.new(nfloat, {terralib.new(ctype, genfloat(0))})
+    local unit = terralib.new(nfloat, {terralib.new(ctype, genfloat(1))})
+    local eps = terralib.new(nfloat, {terralib.new(ctype, genfloat("eps"))})
     
-    function nfloat:zero() return zero end
-    function nfloat:unit() return unit end
+    function nfloat:__newzero() return zero end
+    function nfloat:__newunit() return unit end
+    function nfloat:__neweps() return eps end
+
+    function nfloat:zero() return constant(zero) end
+    function nfloat:unit() return constant(unit) end
     --distance from 1.0 to next floating point value
-    function nfloat:eps() return eps end
+    function nfloat:eps() return constant(eps) end
 
     local terra new()
         var data: ctype
@@ -192,8 +200,8 @@ local FixedFloat = terralib.memoize(function(N)
     end
     local from = terralib.overloadedfunction("from", {from_double, from_str})
 
-    local to_str = macro(function(x, digits)
-        local digits = digits or math.floor(N * (math.log(2) / math.log(10)))
+    local to_str = macro(function(x)
+        local digits = tmath.ndigits(N / 8)
         return quote
                 var str: rawstring
                 -- TODO: Fix memory leak
@@ -309,9 +317,18 @@ local FixedFloat = terralib.memoize(function(N)
         return s * shiftandscale(m, e)
     end
 
-    tmath.numtostr:adddefinition(terra(v : nfloat)
-        return tmath.numtostr(v:truncatetodouble())
-    end)
+    --for now we format up to double precision.
+    --ToDo: specialized print.
+    local format = global(rawstring, "%0.2f")
+    local maxlen = tmath.ndigits(sizeof(double))
+    tmath.numtostr:adddefinition(
+        terra(v : nfloat)
+            var buffer : int8[maxlen]
+            var j = C.snprintf(buffer, maxlen, format, v:truncatetodouble())
+            return buffer
+        end
+    )
+    tmath.numtostr.format[nfloat] = format
 
     for _, func in pairs(unary_math) do
         local name = "nfloat_" .. func

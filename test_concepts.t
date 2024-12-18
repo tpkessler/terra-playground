@@ -99,8 +99,12 @@ testenv "Concrete concepts" do
 		test [Vec(V)]
 
 		local struct W {}
-		terra W:axpy(x: float, v: &V): {} end
+		terra W:axpy(x: float, v: &W): {} end
 		test [Vec(W)]
+
+		local struct WT {}
+		terraform WT:axpy(x: S, v: &WT) where {S: concepts.Float32} end
+		test [Vec(WT)]
 
 		local struct Z {}
 		terra Z:axpy(x: float, v: &int): {} end
@@ -118,6 +122,7 @@ testenv "Concrete concepts" do
 	testset "Self-referencing interface on terraform methods" do
 		local struct Vec3(concepts.Base) {}
 		test [concepts.isconcept(Vec3)]
+		Vec3.methods.dot = concepts.methodtag
 		Vec3.methods.axpy = {&Vec3, concepts.Real, &Vec3} -> {}
 
 		local struct F(base.AbstractBase) {}
@@ -125,11 +130,13 @@ testenv "Concrete concepts" do
 		end
 		terraform F:axpy(a: I, x: &V) where {I: concepts.Real, V: Vec3}
 		end
+		terraform F:dot(x: &V) where {V: Vec3} end
 		test[Vec3(F)]
 
 		local struct E(base.AbstractBase) {}
 		terraform E:axpy(x: float)
 		end
+		terra E:dot() end
 		test [Vec3(E) == false]
 	end
 
@@ -183,6 +190,25 @@ testenv "Concrete concepts" do
 		test [Trai(T2) == false]
 	end
 
+	testset "Traits - parametrized" do
+		concept MyVector(T) where {T}
+			Self.traits.eltype = T
+		end
+
+		concept MySpecialVector
+			Self.traits.eltype = concepts.BLASNumber
+		end
+
+		local struct MyConcreteVector(base.AbstractBase) {}
+		MyConcreteVector.traits.eltype = float
+
+		local MyVectorNumber = MyVector(concepts.Number)
+
+		test [MyVectorNumber(MySpecialVector)]
+		test [MyVectorNumber(MyConcreteVector)]
+		test [MySpecialVector(MyConcreteVector)]
+	end
+
 	testset "Entries" do
 		local struct Ent(concepts.Base) {
 			x: concepts.Float
@@ -228,34 +254,46 @@ end
 
 testenv "Parametrized concepts" do
 	local Stack = concepts.parametrizedconcept("Stack")
-	Stack[paramlist.new({concepts.Any}, {1}, {0})] = function(C, T)
-	    C.methods.length = {&C} -> concepts.Integral
-	    C.methods.get = {&C, concepts.Integral} -> T
-	    C.methods.set = {&C, concepts.Integral , T} -> {}
-	end
+	Stack:adddefinition{[paramlist.new({concepts.Any}, {1}, {0})] = (
+			function(C, T)
+			    C.methods.length = {&C} -> concepts.Integral
+			    C.methods.get = {&C, concepts.Integral} -> T
+			    C.methods.set = {&C, concepts.Integral , T} -> {}
+			end
+		)
+	}
 	test [concepts.isparametrizedconcept(Stack) == true]
 
 	local Vector = concepts.parametrizedconcept("Vector")
-	Vector[paramlist.new({concepts.Any}, {1}, {0})] = function(C, T)
-	    local S = Stack(T)
-	    C:inherit(S)
-	    C.methods.swap = {&C, &S} -> {}
-	    C.methods.copy = {&C, &S} -> {}
-	end
+	Vector:adddefinition{[paramlist.new({concepts.Any}, {1}, {0})] = (
+			function(C, T)
+			    local S = Stack(T)
+			    C:inherit(S)
+			    C.methods.swap = {&C, &S} -> {}
+			    C.methods.copy = {&C, &S} -> {}
+			end
+		)
+	}
 
 	local Number = concepts.Number
-	Vector[paramlist.new({Number}, {1}, {0})] = function(C, T)
-	    local S = Stack(T)
-	    C.methods.fill = {&C, T} -> {}
-	    C.methods.clear = {&C} -> {}
-	    C.methods.sum = {&C} -> T
-	    C.methods.axpy = {&C, T, &S} -> {}
-	    C.methods.dot = {&C, &S} -> T
-	end
+	Vector:adddefinition{[paramlist.new({Number}, {1}, {0})] = (
+		function(C, T)
+			    local S = Stack(T)
+			    C.methods.fill = {&C, T} -> {}
+			    C.methods.clear = {&C} -> {}
+			    C.methods.sum = {&C} -> T
+			    C.methods.axpy = {&C, T, &S} -> {}
+			    C.methods.dot = {&C, &S} -> T
+			end
+		)
+	}
 
-	Vector[paramlist.new({concepts.Float}, {1}, {0})] = function(C, T)
-	    C.methods.norm = {&C} -> T
-	end
+	Vector:adddefinition{[paramlist.new({concepts.Float}, {1}, {0})] = (
+			function(C, T)
+			    C.methods.norm = {&C} -> T
+			end
+		)
+	}
 	test [concepts.isparametrizedconcept(Vector) == true]
 	testset "Dispatch on Any" do
 		local S = Stack(concepts.Any)
@@ -306,22 +344,34 @@ testenv "Parametrized concepts" do
 		local C = concepts.newconcept("C")
 		C.traits.isfoo = "C"
 		local Foo = concepts.parametrizedconcept("Foo")
-		Foo[paramlist.new({1}, {1}, {0})] = function(S, N)
-			assert(N == 1)
-			S:inherit(A)
-		end
-		Foo[paramlist.new({2}, {1}, {0})] = function(S, N)
-			assert(N == 2)
-			S:inherit(B)
-		end
-		Foo[paramlist.new({3}, {1}, {0})] = function(S, N)
-			assert(N == 3)
-			S:inherit(C)
-		end
-		Foo[paramlist.new({"hello"}, {1}, {0})] = function(S, H)
-			assert(H == "hello")
-			S.traits.isfoo = H
-		end
+		Foo:adddefinition{[paramlist.new({1}, {1}, {0})] = (
+				function(S, N)
+					assert(N == 1)
+					S:inherit(A)
+				end
+			)
+		}
+		Foo:adddefinition{[paramlist.new({2}, {1}, {0})] = (
+				function(S, N)
+					assert(N == 2)
+					S:inherit(B)
+				end
+			)
+		}
+		Foo:adddefinition{[paramlist.new({3}, {1}, {0})] = (
+				function(S, N)
+					assert(N == 3)
+					S:inherit(C)
+				end
+			)
+		}
+		Foo:adddefinition{[paramlist.new({"hello"}, {1}, {0})] = (
+				function(S, H)
+					assert(H == "hello")
+					S.traits.isfoo = H
+				end
+			)
+		}
 		local Foo1 = Foo(1)
 		local Foo2 = Foo(2)
 		local Foo3 = Foo(3)
@@ -347,13 +397,19 @@ testenv "Parametrized concepts" do
 	testset "Multiple Arguments" do
 		local Any = concepts.Any
 		local Matrix = concepts.parametrizedconcept("Matrix")
-		Matrix[paramlist.new({Any, Any}, {1, 2}, {0, 0})] = function(C, T1, T2)
-			C.methods.sum = {&C} -> {}
-		end
+		Matrix:adddefinition{[paramlist.new({Any, Any}, {1, 2}, {0, 0})] = (
+				function(C, T1, T2)
+					C.methods.sum = {&C} -> {}
+				end
+			)
+		}
 
-		Matrix[paramlist.new({Any}, {1, 1}, {0, 0})] = function(C, T1, T2)
-			C.methods.special_sum = {&C} -> {}
-		end
+		Matrix:adddefinition{[paramlist.new({Any}, {1, 1}, {0, 0})] = (
+				function(C, T1, T2)
+					C.methods.special_sum = {&C} -> {}
+				end
+			)
+		}
 
 		local Generic = Matrix(concepts.Float, concepts.Integer)
 		local Special = Matrix(concepts.Float, concepts.Float)
@@ -364,19 +420,26 @@ testenv "Parametrized concepts" do
 
 	testset "Multipe inheritance" do
 		local SVec = concepts.parametrizedconcept("SVec")
-		SVec[paramlist.new({}, {}, {})] = function(S)
-			S.traits.length = concepts.traittag
-			S.methods.length = &S -> concepts.Integral
-		end
-		SVec[paramlist.new({concepts.Number}, {1}, {0})] = function(S, T)
-			S.methods.axpy = {&S, T, &S} -> {}
-		end
-		SVec[paramlist.new({concepts.Float, 3}, {1, 2}, {0, 0})] = function(S, T, N)
-			assert(N == 3)
-			S.traits.length = N
-			S.methods.cross = {&S, &S} -> T
-		end
-
+		SVec:adddefinition{[paramlist.new({}, {}, {})] = function(S)
+				S.traits.length = concepts.traittag
+				S.methods.length = &S -> concepts.Integral
+			end
+		}
+		SVec:adddefinition{[paramlist.new({concepts.Number}, {1}, {0})] = (
+				function(S, T)
+					S.methods.axpy = {&S, T, &S} -> {}
+				end
+			)
+		}
+		SVec:adddefinition{
+			[paramlist.new({concepts.Float, 3}, {1, 2}, {0, 0})] = (
+				function(S, T, N)
+					assert(N == 3)
+					S.traits.length = N
+					S.methods.cross = {&S, &S} -> T
+				end
+			)
+		}
 		local struct H(base.AbstractBase) {}
 		H.methods.length = &H -> int32
 

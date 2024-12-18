@@ -206,7 +206,7 @@ for _, T in pairs({double, float, int64, cdouble, cfloat, cint, float128, cfloat
             testset "Mul complex" do
                 terracode
                     var alloc: DefaultAlloc
-                    var I = T.unit()
+                    var I = [T:unit()]
                     var a = Mat.from(&alloc, {{1 + 4 * I, 2 + 3 * I}, {3 + 2 * I, 4 + I}})
                     var b = Mat.from(&alloc, {{2, -1 - I}, {-1 + I, 2}})
                     var c = Mat.zeros_like(&alloc, &a)

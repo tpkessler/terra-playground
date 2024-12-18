@@ -289,9 +289,6 @@ function Template:new()
 	end
 
 	local mt = {}
-	function mt:__newindex(key, value)
-		self.methods[key] = value
-	end
 
 	function mt:__call(...)
 		local args = terralib.newlist{...}
@@ -317,15 +314,15 @@ function Template:new()
 
 	function template:adddefinition(methods)
 		methods = methods or {}
-		for sig,func in pairs(methods) do
+		for sig, func in pairs(methods) do
 			--check if method with this serialized key already exists
 			for s,v in pairs(self.methods) do
 				if sig:serialize()==s:serialize() then --overwrite old definition
-					self[s] = func
+					self.methods[s] = terralib.memoize(func)
 					return
 				end
 			end
-			self[sig] = func
+			self.methods[sig] = terralib.memoize(func)
         end
     end
 
@@ -379,18 +376,7 @@ local functiontemplate = function(name, methods)
 
     local t = constant(T)
     function t:adddefinition(methods)
-		methods = methods or {}
-        for sig, func in pairs(methods) do
-			--check if method with this serialized key already exists
-			for s,v in pairs(T.templates.eval.methods) do
-				if sig:serialize()==s:serialize() then --overwrite old definition
-					T.templates.eval[s] = func
-					return
-				end
-			end
-			--otherwise add new definition with new key
-			T.templates.eval[sig] = func
-        end
+		T.templates.eval:adddefinition(methods)
     end
     function t:dispatch(...)
 		local sig, func = dispatch(T, ...)

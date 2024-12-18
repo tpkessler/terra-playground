@@ -6,7 +6,7 @@
 import "terraform"
 local concepts = require("concepts")
 
-local math = {}
+local tmath = {}
 local C = terralib.includecstring[[
     #include <stdio.h>
     #include <stdlib.h>
@@ -15,7 +15,7 @@ local C = terralib.includecstring[[
 ]]
 
 --constants
-math.pi = constant(3.14159265358979323846264338327950288419716939937510)
+tmath.pi = constant(3.14159265358979323846264338327950288419716939937510)
 
 function float:eps() return constant(float, 0x1p-23) end
 function double:eps() return constant(double, 0x1p-52) end
@@ -77,7 +77,7 @@ for tname, cname in pairs(funs_single_var) do
         local cfun = T==float and C[cname.."f"] or C[cname]
         f:adddefinition(terra(x : T) return cfun(x) end)
     end
-    math[tname] = f
+    tmath[tname] = f
 end
 
 for tname, cname in pairs(funs_two_var) do
@@ -86,7 +86,7 @@ for tname, cname in pairs(funs_two_var) do
         local cfun = T==float and C[cname.."f"] or C[cname]
         f:adddefinition(terra(x : T, y : T) return cfun(x, y) end)
     end
-    math[tname] = f
+    tmath[tname] = f
 end
 
 for tname, cname in pairs(funs_three_var) do
@@ -95,26 +95,26 @@ for tname, cname in pairs(funs_three_var) do
         local cfun = T==float and C[cname.."f"] or C[cname]
         f:adddefinition(terra(x : T, y : T, z : T) return cfun(x, y, z) end)
     end
-    math[tname] = f
+    tmath[tname] = f
 end
 
-math.beta = terralib.overloadedfunction("beta")
+tmath.beta = terralib.overloadedfunction("beta")
 for _, T in ipairs{float,double} do
-    math.beta:adddefinition(
+    tmath.beta:adddefinition(
         terra(x : T, y : T) : T
-            return math.gamma(x) * math.gamma(y) / math.gamma(x+y)
+            return tmath.gamma(x) * tmath.gamma(y) / tmath.gamma(x+y)
         end
     )
 end
 
 --add some missing defintions
-math.abs:adddefinition(terra(x : int) return C.abs(x) end)
-math.abs:adddefinition(terra(x : int64) return C.labs(x) end)
+tmath.abs:adddefinition(terra(x : int) return C.abs(x) end)
+tmath.abs:adddefinition(terra(x : int64) return C.labs(x) end)
 
 
-math.sign = terralib.overloadedfunction("sign")
+tmath.sign = terralib.overloadedfunction("sign")
 for _, T in pairs({int32, int64, float, double}) do
-    math.sign:adddefinition(
+    tmath.sign:adddefinition(
         terra(x: T): T
             return terralib.select(x < 0, -1, 1)
         end
@@ -122,31 +122,31 @@ for _, T in pairs({int32, int64, float, double}) do
 end
 
 --convenience functions
-local cotf = terra(x : float) return math.cos(x) / math.sin(x) end
-local cot  = terra(x : double) return math.cos(x) / math.sin(x) end
-math.cot = terralib.overloadedfunction("cot", {cotf, cot})
-math.ldexp = terralib.overloadedfunction("ldexp", {C.ldexp, C.ldexpf})
+local cotf = terra(x : float) return tmath.cos(x) / tmath.sin(x) end
+local cot  = terra(x : double) return tmath.cos(x) / tmath.sin(x) end
+tmath.cot = terralib.overloadedfunction("cot", {cotf, cot})
+tmath.ldexp = terralib.overloadedfunction("ldexp", {C.ldexp, C.ldexpf})
 
 --min and max
-math.min = terralib.overloadedfunction("min")
-math.max = terralib.overloadedfunction("max")
+tmath.min = terralib.overloadedfunction("min")
+tmath.max = terralib.overloadedfunction("max")
 for _, T in ipairs{int32, int64, float, double} do
-    math.min:adddefinition(terra(x : T, y : T) return terralib.select(x < y, x, y) end)
-    math.max:adddefinition(terra(x : T, y : T) return terralib.select(x > y, x, y) end)
+    tmath.min:adddefinition(terra(x : T, y : T) return terralib.select(x < y, x, y) end)
+    tmath.max:adddefinition(terra(x : T, y : T) return terralib.select(x > y, x, y) end)
 end
 
-terraform math.dist(a: T, b: T) where {T: concepts.Number}
-    return math.abs(a - b)
+terraform tmath.dist(a: T, b: T) where {T: concepts.Number}
+    return tmath.abs(a - b)
 end
 
 -- comparing functions
-terraform math.isapprox(a: T, b: T, atol: S)
+terraform tmath.isapprox(a: T, b: T, atol: S)
     where {T: concepts.Any, S: concepts.Any}
-    return math.dist(a, b) < atol
+    return tmath.dist(a, b) < atol
  end
 
 for _, name in pairs({"real", "imag", "conj"}) do
-    math[name] = terralib.overloadedfunction(name)
+    tmath[name] = terralib.overloadedfunction(name)
     for _, T in ipairs{int32, int64, float, double} do
         local impl
         if name == "imag" then
@@ -154,27 +154,44 @@ for _, name in pairs({"real", "imag", "conj"}) do
         else
             impl = terra(x: T) return x end
         end
-        math[name]:adddefinition(impl)
+        tmath[name]:adddefinition(impl)
     end
 end
 
---numbers to string
-math.numtostr = terralib.overloadedfunction("numtostr")
-for _, T in ipairs{int8, int16, int32, int64} do
-    local impl = terra(v : T)
-        var str : int8[8]
-        C.sprintf(&str[0], "%d", v)
-        return str
-    end
-    math.numtostr:adddefinition(impl)
-end
-for _, T in ipairs{float, double} do
-    local impl = terra(v : T)
-        var str : int8[8]
-        C.sprintf(&str[0], "%0.3f", v)
-        return str
-    end
-    math.numtostr:adddefinition(impl)
+--determine the mximum number of digits in representing a number of
+--n bytes. here we use:
+--log10(2) \approx 0.31
+--+1 for a possible sign
+--ceil to be on the safe side
+tmath.ndigits = function(nbytes)
+    return math.ceil(8 * nbytes * (math.log(2) / math.log(10)))
 end
 
-return math
+local numtostr = terralib.overloadedfunction("numtostr")
+numtostr.format = {}
+--add implementations of numtostr
+--globals are used to change the format
+for _,T in ipairs{float, double, int8, int16, int32, int64, uint8, uint16, uint32, uint64} do
+    --add format for each type
+    if concepts.Float(T) then
+        numtostr.format[T] = global(rawstring, "%0.2f")
+    elseif concepts.Integral(T) then
+        numtostr.format[T] = global(rawstring, "%d")
+    else
+        error("Please specify a format for this type.")
+    end
+    --length of static buffer and format
+    local maxlen = tmath.ndigits(sizeof(T))
+    local format = numtostr.format[T]
+    numtostr:adddefinition(
+        terra(v : T)
+            var buffer : int8[maxlen]
+            var j = C.snprintf(buffer, maxlen, format, v)
+            return buffer
+        end
+    )
+end
+--add to tmath namespace
+tmath.numtostr = numtostr
+
+return tmath

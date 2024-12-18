@@ -6,6 +6,23 @@
 import "terratest/terratest"
 
 local tmath = require('mathfuns')
+local io = terralib.includec("stdio.h")
+
+if not __silent__ then
+
+    --some printing tests
+    local format = tmath.numtostr.format[double]
+    terra main()
+        io.printf("value = %s\n", tmath.numtostr(1))
+        io.printf("value = %s\n", tmath.numtostr(1.999999999999))
+
+        format = "%0.3e"
+        io.printf("value = %s\n", tmath.numtostr(1))
+        io.printf("value = %s\n", tmath.numtostr(1.999999999999))
+    end
+    main()
+
+end
 
 local funs_single_var = {
     "sin",
@@ -49,17 +66,17 @@ testenv "All single variable tmath functions" do
     end
 end
 
-testenv "Correctness of selected tmath functions" do
+testenv "Correctness of selected math functions" do
     testset "special values" do
         for _, T in ipairs({float, double, int8, int16, int32, int64, uint8, uint16, uint32, uint64}) do
             test [T:zero()] == 0
             test [T:unit()] == 1
         end
-        test tmath.isapprox(tmath.pi, math.pi, 1e-15)
+        test tmath.isapprox(tmath.pi, [math.pi], 1e-15) --compare with Lua's value
         test [float:eps()] == 0x1p-23
         test [double:eps()] == 0x1p-52
     end
-    --test if result is correct
+
     testset "sqrt" do
         test tmath.isapprox(tmath.sqrt([float](4)), 2.0f, 1e-7f) 
         test tmath.isapprox(tmath.sqrt([double](4)), 2.0, 1e-15) 
