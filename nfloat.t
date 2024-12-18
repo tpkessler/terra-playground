@@ -124,6 +124,14 @@ local FixedFloat = terralib.memoize(function(N)
     --  d[0]
     --   ...
     --  d[M-1]
+    --here d[M-1] is the significant part of the mantissa, which means that 
+    --it encodes the first 64 bits of the floating point number. This is used
+    --for example in truncation to a dpouble value.
+    --
+    --Note that the order of the mantissa is non-intuitive. The order is reversed
+    --as compared to how integers are typically stored. That's why bit shofting 
+    --1 << 63 is needed in the following example 
+    --
     --example: N = 128, M = 2, representing the value 1
     --x.data.head[0] = 1
     --x.data.head[1] = 0
@@ -157,6 +165,9 @@ local FixedFloat = terralib.memoize(function(N)
         for i = 1, M do
             d[i] = 0ULL
         end
+        --the order of the mantissa is opposite to how an integer is
+        --typically stored in memory. That's why we need to shift 63 
+        --bits to the left.
         local bitshiftone = bit.lshift(1ULL, 63)
         if value == 0 then
             return {{bitshiftone, 0ULL}, d}
@@ -324,7 +335,7 @@ local FixedFloat = terralib.memoize(function(N)
     tmath.numtostr:adddefinition(
         terra(v : nfloat)
             var buffer : int8[maxlen]
-            var j = C.snprintf(buffer, maxlen, format, v:truncatetodouble())
+            C.snprintf(buffer, maxlen, format, v:truncatetodouble())
             return buffer
         end
     )
