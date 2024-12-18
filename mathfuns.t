@@ -162,45 +162,33 @@ end
 --log10(2) \approx 0.31
 --+1 for a possible sign
 --ceil to be on the safe side
-local function ndigits(nbytes)
-    return math.ceil(8 * nbytes * 0.31)
+tmath.ndigits = function(nbytes)
+    return math.ceil(8 * nbytes * (math.log(2) / math.log(10)))
 end
 
-local numtostr
-
-terraform numtostr(v : T) where {T}
-    var buffer : int8[50]
-    var j = C.snprintf(buffer, 50, "numtostr not implemented for type %s.", [tostring(T)])
-    return buffer
-end
---add number default format to the template method
---since this is a terraform function, we can change the
---default later and the function is compiled with the 
---latest defined format specifier
+local numtostr = terralib.overloadedfunction("numtostr")
 numtostr.format = {}
-numtostr.format.float = "%0.2f"
-numtostr.format.integral = "%d"
---implementation for floating point numbers
-terraform numtostr(v : T) where {T : concepts.Float}
-    escape
-        local maxlen = ndigits(sizeof(T)) + 1
-        emit quote
+--add implementations of numtostr
+--globals are used to change the format
+for _,T in ipairs{float, double, int8, int16, int32, int64, uint8, uint16, uint32, uint64} do
+    --add format for each type
+    if concepts.Float(T) then
+        numtostr.format[T] = global(rawstring, "%0.2f")
+    elseif concepts.Integral(T) then
+        numtostr.format[T] = global(rawstring, "%d")
+    else
+        error("Please specify a format for this type.")
+    end
+    --length of static buffer and format
+    local maxlen = tmath.ndigits(sizeof(T))
+    local format = numtostr.format[T]
+    numtostr:adddefinition(
+        terra(v : T)
             var buffer : int8[maxlen]
-            var j = C.snprintf(buffer, maxlen, [numtostr.format.float], v)
+            var j = C.snprintf(buffer, maxlen, format, v)
             return buffer
         end
-    end
-end
---implementation for integers
-terraform numtostr(v : T) where {T : concepts.Integral}
-    escape
-        local maxlen = ndigits(sizeof(T)) + 1
-        emit quote
-            var buffer : int8[maxlen]
-            var j = C.snprintf(buffer, maxlen, [numtostr.format.integral], v)
-            return buffer
-        end
-    end
+    )
 end
 --add to tmath namespace
 tmath.numtostr = numtostr

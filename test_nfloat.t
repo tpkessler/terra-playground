@@ -5,8 +5,26 @@
 
 import "terratest/terratest"
 
+local io = terralib.includec("stdio.h")
 local nfloat = require("nfloat")
 local tmath = require("mathfuns")
+
+if not __silent__ then
+
+    --some printing tests
+    local T = nfloat.FixedFloat(256)
+    local format = tmath.numtostr.format[T]
+    terra main()
+        io.printf("value = %s\n", tmath.numtostr(T(1)))
+        io.printf("value = %s\n", tmath.numtostr(T(1.999999999999)))
+
+        format = "%0.3f"
+        io.printf("value = %s\n", tmath.numtostr(T(1)))
+        io.printf("value = %s\n", tmath.numtostr(T(1.999999999999)))
+    end
+    main()
+
+end
 
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
