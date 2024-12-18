@@ -91,8 +91,9 @@ local AbstractBase = Base:new("AbstractBase",
 			end
 			error(
 				(
-					"Cannot find implementation for method %s on type %s"
-				):format(name, tostring(T))
+					"Cannot find implementation for method %s on type %s" ..
+					" for argument %s"
+				):format(name, tostring(T), tostring(types))
 			)
 		end)
 	end
