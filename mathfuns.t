@@ -158,11 +158,7 @@ for _, name in pairs({"real", "imag", "conj"}) do
     end
 end
 
---determine the mximum number of digits in representing a number of
---n bytes. here we use:
---log10(2) \approx 0.31
---+1 for a possible sign
---ceil to be on the safe side
+--determine the number of digits in representing a number of n bytes.
 tmath.ndigits = function(nbytes)
     return math.ceil(8 * nbytes * (math.log(2) / math.log(10)))
 end
@@ -186,7 +182,7 @@ for _,T in ipairs{float, double, int8, int16, int32, int64, uint8, uint16, uint3
     numtostr:adddefinition(
         terra(v : T)
             var buffer : int8[maxlen]
-            var j = C.snprintf(buffer, maxlen, format, v)
+            C.snprintf(buffer, maxlen, format, v)
             return buffer
         end
     )
