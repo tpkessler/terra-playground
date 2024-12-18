@@ -93,7 +93,8 @@ local complex = terralib.memoize(function(T)
     end
 
     --maxlen is twice the size of T and twice one char for the sign
-    local maxlen = 2 * tmath.ndigits(sizeof(T)) + 2
+    --+1 for /0 terminating character
+    local maxlen = 2 * tmath.ndigits(sizeof(T)) + 2 + 1
     terra complex:tostr()
         var buffer : int8[maxlen]
         var re, im =  self:real(), self:imag()
