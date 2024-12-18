@@ -100,10 +100,10 @@ local complex = terralib.memoize(function(T)
         if im < 0 then
             im = -im
             var s1, s2 = tmath.numtostr(re), tmath.numtostr(im)
-            var j = C.snprintf(buffer, maxlen, "%s-%sim", s1, s2)
+            C.snprintf(buffer, maxlen, "%s-%sim", s1, s2)
         else
             var s1, s2 = tmath.numtostr(re), tmath.numtostr(im)
-            var j = C.snprintf(buffer, maxlen, "%s+%sim", s1, s2)
+            C.snprintf(buffer, maxlen, "%s+%sim", s1, s2)
         end
         return buffer
     end

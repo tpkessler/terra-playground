@@ -5,26 +5,9 @@
 
 import "terratest/terratest"
 
-local io = terralib.includec("stdio.h")
+local C = terralib.includec("string.h")
 local nfloat = require("nfloat")
 local tmath = require("mathfuns")
-
-if not __silent__ then
-
-    --some printing tests
-    local T = nfloat.FixedFloat(256)
-    local format = tmath.numtostr.format[T]
-    terra main()
-        io.printf("value = %s\n", tmath.numtostr(T(1)))
-        io.printf("value = %s\n", tmath.numtostr(T(1.999999999999)))
-
-        format = "%0.3f"
-        io.printf("value = %s\n", tmath.numtostr(T(1)))
-        io.printf("value = %s\n", tmath.numtostr(T(1.999999999999)))
-    end
-    main()
-
-end
 
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
@@ -94,6 +77,22 @@ for _, N in pairs(suffix) do
                 var c: T = 1.125
             end
             test a / b == c
+        end
+
+        testset "printing" do
+            --some printing tests
+            local format = tmath.numtostr.format[T]
+            terracode
+                var s1 = tmath.numtostr(T(1))
+                var s2 = tmath.numtostr(T(1.999999999999))
+                format = "%0.3f"
+                var s3 = tmath.numtostr(T(1))
+                var s4 = tmath.numtostr(T(1.999999999999))
+            end
+            test C.strcmp(&s1[0], "1.00") == 0
+            test C.strcmp(&s2[0], "2.00") == 0
+            test C.strcmp(&s3[0], "1.000") == 0
+            test C.strcmp(&s4[0], "2.000") == 0
         end
     end
 end

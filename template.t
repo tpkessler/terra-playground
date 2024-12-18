@@ -315,14 +315,15 @@ function Template:new()
 	function template:adddefinition(methods)
 		methods = methods or {}
 		for sig, func in pairs(methods) do
+			func = terralib.memoize(func)
 			--check if method with this serialized key already exists
 			for s,v in pairs(self.methods) do
 				if sig:serialize()==s:serialize() then --overwrite old definition
-					self.methods[s] = terralib.memoize(func)
+					self.methods[s] = func
 					return
 				end
 			end
-			self.methods[sig] = terralib.memoize(func)
+			self.methods[sig] = func
         end
     end
 

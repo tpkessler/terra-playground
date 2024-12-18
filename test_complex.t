@@ -5,33 +5,13 @@
 
 import "terratest/terratest"
 
-local io = terralib.includec("stdio.h")
+local C = terralib.includec("string.h")
 local tmath = require("mathfuns")
+local concepts = require("concepts")
 local complex = require("complex")
 local nfloat = require("nfloat")
 
 local float256 = nfloat.FixedFloat(256)
-
-if not __silent__ then
-
-    --some printing tests
-    local complex_t = complex.complex(double)
-    local format = tmath.numtostr.format[double]
-    terra main()
-		var x = complex_t.from(1, 2)
-		var y = complex_t.from(1, -2)
-		
-        io.printf("x = %s\n", tmath.numtostr(x))
-		io.printf("y = %s\n", tmath.numtostr(y))
-
-        format = "%0.3e"
-        io.printf("value = %s\n", tmath.numtostr(x))
-		io.printf("value = %s\n", tmath.numtostr(y))
-    end
-    main()
-
-end
-
 
 
 testenv "Complex numbers" do
@@ -47,6 +27,27 @@ testenv "Complex numbers" do
 			end
 			test x == y
 		end
+
+		testset(T) "printing" do
+			local format = tmath.numtostr.format[T]
+			if concepts.Float(T) then
+				terracode
+					format = "%0.1f"
+					var s1 = tmath.numtostr(complex_t.from(1, 2))
+					var s2 = tmath.numtostr(complex_t.from(1, -2))
+				end
+				test C.strcmp(&s1[0], "1.0+2.0im") == 0
+				test C.strcmp(&s2[0], "1.0-2.0im") == 0
+			elseif concepts.Integral(T) then
+				terracode
+					format = "%d"
+					var s1 = tmath.numtostr(complex_t.from(1, 2))
+					var s2 = tmath.numtostr(complex_t.from(1, -2))
+				end
+				test C.strcmp(&s1[0], "1+2im") == 0
+				test C.strcmp(&s2[0], "1-2im") == 0
+			end
+        end
 
 		testset(T) "Copy" do
 			terracode
