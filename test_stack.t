@@ -11,7 +11,8 @@ import "terratest/terratest"
 
 testenv "DynamicStack" do
 
-    local stack = stack.DynamicStack(double)
+    local T = double
+    local stack = stack.DynamicStack(T)
     local DefaultAllocator =  alloc.DefaultAllocator()
 
     terracode
@@ -22,7 +23,7 @@ testenv "DynamicStack" do
     testset "new" do
         test s:size() == 0
         test s:capacity() == 3
-        test [stack.eltype == double]
+        test [stack.traits.eltype == T]
         test s.data:owns_resource()
     end
 
@@ -112,9 +113,8 @@ testenv "DynamicStack" do
         test x(0) == 1.0 and x(1) == 2.0
     end
 
-    local smrtblock = alloc.SmartBlock(stack.eltype)
-    smrtblock:complete()
-
+    local smrtblock = alloc.SmartBlock(T)
+    
     testset "__dtor" do
         terracode
             var p : &smrtblock

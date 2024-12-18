@@ -13,7 +13,7 @@ local C = terralib.includecstring[[
     #include <math.h>
     #include <tgmath.h>
 ]]
-
+local concepts = require("concepts")
 --constants
 tmath.pi = constant(3.14159265358979323846264338327950288419716939937510)
 
@@ -176,8 +176,11 @@ for _,T in ipairs{float, double, int8, int16, int32, int64, uint8, uint16, uint3
     else
         error("Please specify a format for this type.")
     end
-    --length of static buffer and format
-    local maxlen = tmath.ndigits(sizeof(T))
+    --length of static buffer
+    --+1 for sign
+    --+1 for /0 terminating character
+    local maxlen = tmath.ndigits(sizeof(T)) + 1 + 1
+    --format of number type T
     local format = numtostr.format[T]
     numtostr:adddefinition(
         terra(v : T)

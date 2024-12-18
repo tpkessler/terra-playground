@@ -331,7 +331,10 @@ local FixedFloat = terralib.memoize(function(N)
     --for now we format up to double precision.
     --ToDo: specialized print.
     local format = global(rawstring, "%0.2f")
-    local maxlen = tmath.ndigits(sizeof(double))
+    --length of static buffer
+    --+1 for sign
+    --+1 for /0 terminating character
+    local maxlen = tmath.ndigits(sizeof(double)) + 1 + 1
     tmath.numtostr:adddefinition(
         terra(v : nfloat)
             var buffer : int8[maxlen]
