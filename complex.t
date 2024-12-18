@@ -10,6 +10,8 @@ local C = terralib.includecstring[[
     #include <math.h>
 ]]
 
+import "terraform"
+
 local base = require("base")
 local concepts = require("concepts")
 local tmath = require("mathfuns")
@@ -108,7 +110,10 @@ local complex = terralib.memoize(function(T)
         end
         return str
     end
-    tmath.numtostr:adddefinition(terra(x : complex) return x:tostr() end)
+
+    terraform tmath.numtostr(x : complex) 
+        return x:tostr() 
+    end
 
     terra complex:inverse()
        var nrmsq = self:normsq()
