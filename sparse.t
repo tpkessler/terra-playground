@@ -124,7 +124,7 @@ local CSRMatrix = terralib.memoize(function(T, I)
         a.cols = cols
         var cap = rows  -- one entry per row
         a.data = ST.new(alloc, cap)
-        a. col = SI.new(alloc, cap)
+        a.col = SI.new(alloc, cap)
         a.rowptr = SI.new(alloc, rows + 1)
         for i = 0, rows + 1 do
             a.rowptr:push(0)
