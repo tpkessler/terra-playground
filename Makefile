@@ -13,6 +13,7 @@ else
 endif
 
 TERRA?=terra
+TERRAFLAGS?=-g
 
 CFLAGS=-O2 -march=native -fPIC
 
@@ -32,10 +33,10 @@ libexport.$(dyn): export.o
 	$(CC) -fPIC -shared $^ -o $@
 
 nonlinearbc.o: compile_boltzmann.t boltzmann.t
-	$(TERRA) compile_boltzmann.t
+	$(TERRA) $(TERRAFLAGS) compile_boltzmann.t
 
 export.o: export.t export_decl.t
-	$(TERRA) export.t
+	$(TERRA) $(TERRAFLAGS) export.t
 
 libtinymt.$(dyn): tinymt32.o tinymt64.o
 	$(CC) -fPIC -shared $^ -o $@
@@ -68,7 +69,7 @@ test: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn)
 .PHONY: clean realclean
 
 clean:
-	$(RM) export.o tinymt32.o tinymt64.o $(OBJ)
+	$(RM) export.o nonlinearbc.o tinymt32.o tinymt64.o $(OBJ)
 
 realclean: clean
 	$(RM) libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libboltzmann.$(dyn)
