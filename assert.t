@@ -6,37 +6,39 @@
 local C = terralib.includecstring [[
     #include <stdio.h>
     #include <stdlib.h>
-    #include <string.h>
-    #include <stdarg.h>
 ]]
 
-local uname = io.popen("uname", "r"):read("*a")
+local ffi = require("ffi")
+local OS = ffi.os
 
 local S = {}
 
+S.error = macro(function(expr, msg)
+    local tree = expr.tree
+    local filename = tree.filename
+    local linenumber = tree.linenumber
+    local offset = tree.offset
+    local loc = filename .. ":" .. linenumber .. "+" .. offset
+    return quote
+        terralib.debuginfo(filename, linenumber)
+        C.printf("%s: %s\n", loc, msg)
+        escape
+            --traceback currently does not work on macos
+            if OS == "Linux" then
+                emit quote terralib.traceback(nil) end
+            end
+        end
+        C.abort()
+    end
+end)
+
 S.assert = macro(function(condition)
-    local loc = condition.tree.filename..":"..condition.tree.linenumber
     return quote
         if not condition then
-            C.printf("%s: assertion failed!\n", loc)
-            escape
-                --traceback currently does not work on macos
-                if uname == "Linux\n" then
-                    emit quote terralib.traceback(nil) end
-                end
-            end
-            C.abort()
-        end -- if
-    end -- quote
-end) -- macro
-
-S.error = macro(function(expr)
-    local loc = expr.tree.filename..":"..expr.tree.linenumber
-    return quote
-	    C.printf("%s: %s\n", loc, expr)
-	    C.abort()
-    end -- quote
-end) -- macro
+            S.error(condition, "assertion failed!")
+        end
+    end
+end)
 
 return S
 
