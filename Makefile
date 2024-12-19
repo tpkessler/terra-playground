@@ -12,11 +12,15 @@ else
 	$(error Unsupported build environment!)
 endif
 
+TERRA?=terra
 
 CFLAGS=-O2 -march=native -fPIC
 
-all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn)
+all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn) libnonlinearbc.$(dyn)
 
+
+libnonlinearbc.$(dyn): nonlinearbc.o
+	$(CC) -fPIC -shared $^ -o $@
 
 libhash.$(dyn): hashmap.o
 	$(CC) -fPIC -shared $^ -o $@
@@ -27,8 +31,11 @@ hashmap.o: hashmap/hashmap.c hashmap/hashmap.h
 libexport.$(dyn): export.o
 	$(CC) -fPIC -shared $^ -o $@
 
+nonlinearbc.o: compile_boltzmann.t boltzmann.t
+	$(TERRA) compile_boltzmann.t
+
 export.o: export.t export_decl.t
-	terra export.t
+	$(TERRA) export.t
 
 libtinymt.$(dyn): tinymt32.o tinymt64.o
 	$(CC) -fPIC -shared $^ -o $@
@@ -64,5 +71,5 @@ clean:
 	$(RM) export.o tinymt32.o tinymt64.o $(OBJ)
 
 realclean: clean
-	$(RM) libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn)
+	$(RM) libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libboltzmann.$(dyn)
 
