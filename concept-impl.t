@@ -42,6 +42,13 @@ local function isrefprimitive(T)
     end
 end
 
+local function printtable(t)
+    for k,v in pairs(t) do
+        print(tostring(k) .." = " ..tostring(v))
+    end
+    print()
+end
+
 local is_specialized_over
 -- Checks if T satifies a concept C if T is concrete type.
 -- Checks if T is more specialized than C if T is a concept.
@@ -49,45 +56,21 @@ local function check(C, T, verbose)
     verbose = verbose == nil and false or verbose
     assert(isconcept(C))
     assert(terralib.types.istype(T))
+
     -- Quick exit if you check the concept against itsself. This is useful
     -- if the concept refers to itsself in a method declaration
     if C == T then
         return true
     end
-    -- Primitive types don't have methods, so they have to appear in the
-    -- friends table. Otherwise, they don't satisfy the concept.
-    if isrefprimitive(T) then
-        for F, _ in pairs(C.friends) do
-            if is_specialized_over(T, F) then
-                return true
-            end
-        end
-        error(
+    --check number of traits
+    if C.traits and #C.traits > 0 then
+        assert(#C.traits <= #T.traits,
             (
-                "Concept %s is not satisfied by primitive type %s"
-            ):format(tostring(C), tostring(T))
-        )
-    -- For concepts, T.friends has to be a subset of C.friends
-    elseif isconcept(T) then
-        for F, _ in pairs(T.friends) do
-            assert(C.friends[F],
-            (
-                "Concept %s requires type %s as friend but that was not found"
-                .. "in %s"
-            ):format(tostring(T), tostring(F), tostring(C))
-            )
-        end
-    elseif iscollection(C) then
-        assert(C.friends[T],
-            (
-                "Concept %s does not have friend %s"
-            ):format(tostring(C), tostring(T))
+                "Need at least %d traits but only %d given."
+            ):format(#C.traits, #T.traits)
         )
     end
-    -- From this point onwards, we assume that T is a struct
-    -- and not a primitive type
-    assert(T:isstruct())
-
+    --traits comparison
     for trait, desired in pairs(C.traits) do
         assert(
             T.traits[trait] ~= nil,
@@ -223,6 +206,7 @@ local function check(C, T, verbose)
         return res
     end
 
+    --check all methods
     local res = fun.all(
         function(method, func)
             assert(
@@ -236,6 +220,7 @@ local function check(C, T, verbose)
         end,
         C.methods
     )
+    --check all metamethods
     for method, _ in pairs(C.metamethods) do
         assert(
             T.metamethods[method],
@@ -245,11 +230,15 @@ local function check(C, T, verbose)
         )
     end
 
-    assert(#C.entries <= #T.entries,
-        (
-            "Need at least %d entries in struct but only %d given."
-        ):format(#C.entries, #T.entries)
-    )
+    --check number of struct entries
+    if T:isstruct() then 
+        assert(#C.entries <= #T.entries,
+            (
+                "Need at least %d entries in struct but only %d given."
+            ):format(#C.entries, #T.entries)
+        )
+    end
+    --check individual struct entries
     for _, ref_entry in pairs(C.entries) do
         local ref_name = ref_entry.field
         local ref_type = ref_entry.type
@@ -281,6 +270,7 @@ local function check(C, T, verbose)
             ):format(tostring(C), ref_name, tostring(T))
         )
     end
+
     return true
 end
 
@@ -289,16 +279,25 @@ local function Base(C, custom_check)
         terralib.types.istype(C) and C:isstruct(),
         "Only a struct can be turned into a concept"
     )
-    -- custom_check = custom_check or check
-    C.friends = terralib.newlist()
     C.traits = terralib.newlist()
     C.type = "concept"
-    C.check = custom_check or check
+    --add the custom check which evaluates a predicate returning true/false
+    --or add default which is based on traits / methods / metamethods / entries
+    if custom_check then
+        C.check = function(C, T)
+            if C ~= T then
+                assert(custom_check(C, T))
+            end
+            return true
+        end 
+    else
+        C.check = check
+    end
     local mt = getmetatable(C)
     function mt:__call(T, verbose)
         verbose = verbose == nil and false or verbose
         local ok, ret = pcall(function(S) return self:check(S, verbose) end, T)
-        -- ret returns a string with an error message ithat indicates the
+        -- ret returns a string with an error message that indicates the
         -- reason for a failed comparison. Useful for debugging.
         if verbose then
             print(ret)
@@ -310,7 +309,7 @@ local function Base(C, custom_check)
         for _, entry in pairs(D.entries) do
             C.entries:insert(entry)
         end
-        for _, tab in pairs({"friends", "methods", "metamethods", "traits"}) do
+        for _, tab in pairs({"methods", "metamethods", "traits"}) do
             for k, v in pairs(D[tab]) do
                 C[tab][k] = v
             end
@@ -377,9 +376,9 @@ function is_specialized_over(C1, C2)
     end
 end
 
-local newconcept = function(name)
+local newconcept = function(name, check)
     local C = terralib.types.newstruct(name)
-    Base(C)
+    Base(C, check)
     return C
 end
 

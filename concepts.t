@@ -22,65 +22,86 @@ local is_specialized_over = impl.is_specialized_over
 local parametrizedconcept = para.parametrizedconcept
 local isparametrizedconcept = para.isparametrizedconcept
 
-local Bool = newconcept("Bool")
-Bool:addfriend(bool)
+--traits for primitive types
+bool.traits      = {isbool    = true, isprimitive = true}
+rawstring.traits = {isstring  = true, isprimitive = true}
+--floats
+float.traits     = {isfloat   = true, isblasfloat = true, isprimitive = true}
+double.traits    = {isfloat   = true, isblasfloat = true, isprimitive = true}
+--signed integers
+int8.traits      = {isinteger = true, isprimitive = true}
+int16.traits     = {isinteger = true, isprimitive = true}
+int32.traits     = {isinteger = true, isprimitive = true}
+int64.traits     = {isinteger = true, isprimitive = true}
+--signed integers
+int8.traits      = {isinteger = true, issigned = true, isprimitive = true}
+int16.traits     = {isinteger = true, issigned = true, isprimitive = true}
+int32.traits     = {isinteger = true, issigned = true, isprimitive = true}
+int64.traits     = {isinteger = true, issigned = true, isprimitive = true}
+--unsigned integers
+uint8.traits     = {isinteger = true, issigned = false, isprimitive = true}
+uint16.traits    = {isinteger = true, issigned = false, isprimitive = true}
+uint32.traits    = {isinteger = true, issigned = false, isprimitive = true}
+uint64.traits    = {isinteger = true, issigned = false, isprimitive = true}
 
-local RawString = newconcept("RawString")
-RawString:addfriend(rawstring)
+--these traits are used to construct the concept hierarchies of
+--real and complex numbers implemented below
 
-local Float = newconcept("Float")
-local F = {}
-for suffix, T in pairs({["32"] = float, ["64"] = double}) do
-	local name = "Float" .. suffix
-	F[name] = newconcept(name)
-    F[name]:addfriend(T)
-    Float:addfriend(T)
+local concept Bool
+    Self.traits.isbool = true
 end
 
-local I = {}
-for _, prefix in pairs({"", "u"}) do
-	local cname = prefix:upper() .. "Integer"
-	I[cname] = newconcept(cname)
-	for _, suffix in pairs({8, 16, 32, 64}) do
-		local name = prefix:upper() .. "Int" .. tostring(suffix)
-		local terra_name = prefix .. "int" .. tostring(suffix)
-		-- Terra primitive types are global lua variables
-		local T = _G[terra_name] 
-		I[name] = newconcept(name)
-		I[name]:addfriend(T)
-		I[cname]:addfriend(T)
-	end
+local concept String
+    Self.traits.isstring = true
 end
 
-local function append_friends(C, D)
-    for k, v in pairs(D.friends) do
-        C.friends[k] = v
-    end
+local concept Float
+    Self.traits.isfloat = true
 end
 
-local Integral = newconcept("Integral")
-for _, C in pairs({I.Integer, I.UInteger}) do
-    append_friends(Integral, C)
+local concept Integer
+    Self.traits.isinteger = true
 end
 
-local Real = newconcept("Real")
-for _, C in pairs({Float, I.Integer}) do
-    append_friends(Real, C)
+local concept SignedInteger
+    Self:inherit(Integer)
+    Self.traits.issigned = true
 end
 
-local Number = newconcept("Number")
-for _, C in pairs({Float, I.Integer, I.UInteger}) do
-    append_friends(Number, C)
+local concept UnsignedInteger
+    Self:inherit(Integer)
+    Self.traits.issigned = false
 end
 
-local BLASNumber = newconcept("BLASNumber")
-BLASNumber:addfriend(float)
-BLASNumber:addfriend(double)
+local Real = newconcept("Real", function(C, T)
+    return Integer(T) or Float(T)
+end)
 
-local Primitive = newconcept("Primitive")
-for _, C in pairs({I.Integer, I.UInteger, Bool, Float}) do
-	append_friends(Primitive, C)
+local concept Complex(T) where {T : Real}
+    Self.traits.eltype = T
+    Self.traits.iscomplex = true
 end
+
+local ComplexReal = Complex(Real)
+
+local Number = newconcept("Number", function(C, T)
+    return Real(T) or ComplexReal(T)
+end)
+
+local concept Primitive
+    Self.traits.isprimitive = true
+end
+
+local concept BLASFloat
+    Self:inherit(Float)
+    Self.traits.isblasfloat = true
+end
+
+local BLASComplexFloat = Complex(BLASFloat)
+
+local BLASNumber = newconcept("BLASNumber", function(C, T)
+    return BLASFloat(T) or BLASComplexFloat(T)
+end)
 
 local concept Stack(T) where {T}
     Self.traits.eltype = traittag
@@ -172,26 +193,18 @@ return {
     Vararg = Vararg,
     Value = Value,
     ParametrizedValue = ParametrizedValue,
-    Bool = Bool,
-    RawString = RawString,
-    Float = Float,
-    Float32 = F.Float32,
-    Float64 = F.Float64,
-    Integer = I.Integer,
-    UInteger = I.UInteger,
-    Int8 = I.Int8,
-    Int16 = I.Int16,
-    Int32 = I.Int32,
-    Int64 = I.Int64,
-    UInt8 = I.UInt8,
-    UInt16 = I.UInt16,
-    UInt32 = I.UInt32,
-    UInt64 = I.UInt64,
-    Integral = Integral,
-    Real = Real,
-    BLASNumber = BLASNumber,
-    Number = Number,
     Primitive = Primitive,
+    Bool = Bool,
+    String = String,
+    Float = Float,
+    Integer = Integer,
+    SignedInteger = SignedInteger,
+    UnsignedInteger = UnsignedInteger,
+    Real = Real,
+    Complex = Complex,
+    Number = Number,
+    BLASFloat = BLASFloat,
+    BLASNumber = BLASNumber,
     Stack = Stack,
     DStack = DStack,
     Vector = Vector,
