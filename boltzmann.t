@@ -680,7 +680,7 @@ local PrepareInput = terralib.memoize(function(T, I)
     return prepare_input
 end)
 
-local generate_bc_wrapper = terralib.memoize(function(Transform)
+local GenerateBCWrapper = terralib.memoize(function(Transform)
     local T = double
     local I = int32
     local prepare_input = PrepareInput(T, I)
@@ -739,10 +739,12 @@ local FixedPressure = terralib.memoize(function(T)
     return fixed_pressure
 end)
 
-local pressurebc = generate_bc_wrapper(FixedPressure(double))
-pressurebc:printpretty()
+local pressurebc = GenerateBCWrapper(FixedPressure(double))
 terralib.saveobj("boltzmann.o", {pressurebc = pressurebc})
 
 return {
     HalfSpaceQuadrature = HalfSpaceQuadrature,
+    GenerateBCWrapper = GenerateBCWrapper,
+    PrepareInput = PrepareInput,
+    FixedPressure = FixedPressure,
 }
