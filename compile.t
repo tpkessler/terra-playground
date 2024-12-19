@@ -31,6 +31,7 @@ end
 
 local function getCheader(methods)
     local headerfile = terralib.newlist()
+    headerfile:insert("#pragma once")
     headerfile:insert("#include <stdint.h>")
     headerfile:insert("#include <stdbool.h>")
     for name, method in pairs(methods) do

@@ -9,6 +9,7 @@ testenv "Generate header file" do
         ),
     }
     local ref = [[
+#pragma once
 #include <stdint.h>
 #include <stdbool.h>
 uint32_t awesome_wrapper(double, void *, char *, double *);]]
@@ -23,6 +24,7 @@ testenv "Generate C API" do
     local header = input:read("*a")
     input:close()
     local refheader = [[
+#pragma once
 #include <stdint.h>
 #include <stdbool.h>
 void * add(int32_t, char *, double);]]
