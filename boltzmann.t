@@ -117,6 +117,7 @@ local TensorBasis = terralib.memoize(function(T)
     local Stack = stack.DynamicStack(T)
     local struct tensor_basis {
         space: CSR
+        transposed: bool
         velocity: MonomialBasis
         cast: Stack
     }
@@ -128,7 +129,9 @@ local TensorBasis = terralib.memoize(function(T)
     base.AbstractBase(tensor_basis)
 
     terra tensor_basis:nspacedof()
-        return self.space:cols()
+        return terralib.select(
+                    self.transposed, self.space:rows(), self.space:cols()
+                )
     end
 
     terra tensor_basis:nvelocitydof()
@@ -139,12 +142,13 @@ local TensorBasis = terralib.memoize(function(T)
         return self:nspacedof() * self:nvelocitydof()
     end
 
-    tensor_basis.staticmethods.new = terra(b: CSR, p: iMat)
-        return tensor_basis {b, MonomialBasis.new(p)}
+    tensor_basis.staticmethods.new = terra(b: CSR, transposed: bool, p: iMat)
+        return tensor_basis {b, transposed, MonomialBasis.new(p)}
     end
 
     terraform tensor_basis.staticmethods.frombuffer(
         alloc,
+        transposed: bool,
         nq: I1,
         nx: I2,
         nnz: I3,
@@ -168,6 +172,7 @@ local TensorBasis = terralib.memoize(function(T)
         var space = CSR.frombuffer(nq, nx, nnz, &cast(0), col, rowptr)
         var tb: tensor_basis
         tb.space = space
+        tb.transposed = transposed
         tb.cast = cast
 
         tb.velocity = MonomialBasis.new(iMat.frombuffer(nv, VDIM, ptr, VDIM))
@@ -444,13 +449,13 @@ end)
 
 local terraform maxwellian_inflow(
                     alloc,
-                    testb,
+                    testb: &B,
                     rho,
                     u,
                     theta,
                     normal: &N,
                     halfmom: &T)
-    where {N, T: concepts.Number}
+    where {B, N, T: concepts.Number}
     var maxtestdegree = testb.velocity:maxpartialdegree()
     var loc_normal: T[VDIM]
     for k = 0, VDIM do
@@ -493,12 +498,12 @@ end
 
 local terraform nonlinear_maxwellian_inflow(
                     alloc,
-                    testb,
-                    trialb,
+                    testb: &B1,
+                    trialb: &B2,
                     xvlhs: &C,
                     normal,
                     transform
-                ) where {C}
+                ) where {B1, B2, C}
     -- For the nonlinear boundary condition we have to compute a nested
     -- integral of space and velocity. First, we discretize the spatial integral
     -- with quadrature. For this, we need the point evaluation of the spatial
@@ -583,15 +588,12 @@ local PrepareInput = terralib.memoize(function(T, I)
         -- Dimension of test space and the result arrays
         ntestx: int32,
         ntestv: int32,
-        -- Result of half space integral
-        resval: &T,
-        restng: &T,
         -- Dimension of trial space and the input arrays
         ntrialx: int32,
         ntrialv: int32,
-        -- Evaluation point
+        -- Basis coefficients
         val: &T,
-        -- Direction of derivative
+        -- Direction of derivative for basis coefficients
         tng: &T,
         -- Number of spatial quadrature points
         nqx: int32,
@@ -599,7 +601,7 @@ local PrepareInput = terralib.memoize(function(T, I)
         ndim: int32,
         -- Sampled normals
         normalq: &T,
-        -- Point evaluation of spatial test functions at quadrature points
+        -- Point evaluation of spatial test functions at quadrature points transposed
         testnnz: int32,
         testdata: &T,
         testrow: &I,
@@ -615,8 +617,9 @@ local PrepareInput = terralib.memoize(function(T, I)
     )
         var testbasis = [TensorBasis(dual.DualNumber(T))].frombuffer(
                                                             alloc,
-                                                            nqx,
+                                                            true,
                                                             ntestx,
+                                                            nqx,
                                                             testnnz,
                                                             testdata,
                                                             testrow,
@@ -626,6 +629,7 @@ local PrepareInput = terralib.memoize(function(T, I)
                                                         )
         var trialbasis = [TensorBasis(dual.DualNumber(T))].frombuffer(
                                                             alloc,
+                                                            false,
                                                             nqx,
                                                             ntrialx,
                                                             trialnnz,
@@ -738,9 +742,6 @@ local FixedPressure = terralib.memoize(function(T)
     end)
     return fixed_pressure
 end)
-
-local pressurebc = GenerateBCWrapper(FixedPressure(double))
-terralib.saveobj("boltzmann.o", {pressurebc = pressurebc})
 
 return {
     HalfSpaceQuadrature = HalfSpaceQuadrature,
