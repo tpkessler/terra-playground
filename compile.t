@@ -10,8 +10,9 @@ types[&opaque] = "void *"
 for _, pre in pairs{"", "u"} do
     for i = 0, 3 do
         local sz = 8 * 2 ^ i
-        local typ = _G[pre .. "int" .. sz]
-        types[typ] = pre .. "int" .. sz .. "_t"
+        local locint = pre .. "int" .. sz
+        local typ = _G[locint]
+        types[typ] = locint .. "_t"
     end
 end
 
