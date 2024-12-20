@@ -82,12 +82,12 @@ local Real = newconcept("Real")
 Real:addfriend(Integer)
 Real:addfriend(Float)
 
-local concept ParamComplex(T) where {T : Real}
+local concept ComplexOverField(T) where {T : Real}
     Self.traits.eltype = T
     Self.traits.iscomplex = true
 end
 
-local Complex = ParamComplex(Real)
+local Complex = ComplexOverField(Real)
 
 local Number = newconcept("Number")
 Number:addfriend(Real)
@@ -102,7 +102,7 @@ local concept BLASFloat
     Self.traits.isblasfloat = true
 end
 
-local BLASComplexFloat = ParamComplex(BLASFloat)
+local BLASComplexFloat = ComplexOverField(BLASFloat)
 
 local BLASNumber = newconcept("BLASNumber")
 BLASNumber:addfriend(BLASFloat)
@@ -208,7 +208,7 @@ return {
     UnsignedInteger = UnsignedInteger,
     Real = Real,
     Complex = Complex,
-    ParamComplex = ParamComplex,
+    ComplexOverField = ComplexOverField,
     Number = Number,
     BLASFloat = BLASFloat,
     BLASNumber = BLASNumber,

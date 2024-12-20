@@ -24,7 +24,7 @@ local Number = concepts.Number
 local Complex = concepts.Complex
 local BLASNumber = concepts.BLASNumber
 
-local ParamComplex = concepts.ParamComplex
+local ComplexOverField = concepts.ComplexOverField
 
 
 testenv "Concrete concepts" do
@@ -55,11 +55,11 @@ testenv "Concrete concepts" do
 		test [Float(NFloat) and not NFloat(Float)]
 	end
 
-	local ComplexInteger = ParamComplex(Integer)
-	local ComplexSignedInteger = ParamComplex(SignedInteger)
-	local ComplexFloat = ParamComplex(Float)
-	local ComplexBLASFloat = ParamComplex(BLASFloat)
-	local ComplexNFloat = ParamComplex(NFloat)
+	local ComplexInteger = ComplexOverField(Integer)
+	local ComplexSignedInteger = ComplexOverField(SignedInteger)
+	local ComplexFloat = ComplexOverField(Float)
+	local ComplexBLASFloat = ComplexOverField(BLASFloat)
+	local ComplexNFloat = ComplexOverField(NFloat)
 	
 	testset "Complex number hierarchy" do
 		test [Number(Complex) and not Complex(Number)]
