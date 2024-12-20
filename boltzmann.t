@@ -199,28 +199,27 @@ end
 local Vector = concepts.Vector
 local Number = concepts.Number
 local terraform local_maxwellian(basis, coeff: &V, quad)
-    where {I: concepts.Integral, V: Vector(Number)}
-    var m1: coeff.type.type.eltype = 0
-    var m2 = [svector.StaticVector(m1.type, VDIM)].zeros()
-    var m3: m1.type = 0
+    where {V: Vector(Number)}
+    var m1: V.eltype = 0
+    var m2 = [svector.StaticVector(V.eltype, VDIM)].zeros()
+    var m3: V.eltype = 0
 
     var it = quad:getiterator()
-    var xw = it:getvalue()
-    var x, w = xw
+    var xref, wref = it:getvalue()
     for bc in range.zip(basis, coeff) do
-        var cnst = lambda.new([terra(v: &w.type) return 1.0 end])
+        var cnst = lambda.new([terra(v: &wref.type) return 1.0 end])
         m1 = m1 + l2inner(bc._0, cnst, quad) * bc._1
         escape
             for i = 0, VDIM - 1 do
-                local vi = `lambda.new([terra(v: &w.type) return v[i] end])
+                local vi = `lambda.new([terra(v: &wref.type) return v[i] end])
                 emit quote
                     m2(i) = m2(i) + l2inner(bc._0, [vi], quad) * bc._1
                 end
             end
         end
         var vsqr = lambda.new([
-                        terra(v: &w.type)
-                            var vsqr = [v.type.type](0)
+                        terra(v: &wref.type)
+                            var vsqr = [wref.type](0)
                             escape
                                 for j = 0, VDIM - 1 do
                                     emit quote vsqr = vsqr + v[j] * v[j] end
@@ -530,15 +529,25 @@ local terraform nonlinear_maxwellian_inflow(
     -- polynomials up to degree deg exactly. We account for (1, v, |v|^2)
     -- by using two more points.
     var maxtrialdegree = trialb.velocity:maxpartialdegree()
-    var q1dmaxwellian = gauss.hermite(
+    var vhermite, whermite = gauss.hermite(
                             alloc,
-                            maxtrialdegree / 2 + 1 + 2,
+                            maxtrialdegree / 2 + 1 + 2 + 10,
                             {origin = 0.0, scaling = tmath.sqrt(2.)}
                       )
+    whermite:scal(1 / tmath.sqrt(2 * tmath.pi))
+    var res: double = 0
+    for xw in range.zip(&vhermite, &whermite) do
+        var x, w = xw
+        res = res + w * x * x
+    end
     var qmaxwellian = escape 
         local arg = {}
         for i = 1, VDIM do
-            arg[i] = `&q1dmaxwellian
+            arg[i] = quote
+                         var q = gauss.hermite_t {vhermite, whermite}
+                     in
+                         &q
+                     end
         end
         emit quote
                  var p = gauss.productrule([arg])
