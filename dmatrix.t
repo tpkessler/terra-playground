@@ -91,6 +91,10 @@ local DynamicMatrix = terralib.memoize(function(T)
         return M.all(alloc, m:rows(), m:cols(), 0)
     end
 
+    terra M.staticmethods.ones_like(alloc: Allocator, m: &M)
+        return M.all(alloc, m:rows(), m:cols(), 1)
+    end
+
     M.staticmethods.from = macro(function(alloc, tabl)
         local dim = tupl.tensortuple(tabl.tree.type)
         assert(#dim == 2)
