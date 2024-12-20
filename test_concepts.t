@@ -7,71 +7,130 @@ local base = require("base")
 local concepts = require("concepts")
 local paramlist = require("concept-parametrized").paramlist
 
-import "terratest/terratest"
 import "terraform"
+import "terratest/terratest"
+
+local Any = concepts.Any
+local String = concepts.String
+local Primitive = concepts.Primitive
+local Float = concepts.Float
+local NFloat = concepts.NFloat
+local Integer = concepts.Integer
+local SignedInteger = concepts.SignedInteger
+local UnsignedInteger = concepts.UnsignedInteger
+local Real = concepts.Real
+local BLASFloat = concepts.BLASFloat
+local Number = concepts.Number
+local Complex = concepts.Complex
+local BLASNumber = concepts.BLASNumber
+
+local ComplexOverField = concepts.ComplexOverField
+
 
 testenv "Concrete concepts" do
 
+	local signed = terralib.newlist{int8, int16, int32, int64}
+	local unsigned = terralib.newlist{uint8, uint16, uint32, uint64}
+	local floats = terralib.newlist{float, double}
+	local otherprimitives = terralib.newlist{bool, rawstring}
+
+	local primitivenumbers = terralib.newlist()
+	primitivenumbers:insertall(signed)
+	primitivenumbers:insertall(unsigned)
+	primitivenumbers:insertall(floats)
+
+	local primitives = terralib.newlist()
+	primitives:insertall(primitivenumbers)
+	primitives:insertall(otherprimitives)
+
+	testset "Real number hierarchy" do
+		test [Number(Number)]
+		test [Number(BLASNumber)]
+		test [Number(Real) and not Real(Number)]
+		test [Real(Integer) and not Integer(Real)]
+		test [Integer(UnsignedInteger) and not UnsignedInteger(Integer)]
+		test [Integer(SignedInteger) and not SignedInteger(Integer)]
+		test [Real(Float) and not Float(Real)]
+		test [Float(BLASFloat) and not BLASFloat(FLoat)]
+		test [Float(NFloat) and not NFloat(Float)]
+	end
+
+	local ComplexInteger = ComplexOverField(Integer)
+	local ComplexSignedInteger = ComplexOverField(SignedInteger)
+	local ComplexFloat = ComplexOverField(Float)
+	local ComplexBLASFloat = ComplexOverField(BLASFloat)
+	local ComplexNFloat = ComplexOverField(NFloat)
+	
+	testset "Complex number hierarchy" do
+		test [Number(Complex) and not Complex(Number)]
+		test [Complex(ComplexInteger) and not ComplexInteger(Complex)]
+		test [ComplexInteger(ComplexSignedInteger) and not ComplexSignedInteger(ComplexInteger)]
+		test [Complex(ComplexFloat) and not ComplexFloat(Complex)]
+		test [ComplexFloat(ComplexBLASFloat) and not ComplexBLASFloat(ComplexFloat)]
+		test [Complex(ComplexBLASFloat) and not ComplexBLASFloat(Complex)]
+		test [ComplexFloat(ComplexNFloat) and not ComplexNFloat(ComplexFloat)]
+	end
+
     testset "Floats" do
-        --concrete float
-        test [concepts.Float64(double)]
-        test [concepts.Float64(float) == false]
-        test [concepts.is_specialized_over(concepts.Float64, concepts.Float64)]
-        --abstract floats
-        test [concepts.Float(double)]
-        test [concepts.Float(float)]
-        test [concepts.is_specialized_over(concepts.Float, concepts.Float)]
-        test [concepts.Float(int32) == false]
-        test [concepts.Float(rawstring) == false]
+		test [Float(Float)]
+        test [Float(double) and Float(float)]
+		test [BLASFloat(double) and BLASFloat(float)]
+        test [concepts.is_specialized_over(Float, Float)]
+        test [Float(int32) == false]
+        test [Float(rawstring) == false]
+		test [Float(Integer) ==  false]
     end
 
     testset "Integers" do
-        --concrete integers
-        test [concepts.Int32(int32)]
-        test [concepts.Int32(int)]
-        test [concepts.Int32(int16) == false]
-        test [concepts.is_specialized_over(concepts.Int32, concepts.Int32)]
-        --abstract signed integers
-        test [concepts.is_specialized_over(concepts.Integer, concepts.Integer)]
-        test [concepts.Integer(int)]
-        test [concepts.Integer(int32)]
-        test [concepts.Integer(int64)]
-        test [concepts.Integer(uint) == false]
-        test [concepts.Integer(float) == false]
-        test [concepts.Integer(rawstring) == false]
-		-- abstract integers
-        test [concepts.is_specialized_over(concepts.Integral, concepts.Integral)]
-        test [concepts.Integral(int)]
-        test [concepts.Integral(int32)]
-        test [concepts.Integral(int64)]
-        test [concepts.Integral(uint)]
-        test [concepts.Integral(uint64)]
-        test [concepts.Integral(float) == false]
-        test [concepts.Integral(rawstring) == false]
+        --abstract signed/unsigned integers
+        test [concepts.is_specialized_over(Integer, Integer)]
+		test [concepts.is_specialized_over(Integer, Integer)]
+		test [concepts.is_specialized_over(SignedInteger, Integer)]
+		test [concepts.is_specialized_over(UnsignedInteger, Integer)]
+		--concrete signed integers
+       	for _,T in ipairs(signed) do
+			test [Integer(T)]
+			test [SignedInteger(T)]
+			test [UnsignedInteger(T) == false]
+		end
+		--concrete unsigned integers
+       	for _,T in ipairs(unsigned) do
+			test [Integer(T)]
+			test [SignedInteger(T) == false]
+			test [UnsignedInteger(T)]
+		end
+		--sanity check
+       	test [Integer(float) == false]
+        test [Integer(rawstring) == false]
     end
 
     testset "Real numbers" do
-        test [concepts.is_specialized_over(concepts.Integer, concepts.Real)]
-        test [concepts.Real(int32)]
-        test [concepts.Real(int64)]
-        test [concepts.is_specialized_over(concepts.Float, concepts.Real)]
-        test [concepts.Real(float)]
-        test [concepts.Real(double)]
-        test [concepts.Real(uint) == false]
+        test [concepts.is_specialized_over(Integer, Real)]
+		test [concepts.is_specialized_over(Float, Real)]
+		for _,T in ipairs(primitivenumbers) do
+			test [Real(T)]
+		end
     end
 
     testset "Numbers" do
-        test [concepts.is_specialized_over(concepts.Real, concepts.Number)]
-        test [concepts.Number(int32)]
-        test [concepts.Number(float)]
-        test [concepts.Number(rawstring) == false]      
+        test [concepts.is_specialized_over(Real, Number)]
+		test [concepts.is_specialized_over(Integer, Number)]
+		for _,T in ipairs(primitivenumbers) do
+			test [Number(T)]
+		end
+        test [Number(rawstring) == false]
+    end
+
+    testset "Primitive" do
+		for _,T in ipairs(primitives) do
+			test [Primitive(T)]
+		end
     end
 
 	testset "Raw strings" do
-		test [concepts.RawString(rawstring)]
-		test [concepts.RawString(&uint) == false]
-        test [concepts.is_specialized_over(concepts.RawString, concepts.Primitive) == false]
-		test [concepts.RawString(concepts.Primitive) == false]
+		test [String(rawstring)]
+		test [String(&uint) == false]
+        test [String(Primitive) == false]
 	end
 
 	testset "Empty abstract interface" do
@@ -81,7 +140,7 @@ testenv "Concrete concepts" do
 
 	testset "Abstract interface" do
 		local struct SimpleInterface(concepts.Base) {}
-		SimpleInterface.methods.cast = {&SimpleInterface, concepts.Integer} -> concepts.Real
+		SimpleInterface.methods.cast = {&SimpleInterface, Integer} -> concepts.Real
 		test [concepts.isconcept(SimpleInterface)]
 		
 		local struct B {}
@@ -103,7 +162,7 @@ testenv "Concrete concepts" do
 		test [Vec(W)]
 
 		local struct WT {}
-		terraform WT:axpy(x: S, v: &WT) where {S: concepts.Float32} end
+		terraform WT:axpy(x: float, v: &WT) end
 		test [Vec(WT)]
 
 		local struct Z {}
@@ -126,7 +185,7 @@ testenv "Concrete concepts" do
 		Vec3.methods.axpy = {&Vec3, concepts.Real, &Vec3} -> {}
 
 		local struct F(base.AbstractBase) {}
-		terraform F:axpy(a: I, x: &F) where {I: concepts.Int8, F: concepts.Float32}
+		terraform F:axpy(a: int8, x: &float)
 		end
 		terraform F:axpy(a: I, x: &V) where {I: concepts.Real, V: Vec3}
 		end
@@ -149,7 +208,7 @@ testenv "Concrete concepts" do
 		B.methods.size = {&B, concepts.Integral} -> {concepts.Integral}
 		--concept 3
 		local struct C(concepts.Base) {}
-		C.methods.size = {&C, concepts.Float, concepts.Integral} -> {concepts.Integral}
+		C.methods.size = {&C, Float, concepts.Integral} -> {concepts.Integral}
 		--struct definition
 		local struct hassize{}
 		--implementation of the size method as an overloaded function
@@ -196,13 +255,13 @@ testenv "Concrete concepts" do
 		end
 
 		concept MySpecialVector
-			Self.traits.eltype = concepts.BLASNumber
+			Self.traits.eltype = BLASNumber
 		end
 
 		local struct MyConcreteVector(base.AbstractBase) {}
 		MyConcreteVector.traits.eltype = float
 
-		local MyVectorNumber = MyVector(concepts.Number)
+		local MyVectorNumber = MyVector(Number)
 
 		test [MyVectorNumber(MySpecialVector)]
 		test [MyVectorNumber(MyConcreteVector)]
@@ -211,8 +270,8 @@ testenv "Concrete concepts" do
 
 	testset "Entries" do
 		local struct Ent(concepts.Base) {
-			x: concepts.Float
-			y: concepts.Integer
+			x: Float
+			y: Integer
 		}
 		test [concepts.isconcept(Ent)]
 
@@ -232,12 +291,12 @@ testenv "Concrete concepts" do
 
 	testset "Full Example" do
 		local C = concepts.newconcept("C")
-		C:addentry("x", concepts.Float)
-		C:addentry("n", concepts.Integral)
-		C:addentry("a", concepts.RawString)
+		C:addentry("x", Float)
+		C:addentry("n", Integer)
+		C:addentry("a", String)
 		C:addtrait("super_important")
 		C:addmetamethod("__apply")
-		C:addmethod("scale", {&C, concepts.Float} -> {})
+		C:addmethod("scale", {&C, Float} -> {})
 		test [concepts.isconcept(C)]
 
 		local struct T1(base.AbstractBase) {
@@ -254,18 +313,18 @@ end
 
 testenv "Parametrized concepts" do
 	local Stack = concepts.parametrizedconcept("Stack")
-	Stack:adddefinition{[paramlist.new({concepts.Any}, {1}, {0})] = (
+	Stack:adddefinition{[paramlist.new({Any}, {1}, {0})] = (
 			function(C, T)
-			    C.methods.length = {&C} -> concepts.Integral
-			    C.methods.get = {&C, concepts.Integral} -> T
-			    C.methods.set = {&C, concepts.Integral , T} -> {}
+			    C.methods.length = {&C} -> Integer
+			    C.methods.get = {&C, Integer} -> T
+			    C.methods.set = {&C, Integer , T} -> {}
 			end
 		)
 	}
 	test [concepts.isparametrizedconcept(Stack) == true]
 
 	local Vector = concepts.parametrizedconcept("Vector")
-	Vector:adddefinition{[paramlist.new({concepts.Any}, {1}, {0})] = (
+	Vector:adddefinition{[paramlist.new({Any}, {1}, {0})] = (
 			function(C, T)
 			    local S = Stack(T)
 			    C:inherit(S)
@@ -275,7 +334,7 @@ testenv "Parametrized concepts" do
 		)
 	}
 
-	local Number = concepts.Number
+	local Number = Number
 	Vector:adddefinition{[paramlist.new({Number}, {1}, {0})] = (
 		function(C, T)
 			    local S = Stack(T)
@@ -288,26 +347,26 @@ testenv "Parametrized concepts" do
 		)
 	}
 
-	Vector:adddefinition{[paramlist.new({concepts.Float}, {1}, {0})] = (
+	Vector:adddefinition{[paramlist.new({Float}, {1}, {0})] = (
 			function(C, T)
 			    C.methods.norm = {&C} -> T
 			end
 		)
 	}
 	test [concepts.isparametrizedconcept(Vector) == true]
-	testset "Dispatch on Any" do
-		local S = Stack(concepts.Any)
-		local V = Vector(concepts.Any)
 
+	testset "Dispatch on Any" do
+		local S = Stack(Any)
+		local V = Vector(Any)
 		test [S(V) == true]
 		test [V(S) == false]
 		test [concepts.is_specialized_over(&V, &S)]
 	end
 
 	testset "Dispatch on Integers" do
-		local S = Stack(concepts.Integer)
-		local V1 = Vector(concepts.Any)
-		local V2 = Vector(concepts.Integer)
+		local S = Stack(Integer)
+		local V1 = Vector(Any)
+		local V2 = Vector(Integer)
 
 		test [S(V2) == true]
 		test [S(V1) == false]
@@ -318,10 +377,10 @@ testenv "Parametrized concepts" do
 	end
 
 	testset "Dispatch on Float" do
-		local S = Stack(concepts.Float)
-		local V1 = Vector(concepts.Any)
-		local V2 = Vector(concepts.Number)
-		local V3 = Vector(concepts.Float)
+		local S = Stack(Float)
+		local V1 = Vector(Any)
+		local V2 = Vector(Number)
+		local V3 = Vector(Float)
 
 		test [S(V1) == false]
 		test [S(V2) == false]
@@ -395,7 +454,7 @@ testenv "Parametrized concepts" do
 	end
 
 	testset "Multiple Arguments" do
-		local Any = concepts.Any
+		local Any = Any
 		local Matrix = concepts.parametrizedconcept("Matrix")
 		Matrix:adddefinition{[paramlist.new({Any, Any}, {1, 2}, {0, 0})] = (
 				function(C, T1, T2)
@@ -411,8 +470,8 @@ testenv "Parametrized concepts" do
 			)
 		}
 
-		local Generic = Matrix(concepts.Float, concepts.Integer)
-		local Special = Matrix(concepts.Float, concepts.Float)
+		local Generic = Matrix(Float, Integer)
+		local Special = Matrix(Float, Float)
 
 		test [Generic(Special) == true]
 		test [Special(Generic) == false]
@@ -422,17 +481,17 @@ testenv "Parametrized concepts" do
 		local SVec = concepts.parametrizedconcept("SVec")
 		SVec:adddefinition{[paramlist.new({}, {}, {})] = function(S)
 				S.traits.length = concepts.traittag
-				S.methods.length = &S -> concepts.Integral
+				S.methods.length = &S -> Integer
 			end
 		}
-		SVec:adddefinition{[paramlist.new({concepts.Number}, {1}, {0})] = (
+		SVec:adddefinition{[paramlist.new({Number}, {1}, {0})] = (
 				function(S, T)
 					S.methods.axpy = {&S, T, &S} -> {}
 				end
 			)
 		}
 		SVec:adddefinition{
-			[paramlist.new({concepts.Float, 3}, {1, 2}, {0, 0})] = (
+			[paramlist.new({Float, 3}, {1, 2}, {0, 0})] = (
 				function(S, T, N)
 					assert(N == 3)
 					S.traits.length = N
@@ -456,7 +515,7 @@ testenv "Parametrized concepts" do
 		I.methods.length = &I -> uint64
 		I.methods.axpy = {&I, int32, &I} -> {}
 
-		local SVecInt = SVec(concepts.Integer)
+		local SVecInt = SVec(Integer)
 		test [SVecInt(G) == false]
 		test [SVecInt(I) == true]
 
@@ -478,7 +537,7 @@ testenv "Parametrized concepts" do
 		E.methods.axpy = {&E, double, &E} -> {}
 		E.methods.cross = {&E, &E} -> {}
 
-		local SVec3D = SVec(concepts.Float, 3)
+		local SVec3D = SVec(Float, 3)
 		test [SVec3D(G) == false]
 		test [SVec3D(I) == false]
 		test [SVec3D(D) == true]

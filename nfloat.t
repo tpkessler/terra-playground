@@ -63,10 +63,6 @@ local binary_math = {
     "pow",
 }
 
-concepts.NFloat = terralib.types.newstruct("NFloat")
-concepts.Base(concepts.NFloat)
-concepts.NFloat.traits.precision = concepts.traittag
-
 --extract the exponent of an nfloat
 local exponent = macro(function(value)
     return quote
@@ -155,7 +151,12 @@ local FixedFloat = terralib.memoize(function(N)
 
     --type traits
     nfloat.traits.precision = N
+    nfloat.traits.isfloat = true
+    
+    
     local M = N / 64 --precision in quadwords
+
+
 
     --generate the 'head' and 'd' for 'ctype' representing zero
     --one, and eps
@@ -383,10 +384,6 @@ local FixedFloat = terralib.memoize(function(N)
 
     for k, v in pairs({from = from, tostr = to_str, pi = pi}) do
         nfloat.staticmethods[k] = v
-    end
-
-    for _, C in pairs({"NFloat", "Real", "Float", "Number"}) do
-        concepts[C].friends[nfloat] = true
     end
 
     return nfloat

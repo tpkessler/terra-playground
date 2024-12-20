@@ -154,7 +154,7 @@ for _,T in ipairs{float, double, int8, int16, int32, int64, uint8, uint16, uint3
     --add format for each type
     if concepts.Float(T) then
         numtostr.format[T] = global(rawstring, "%0.2f")
-    elseif concepts.Integral(T) then
+    elseif concepts.Integer(T) then
         numtostr.format[T] = global(rawstring, "%d")
     else
         error("Please specify a format for this type.")
