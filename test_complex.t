@@ -38,7 +38,7 @@ testenv "Complex numbers" do
 				end
 				test C.strcmp(&s1[0], "1.0+2.0im") == 0
 				test C.strcmp(&s2[0], "1.0-2.0im") == 0
-			elseif concepts.Integral(T) then
+			elseif concepts.Integer(T) then
 				terracode
 					format = "%d"
 					var s1 = tmath.numtostr(complex_t.from(1, 2))

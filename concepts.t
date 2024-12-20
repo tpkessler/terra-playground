@@ -59,6 +59,11 @@ local concept Float
     Self.traits.isfloat = true
 end
 
+local concept NFloat
+    Self:inherit(Float)
+    Self.traits.precision = traittag
+end
+
 local concept Integer
     Self.traits.isinteger = true
 end
@@ -73,20 +78,20 @@ local concept UnsignedInteger
     Self.traits.issigned = false
 end
 
-local Real = newconcept("Real", function(C, T)
-    return Integer(T) or Float(T)
-end)
+local Real = newconcept("Real")
+Real:addfriend(Integer)
+Real:addfriend(Float)
 
-local concept Complex(T) where {T : Real}
+local concept ParamComplex(T) where {T : Real}
     Self.traits.eltype = T
     Self.traits.iscomplex = true
 end
 
-local ComplexReal = Complex(Real)
+local Complex = ParamComplex(Real)
 
-local Number = newconcept("Number", function(C, T)
-    return Real(T) or ComplexReal(T)
-end)
+local Number = newconcept("Number")
+Number:addfriend(Real)
+Number:addfriend(Complex)
 
 local concept Primitive
     Self.traits.isprimitive = true
@@ -97,24 +102,24 @@ local concept BLASFloat
     Self.traits.isblasfloat = true
 end
 
-local BLASComplexFloat = Complex(BLASFloat)
+local BLASComplexFloat = ParamComplex(BLASFloat)
 
-local BLASNumber = newconcept("BLASNumber", function(C, T)
-    return BLASFloat(T) or BLASComplexFloat(T)
-end)
+local BLASNumber = newconcept("BLASNumber")
+BLASNumber:addfriend(BLASFloat)
+BLASNumber:addfriend(BLASComplexFloat)
 
 local concept Stack(T) where {T}
     Self.traits.eltype = traittag
-    Self.methods.get  = {&Self, Integral} -> T
-    Self.methods.set  = {&Self, Integral, T} -> {}
-    Self.methods.size = {&Self} -> Integral
+    Self.methods.get  = {&Self, Integer} -> T
+    Self.methods.set  = {&Self, Integer, T} -> {}
+    Self.methods.size = {&Self} -> Integer
 end
 
 local concept DStack(T) where {T}
     Self:inherit(Stack(T))
     Self.methods.push     = {&Self, T} -> {}
     Self.methods.pop      = {&Self} -> T
-    Self.methods.capacity = {&Self} -> Integral
+    Self.methods.capacity = {&Self} -> Integer
 end
 
 local concept Vector(T) where {T}
@@ -139,24 +144,24 @@ end
 
 local concept ContiguousVector(T) where {T}
     Self:inherit(Vector(T))
-    Self.methods.getbuffer = {&Self} -> {Integral, &T}
+    Self.methods.getbuffer = {&Self} -> {Integer, &T}
 end
 
 local concept BLASVector(T) where {T : BLASNumber}
     Self:inherit(ContiguousVector(T))
-    Self.methods.getblasinfo = {&Self} -> {Integral, BLASNumber, Integral}
+    Self.methods.getblasinfo = {&Self} -> {Integer, BLASNumber, Integer}
 end
 
 local concept Operator(T) where {T}
-    Self.methods.rows = {&Self} -> Integral
-    Self.methods.cols = {&Self} -> Integral
+    Self.methods.rows = {&Self} -> Integer
+    Self.methods.cols = {&Self} -> Integer
     Self.methods.apply = {&Self, Bool, T, &Vector(T), T, &Vector(T)} -> {}
 end
 
 local concept Matrix(T) where {T}
     Self:inherit(Operator(T))
-    Self.methods.set = {&Self, Integral, Integral, T} -> {}
-    Self.methods.get = {&Self, Integral, Integral} -> {T}
+    Self.methods.set = {&Self, Integer, Integer, T} -> {}
+    Self.methods.get = {&Self, Integer, Integer} -> {T}
 
     Self.methods.fill = {&Self, T} -> {}
     Self.methods.clear = {&Self} -> {}
@@ -171,7 +176,7 @@ end
 
 local concept BLASDenseMatrix(T) where {T : BLASNumber}
     Self:inherit(Matrix(T))
-    Self.methods.getblasdenseinfo = {&Self} -> {Integral, Integral, &BLASNumber, Integral}
+    Self.methods.getblasdenseinfo = {&Self} -> {Integer, Integer, &BLASNumber, Integer}
 end
 
 local concept Factorization(T) where {T}
@@ -197,11 +202,13 @@ return {
     Bool = Bool,
     String = String,
     Float = Float,
+    NFloat = NFloat,
     Integer = Integer,
     SignedInteger = SignedInteger,
     UnsignedInteger = UnsignedInteger,
     Real = Real,
     Complex = Complex,
+    ParamComplex = ParamComplex,
     Number = Number,
     BLASFloat = BLASFloat,
     BLASNumber = BLASNumber,

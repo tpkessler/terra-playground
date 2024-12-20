@@ -19,9 +19,21 @@ local function isconcept(C)
     return terralib.types.istype(C) and C:isstruct() and C.type == "concept"
 end
 
-local function isempty(tab)
-    return rawequal(next(tab), nil)
+table.size = function(t)
+    local count = 0
+    for k,v in pairs(t) do
+        count = count + 1
+    end
+    return count
 end
+
+local function isempty(tab)
+    return table.size(tab) == 0
+end
+
+--local function isempty(tab)
+--    return rawequal(next(tab), nil)
+--end
 
 local function iscollection(C)
     return (
@@ -31,6 +43,13 @@ local function iscollection(C)
         and isempty(C.traits)
         and #C.entries == 0
     )
+end
+
+local function printtable(t)
+    for k,v in pairs(t) do
+        print(tostring(k) .." = " ..tostring(v))
+    end
+    print()
 end
 
 local function isrefprimitive(T)
@@ -62,12 +81,43 @@ local function check(C, T, verbose)
     if C == T then
         return true
     end
+
+    --otherwise we need to check that all elements in collection T
+    --are also in the collection C
+    if iscollection(C) then
+        --if T is explicitly listed in the collection C then return early
+        if C.friends[T] then
+            return true
+        end
+        --otherwise, if T is not a collection, then we check if T
+        --is satisfied by any of the elements in C
+        if not iscollection(T) then
+            for friend_of_C, _ in pairs(C.friends) do
+                local ok, ret = pcall(function(S) return check(friend_of_C, T, verbose) end)
+                if ok then return true end
+            end
+            --not satisfied, so we abort
+            error("Concept or type " .. tostring(T) .. " is not a satisfied by any of the elements in " .. tostring(C) .. ".")
+        end
+    end
+
+    --T is a collection, so we check if all elements of T are elements of C
+    if iscollection(T) then
+        --check that all elements in collection T are in collection C
+        local res = fun.all(
+            function(S) return check(C, S, verbose) end,
+            T.friends
+        )
+        return res
+    end
+
     --check number of traits
-    if C.traits and #C.traits > 0 then
-        assert(#C.traits <= #T.traits,
+    if C.traits and not isempty(C.traits) then
+        local C_traits_size, T_traits_size = table.size(C.traits), table.size(T.traits)
+        assert(C_traits_size <= T_traits_size,
             (
                 "Need at least %d traits but only %d given."
-            ):format(#C.traits, #T.traits)
+            ):format(C_traits_size, T_traits_size)
         )
     end
     --traits comparison
@@ -280,6 +330,7 @@ local function Base(C, custom_check)
         "Only a struct can be turned into a concept"
     )
     C.traits = terralib.newlist()
+    C.friends = terralib.newlist()
     C.type = "concept"
     --add the custom check which evaluates a predicate returning true/false
     --or add default which is based on traits / methods / metamethods / entries

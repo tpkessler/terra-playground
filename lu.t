@@ -14,10 +14,10 @@ local lapack = require("lapack")
 local Matrix = concepts.Matrix
 local Vector = concepts.Vector
 local Number = concepts.Number
-local Integral = concepts.Integral
+local Integer = concepts.Integer
 
 terraform factorize(a : &M, p : &P, tol : T)
-    where {M : Matrix(Number), P : Vector(Integral), T : Number}
+    where {M : Matrix(Number), P : Vector(Integer), T : Number}
     var n = a:rows()
     for i = 0, n do
         p:set(i, i)
@@ -75,7 +75,7 @@ end
 local Bool = concepts.Bool
 local conj = mathfun.conj
 terraform solve(trans: B, a: &M, p: &P, x: &V)
-    where {B: Bool, M: Matrix(Number), P: Vector(Integral), V: Vector(Number)}
+    where {B: Bool, M: Matrix(Number), P: Vector(Integer), V: Vector(Number)}
     var n = a:rows()
     if not trans then
         for i = 0, n do
@@ -168,13 +168,13 @@ local LUFactory = terralib.memoize(function(M, P)
 
     local T = M.eltype
     local Vector = concepts.Vector(T)
-    local VectorIntegral = concepts.Vector(Integral)
+    local VectorInteger = concepts.Vector(Integer)
     local Matrix = concepts.Matrix(T)
     local Factorization = concepts.Factorization(T)
 
     assert(Matrix(M), "Type " .. tostring(M)
                               .. " does not implement the matrix interface")
-    assert(VectorIntegral(P), "Type " .. tostring(P)
+    assert(VectorInteger(P), "Type " .. tostring(P)
                               .. " does not implement the vector interface")
     
     local Ts = concepts.Complex(T) and T.traits.eltype or T

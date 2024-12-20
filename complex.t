@@ -16,12 +16,6 @@ local base = require("base")
 local concepts = require("concepts")
 local tmath = require("mathfuns")
 
-concepts.Complex = terralib.types.newstruct("Complex")
-concepts.Base(concepts.Complex)
-concepts.Complex.traits.iscomplex = true
-concepts.Complex.traits.eltype = concepts.traittag
-
-
 local complex = terralib.memoize(function(T)
 
     local struct complex{
@@ -154,15 +148,6 @@ local complex = terralib.memoize(function(T)
         function complex:unit()
             return constant(terralib.new(complex, {T:__newzero(), T:__newunit()}))
         end
-    end
-
-    if concepts.Number(T) then
-        concepts.Number.friends[complex] = true
-        concepts.Complex.friends[complex] = true
-    end
-
-    if concepts.Float(T) and concepts.BLASNumber(T) then
-        concepts.BLASNumber.friends[complex] = true
     end
 
     return complex

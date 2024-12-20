@@ -9,9 +9,10 @@ local template = require("template")
 local err = require("assert")
 
 local Bool = concepts.Bool
-local Integral = concepts.Integral
+local Integer = concepts.Integer
 local Number = concepts.Number
-
+local Real = concepts.Real
+local Complex = concepts.Complex
 
 local function MatrixBase(M)
     local T = M.eltype
@@ -23,7 +24,7 @@ local function MatrixBase(M)
 
     local function get(A, atrans, i, j)
         if atrans then
-            if concepts.Complex(T) then
+            if Complex(T) then
                 return quote var x = [A]:get([j], [i]) in x:conj() end
             else
                 return `[A]:get([j], [i])
