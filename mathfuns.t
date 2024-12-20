@@ -126,7 +126,7 @@ end
 terraform tmath.isapprox(a: T, b: T, atol: S)
     where {T: concepts.Any, S: concepts.Any}
     return tmath.dist(a, b) < atol
- end
+end
 
 for _, name in pairs({"real", "imag", "conj"}) do
     tmath[name] = terralib.overloadedfunction(name)

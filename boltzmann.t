@@ -200,9 +200,9 @@ local Vector = concepts.Vector
 local Number = concepts.Number
 local terraform local_maxwellian(basis, coeff: &V, quad)
     where {V: Vector(Number)}
-    var m1: V.eltype = 0
-    var m2 = [svector.StaticVector(V.eltype, VDIM)].zeros()
-    var m3: V.eltype = 0
+    var m1: V.traits.eltype = 0
+    var m2 = [svector.StaticVector(V.traits.eltype, VDIM)].zeros()
+    var m3: V.traits.eltype = 0
 
     var it = quad:getiterator()
     var xref, wref = it:getvalue()
@@ -296,8 +296,8 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         where {V1: Vector(concepts.Any), V2: Vector(concepts.Any)}
         (
             @src >> range.transform([
-                terra(x: V2.eltype)
-                    return [V1.eltype](x)
+                terra(x: V2.traits.eltype)
+                    return [V1.traits.eltype](x)
                 end
             ])
         ):collect(dest)
