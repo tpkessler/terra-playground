@@ -30,7 +30,7 @@ local SArray4i = sarray.StaticArray(int, {2, 2, 2, 3}, {perm={1,2,3,4}} )
 
 local SMatrix23ci = sarray.StaticMatrix(cfloat128, {2, 3}, {perm={1,2}} )
 
-im = complex.unit
+local im = cfloat128:unit()
 
 terra main()
     var v = SVector.from({1, 2, 3})

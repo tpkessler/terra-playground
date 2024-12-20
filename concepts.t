@@ -162,6 +162,12 @@ local concept BLASVector(T) where {T : BLASNumber}
     Self.methods.getblasinfo = {&Self} -> {Integer, BLASNumber, Integer}
 end
 
+local concept MatrixStack(T) where {T}
+    Self.methods.size = {&Self, Integer} -> Integer
+    Self.methods.get = {&Self, Integer, Integer} -> {T}
+    Self.methods.set = {&Self, Integer, Integer, T} -> {}
+end
+
 local concept Operator(T) where {T}
     Self.methods.rows = {&Self} -> Integer
     Self.methods.cols = {&Self} -> Integer
@@ -169,10 +175,10 @@ local concept Operator(T) where {T}
 end
 
 local concept Matrix(T) where {T}
-    local S = Stack2D(T)
+    local S = MatrixStack(T)
+    Self:inherit(S)
     Self:inherit(Operator(T))
-    Self.methods.set = {&Self, Integer, Integer, T} -> {}
-    Self.methods.get = {&Self, Integer, Integer} -> {T}
+
 
     Self.methods.fill = {&Self, T} -> {}
     Self.methods.clear = {&Self} -> {}
@@ -182,12 +188,12 @@ local concept Matrix(T) where {T}
     Self.methods.scal = {&Self, T} -> {}
     Self.methods.axpy = {&Self, T, Bool, &Self} -> {}
     Self.methods.dot = {&Self, Bool, &Self} -> Number
-    Self.methods.mul = {&Self, T, T, Bool, &Self, Bool, &Self} -> {}
+    --Self.methods.mul = {&Self, T, T, Bool, &Self, Bool, &Self} -> {}
 end
 
 local concept BLASDenseMatrix(T) where {T : BLASNumber}
     Self:inherit(Matrix(T))
-    Self.methods.getblasdenseinfo = {&Self} -> {Integer, Integer, &BLASNumber, Integer}
+    Self.methods.getblasdenseinfo = {&Self} -> {Integer, Integer, &T, Integer}
 end
 
 local concept Transpose(M) where {M : Matrix(Any)}
@@ -228,12 +234,14 @@ return {
     Number = Number,
     BLASFloat = BLASFloat,
     BLASNumber = BLASNumber,
+    Iterator = Iterator,
+    Range = Range,
     Stack = Stack,
     DStack = DStack,
     Vector = Vector,
     ContiguousVector = ContiguousVector,
     BLASVector = BLASVector,
-    Stack2D = Stack2D,
+    MatrixStack = MatrixStack,
     Operator = Operator,
     Matrix = Matrix,
     Transpose = Transpose,
