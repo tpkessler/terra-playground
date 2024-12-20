@@ -807,8 +807,8 @@ gauss.jacobi = terralib.overloadedfunction("jacobi",
 --affine scaling of quadrature rule
 local terra hermitescaling(x : &dvec, w : &dvec, o : double, s : double)
     for i = 0, x:size() do
-        x(i) = (x(i) - o) / s
-        w(i) = w(i) * s 
+        x(i) = s * x(i) + o
+        w(i) = s * w(i) 
     end
 end
 

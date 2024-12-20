@@ -283,14 +283,22 @@ testenv "gauss hermite quadrature" do
         testset(N) "scaled hermite" do
             terracode
                 var x, w = gauss.hermite(&alloc, N, {origin=1.0, scaling=0.5})
-                var s = 0.0
+                var s0 = 0.0
                 for t in rn.zip(&x, &w) do
                     var xx, ww = t
-                    s = s + ww
+                    s0 = s0 + ww
+                end
+                var s2 = 0.0
+                for t in rn.zip(&x, &w) do
+                    var xx, ww = t
+                    s2 = s2 + ww * xx * xx
                 end
             end
             test x:size() == N and w:size() == N
-            test tmath.isapprox(s, 0.5 * tmath.sqrt(tmath.pi), 1e-12)
+            test tmath.isapprox(s0, tmath.sqrt(tmath.pi) / 2, 1e-12)
+            if N > 1 then
+                test tmath.isapprox(s2, 9 * tmath.sqrt(tmath.pi) / 16, 1e-12)
+            end
         end
 
     end --N=1, 50, 3
