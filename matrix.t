@@ -7,7 +7,7 @@ import "terraform"
 local concepts = require("concepts")
 local err = require("assert")
 
-local Integral = concepts.Integral
+local Integer = concepts.Integer
 local Number = concepts.Number
 local Stack = concepts.Stack
 local Matrix = concepts.Matrix

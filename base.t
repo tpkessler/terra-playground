@@ -34,7 +34,6 @@ local AbstractBase = Base:new("AbstractBase",
 		assert(T:isstruct())
 		local Self = terralib.types.newstruct("Self" .. tostring(T))
 		concepts.Base(Self)
-		Self.friends[T] = true
 		for key, val in pairs({staticmethods = {}, templates = {}, varargtemplates = {}, Self = Self, traits = {}}) do
 			T[key] = val
 		end

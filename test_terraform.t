@@ -12,9 +12,10 @@ local alloc = require('alloc')
 local dvector = require("dvector")
 local size_t = uint64
 
-local Real = concepts.Real
+local Any = concepts.Any
 local Integer = concepts.Integer
 local Float = concepts.Float
+local Real = concepts.Real
 local Number = concepts.Number
 
 import "terratest/terratest"
@@ -471,9 +472,9 @@ end
 testenv "defining regular concepts" do
 
     concept MyStack
-        Self.methods.length = {&Self} -> concepts.Integral
-        Self.methods.get = {&Self, concepts.Integral} -> Any
-        Self.methods.set = {&Self, concepts.Integral , Any} -> {}
+        Self.methods.length = {&Self} -> Integer
+        Self.methods.get = {&Self, Integer} -> Any
+        Self.methods.set = {&Self, Integer , Any} -> {}
     end
 
     test [concepts.isconcept(MyStack) == true]
@@ -531,9 +532,9 @@ end
 testenv "defining parametrized concepts" do
 
     concept MyStack(T) where {T}
-        Self.methods.length = {&Self} -> concepts.Integral
-        Self.methods.get = {&Self, concepts.Integral} -> T
-        Self.methods.set = {&Self, concepts.Integral , T} -> {}
+        Self.methods.length = {&Self} -> Integer
+        Self.methods.get = {&Self, Integer} -> T
+        Self.methods.set = {&Self, Integer , T} -> {}
     end
 
     test [concepts.isparametrizedconcept(MyStack) == true]
@@ -570,9 +571,9 @@ testenv "defining parametrized concepts" do
     end
 
     testset "Dispatch on Integers" do
-        local S = MyStack(concepts.Integer)
+        local S = MyStack(Integer)
         local V1 = Vector(concepts.Any)
-        local V2 = Vector(concepts.Integer)
+        local V2 = Vector(Integer)
 
         test [S(V2) == true]
         test [S(V1) == false]
@@ -583,10 +584,10 @@ testenv "defining parametrized concepts" do
     end
 
     testset "Dispatch on Float" do
-        local S = MyStack(concepts.Float)
-        local V1 = Vector(concepts.Any)
-        local V2 = Vector(concepts.Number)
-        local V3 = Vector(concepts.Float)
+        local S = MyStack(Float)
+        local V1 = Vector(Any)
+        local V2 = Vector(Number)
+        local V3 = Vector(Float)
 
         test [S(V1) == false]
         test [S(V2) == false]
@@ -661,7 +662,7 @@ testenv "defining parametrized concepts" do
             Self.methods.special_sum = {&Self} -> {}
         end
 
-		local Generic = Matrix(concepts.Float, concepts.Integer)
+		local Generic = Matrix(concepts.Float, Integer)
 		local Special = Matrix(concepts.Float, concepts.Float)
 
 		test [Generic(Special) == true]
@@ -673,7 +674,7 @@ testenv "defining parametrized concepts" do
 
         concept SVec()
             Self.traits.length = concepts.traittag
-			Self.methods.length = &Self -> concepts.Integral
+			Self.methods.length = &Self -> Integer
         end
 
         concept SVec(T) where {T : concepts.Number}
@@ -706,7 +707,7 @@ testenv "defining parametrized concepts" do
 		I.methods.length = &I -> uint64
 		I.methods.axpy = {&I, int32, &I} -> {}
 
-		local SVecInt = SVec(concepts.Integer)
+		local SVecInt = SVec(Integer)
 		test [SVecInt(G) == false]
 		test [SVecInt(I) == true]
 
