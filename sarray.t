@@ -171,7 +171,7 @@ local SArrayVectorBase = function(Array)
         vecblas.BLASVectorBase(Array)
     end
 
-    if concepts.Primitive(T) then
+    if concepts.Real(T) and concepts.Primitive(T) then
         Array.staticmethods.all = terra(value : T)
             var A = Array.new()
             A.simd = value
@@ -232,14 +232,6 @@ local SArrayMatrixBase = function(SMatrix)
     
     assert(SMatrix.traits.ndims == 2) --these methods are only for matrices
     local T = SMatrix.traits.eltype
-
-    terra SMatrix:rows()
-        return [ SMatrix.traits.size[1] ]
-    end
-
-    terra SMatrix:cols()
-        return [ SMatrix.traits.size[2] ]
-    end
 
     if concepts.BLASNumber(T) then
         terra SMatrix:getblasdenseinfo()

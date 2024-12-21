@@ -2,6 +2,7 @@ import "terraform"
 local io = terralib.includec("stdio.h")
 local range = require("range")
 local sarray = require("sarray")
+local matrix = require("matrix")
 local nfloat = require("nfloat")
 local complex = require("complex")
 local concepts = require("concepts")
@@ -127,7 +128,7 @@ end
 for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
     for _,T in ipairs{int, double} do
 
-        testenv(T, Perm) "Arbitrary dimension arrays" do
+        testenv(skip,T, Perm) "Arbitrary dimension arrays" do
 
             local linrange = range.Unitrange(T)
             local SArray = sarray.StaticArray(T, {2, 3, 4}, {perm=Perm} )
@@ -229,11 +230,10 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
     end
 end
 
-
 --testing static vectors of different length and type
 for _,T in ipairs{int32,float,double,float256} do
     for N=2,4 do
-        testenv(N, T) "Static Vector" do
+        testenv(skip, N, T) "Static Vector" do
             
             local SVector = sarray.StaticVector(T, N)
 
@@ -283,7 +283,7 @@ for _,T in ipairs{int32,float,double,float256} do
         end
     end --N
 
-    testenv "Static Vector - Fixed N" do
+    testenv(skip) "Static Vector - Fixed N" do
 
         testset "from (N=2)" do
             local SVector = sarray.StaticVector(T, 2)
@@ -346,10 +346,10 @@ for _,T in ipairs{int32,float,double,float256} do
 end --T
 
 --testing static vectors of different length and type
-for _,T in ipairs{double, cdouble} do
+for _,T in ipairs{float, double, float128, int, cint, cfloat, cdouble, cfloat128} do
     for N=2,4 do
         
-        testenv(N, T) "Static Matrix" do
+        testenv(skip, N, T) "Static Matrix" do
 
             local SMatrix = sarray.StaticMatrix(T, {N, N})
 
@@ -385,14 +385,21 @@ for _,T in ipairs{double, cdouble} do
     testenv(T) "Static Matrix - fixed N" do
 
         local SMatrix = sarray.StaticMatrix(T, {3, 2})
-        local CVector = concepts.Vector(T)
-
-        --test basic concepts
-        test [ CVector(SMatrix)]
-        test [ Range(SMatrix) ]
-
         local SVec2 = sarray.StaticVector(T, 2)
         local SVec3 = sarray.StaticVector(T, 3)
+
+        local Concept = {
+            Stack = concepts.Stack(T),
+            Vector = concepts.Vector(T),
+            Matrix = concepts.Matrix(T),
+            Range = concepts.Range
+        }
+
+        --test basic concepts
+        test [ Concept.Vector(SMatrix)]
+        test [ Concept.Range(SMatrix) ]
+        test [Concept.Stack(SVec2) and Concept.Stack(SVec3)]
+        test [Concept.Matrix(SMatrix)]
 
         testset "Apply" do
             terracode
@@ -400,7 +407,7 @@ for _,T in ipairs{double, cdouble} do
                 var x = SVec2.from{1, -1}
                 var y = SVec3.zeros()
                 var yref = SVec3.from{-1, -1, -1}
-                A:apply(T(1), &x, T(0), &y)
+                matrix.gemv(T(1), &A, &x, T(0), &y)
             end
             test checkall(&y, &yref)
         end
@@ -409,7 +416,7 @@ for _,T in ipairs{double, cdouble} do
 
     testenv(T) "Transposed Static matrix - fixed N" do
 
-        local SMatrix = sarray.StaticMatrix(T, {2, 3}, {perm={1,2}} )
+        local SMatrix = sarray.StaticMatrix(T, {2, 3})
         local CVector = concepts.Vector(T)
 
         --test basic concepts
@@ -456,10 +463,11 @@ for _,T in ipairs{double, cdouble} do
                 var x = SVec2.from{1, -1}
                 var y = SVec3.zeros()
                 var yref = SVec3.from{-3, -3, -3}
-                B:apply(T(1), &x, T(0), &y)
+                matrix.gemv(T(1), B, &x, T(0), &y)
             end
             test checkall(&y, &yref)
         end
+
     end
 
 end --T

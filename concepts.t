@@ -169,29 +169,26 @@ local concept MatrixStack(T) where {T}
 end
 
 local concept Operator(T) where {T}
-    Self.methods.rows = {&Self} -> Integer
-    Self.methods.cols = {&Self} -> Integer
+    --Self.methods.rows = {&Self} -> Integer
+    --Self.methods.cols = {&Self} -> Integer
     Self.methods.apply = {&Self, Bool, T, &Vector(T), T, &Vector(T)} -> {}
 end
 
 local concept Matrix(T) where {T}
     local S = MatrixStack(T)
     Self:inherit(S)
-    Self:inherit(Operator(T))
-
-
-    Self.methods.fill = {&Self, T} -> {}
-    Self.methods.clear = {&Self} -> {}
-    Self.methods.copy = {&Self, Bool, &Self} -> {}
-    Self.methods.swap = {&Self, Bool, &Self} -> {}
-
-    Self.methods.scal = {&Self, T} -> {}
-    Self.methods.axpy = {&Self, T, Bool, &Self} -> {}
-    Self.methods.dot = {&Self, Bool, &Self} -> Number
+    --Self:inherit(Operator(T))
+    --Self.methods.fill = {&Self, T} -> {}
+    --Self.methods.clear = {&Self} -> {}
+    --Self.methods.copy = {&Self, Bool, &Self} -> {}
+    --Self.methods.swap = {&Self, Bool, &Self} -> {}
+    --Self.methods.scal = {&Self, T} -> {}
+   -- Self.methods.axpy = {&Self, T, Bool, &Self} -> {}
+    --Self.methods.dot = {&Self, Bool, &Self} -> Number
     --Self.methods.mul = {&Self, T, T, Bool, &Self, Bool, &Self} -> {}
 end
 
-local concept BLASDenseMatrix(T) where {T : BLASNumber}
+local concept BLASMatrix(T) where {T : BLASNumber}
     Self:inherit(Matrix(T))
     Self.methods.getblasdenseinfo = {&Self} -> {Integer, Integer, &T, Integer}
 end
@@ -245,6 +242,6 @@ return {
     Operator = Operator,
     Matrix = Matrix,
     Transpose = Transpose,
-    BLASDenseMatrix = BLASDenseMatrix,
+    BLASMatrix = BLASMatrix,
     Factorization = Factorization
 }
