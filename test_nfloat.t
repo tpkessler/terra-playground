@@ -78,6 +78,17 @@ for _, N in pairs(suffix) do
             end
             test a / b == c
         end
+        
+        testset "truncate to double" do
+            terracode 
+                var u = T(0)
+                var v = T(1)
+                var w = T(2.934592)
+            end
+            test u:truncatetodouble() == 0.0
+            test v:truncatetodouble() == 1.0
+            test w:truncatetodouble() == 2.934592
+        end
 
         testset "printing" do
             --some printing tests

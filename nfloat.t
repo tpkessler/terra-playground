@@ -323,10 +323,14 @@ local FixedFloat = terralib.memoize(function(N)
     end
 
     terra nfloat:truncatetodouble()
-        var m = significant_part_mantissa(self)
-        var e = exponent(self)
-        var s = sign(self)
-        return s * shiftandscale(m, e)
+        if @self == 0 then
+            return 0.0
+        else
+            var e = exponent(self)
+            var m = significant_part_mantissa(self)
+            var s = sign(self)
+            return s * shiftandscale(m, e)
+        end
     end
 
     --for now we format up to double precision.
