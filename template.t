@@ -372,7 +372,11 @@ local functiontemplate = function(name, methods)
 				return `func([newargs],{[varargs]})
 			end
 		end
-		error("No implemementation found that satisfies the concepts check.", 2)
+		error(
+			(
+				"No implemementation for function %s with arguments %s"
+			):format(name, tostring(types))
+		)
     end)
 
     local t = constant(T)

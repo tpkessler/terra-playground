@@ -18,41 +18,12 @@ local gauss = require("gauss")
 local halfhermite = require("halfrangehermite")
 local lambda = require("lambda")
 local tmath = require("mathfuns")
+local momfit = require("momfit")
 local sparse = require("sparse")
 local stack = require("stack")
 local qr = require("qr")
-local thread = setmetatable(
-    {C = terralib.includec("pthread.h")},
-    {__index = function(self, key)
-                   return rawget(self.C, key) or self.C["pthread_" .. key]
-                end
-    }
-)
-terralib.linklibrary("libpthread.so.0")
-
-local gsl = terralib.includec("gsl/gsl_integration.h")
-terralib.linklibrary("libgsl.so")
 
 local VDIM = 3
-
-local dvecDouble = dvector.DynamicVector(double)
-local Alloc = alloc.Allocator
-local struct hermite_t {}
-gauss.QuadruleBase(hermite_t, dvecDouble, dvecDouble)
-local terra hermite(alloc: Alloc, n: int64): hermite_t
-    var t = gsl.gsl_integration_fixed_hermite
-    var work = gsl.gsl_integration_fixed_alloc(t, n, 0, 0.5, 0.0, 0.0)
-    defer gsl.gsl_integration_fixed_free(work)
-    var w = gsl.gsl_integration_fixed_weights(work)
-    var x = gsl.gsl_integration_fixed_nodes(work)
-    var wq = dvecDouble.new(alloc, n)
-    var xq = dvecDouble.new(alloc, n)
-    for i = 0, n do
-        wq(i) = w[i] / tmath.sqrt(2.0 * math.pi)
-        xq(i) = x[i]
-    end
-    return xq, wq
-end
 
 local pow
 terraform pow(n: I, x: T) where {I: concepts.Integral, T: concepts.Real}
@@ -87,6 +58,17 @@ local iMat = dmatrix.DynamicMatrix(int32)
 local struct MonomialBasis(base.AbstractBase){
     p: iMat
 }
+
+terra MonomialBasis:maxpartialdegree()
+    var maxdeg = -1
+    var p = self.p
+    for i = 0, p:rows() do
+        for j = 0, p:cols() do
+            maxdeg = tmath.max(maxdeg, p(i, j))
+        end
+    end
+    return maxdeg
+end
 
 MonomialBasis.staticmethods.new = terra(p: iMat)
     var basis: MonomialBasis
@@ -128,9 +110,80 @@ do
     range.Base(MonomialBasis, iterator, Func)
 end
 
+local TensorBasis = terralib.memoize(function(T)
+    local I = int32
+    local iMat = dmatrix.DynamicMatrix(I)
+    local CSR = sparse.CSRMatrix(T, I)
+    local Stack = stack.DynamicStack(T)
+    local struct tensor_basis {
+        space: CSR
+        transposed: bool
+        velocity: MonomialBasis
+        cast: Stack
+    }
 
-local l2inner
-terraform l2inner(f, g, q)
+    tensor_basis.metamethods.__typename = function(self)
+        return ("TensorBasis(%s)"):format(tostring(T))
+    end
+
+    base.AbstractBase(tensor_basis)
+
+    terra tensor_basis:nspacedof()
+        return terralib.select(
+                    self.transposed, self.space:rows(), self.space:cols()
+                )
+    end
+
+    terra tensor_basis:nvelocitydof()
+        return self.velocity.p:rows()
+    end
+
+    terra tensor_basis:ndof()
+        return self:nspacedof() * self:nvelocitydof()
+    end
+
+    tensor_basis.staticmethods.new = terra(b: CSR, transposed: bool, p: iMat)
+        return tensor_basis {b, transposed, MonomialBasis.new(p)}
+    end
+
+    terraform tensor_basis.staticmethods.frombuffer(
+        alloc,
+        transposed: bool,
+        nq: I1,
+        nx: I2,
+        nnz: I3,
+        data: &S,
+        col: &int32,
+        rowptr: &I,
+        nv: I4,
+        ptr: &I)
+        where {
+                S: concepts.Number,
+                I1: concepts.Integral,
+                I2: concepts.Integral,
+                I3: concepts.Integral,
+                I4: concepts.Integral
+              }
+        var cast = Stack.new(alloc, nnz)
+        for i = 0, nnz do
+            -- Explicit cast as possibly S ~= T
+            cast:push(data[i])
+        end
+        var space = CSR.frombuffer(nq, nx, nnz, &cast(0), col, rowptr)
+        var tb: tensor_basis
+        tb.space = space
+        tb.transposed = transposed
+        tb.cast = cast
+
+        tb.velocity = MonomialBasis.new(iMat.frombuffer(nv, VDIM, ptr, VDIM))
+
+        return tb
+    end
+
+    return tensor_basis
+end)
+
+local terraform l2inner(f, g, q)
     var it = q:getiterator()
     var xw = it:getvalue()
     var x, w = xw
@@ -145,30 +198,28 @@ end
 
 local Vector = concepts.Vector
 local Number = concepts.Number
-local local_maxwellian
-terraform local_maxwellian(basis, coeff: &V, quad)
-    where {I: concepts.Integral, V: Vector(Number)}
-    var m1: coeff.type.type.eltype = 0
-    var m2 = [svector.StaticVector(m1.type, VDIM)].zeros()
-    var m3: m1.type = 0
+local terraform local_maxwellian(basis, coeff: &V, quad)
+    where {V: Vector(Number)}
+    var m1: V.traits.eltype = 0
+    var m2 = [svector.StaticVector(V.traits.eltype, VDIM)].zeros()
+    var m3: V.traits.eltype = 0
 
     var it = quad:getiterator()
-    var xw = it:getvalue()
-    var x, w = xw
+    var xref, wref = it:getvalue()
     for bc in range.zip(basis, coeff) do
-        var cnst = lambda.new([terra(v: &w.type) return 1.0 end])
+        var cnst = lambda.new([terra(v: &wref.type) return 1.0 end])
         m1 = m1 + l2inner(bc._0, cnst, quad) * bc._1
         escape
             for i = 0, VDIM - 1 do
-                local vi = `lambda.new([terra(v: &w.type) return v[i] end])
+                local vi = `lambda.new([terra(v: &wref.type) return v[i] end])
                 emit quote
                     m2(i) = m2(i) + l2inner(bc._0, [vi], quad) * bc._1
                 end
             end
         end
         var vsqr = lambda.new([
-                        terra(v: &w.type)
-                            var vsqr = [v.type.type](0)
+                        terra(v: &wref.type)
+                            var vsqr = [wref.type](0)
                             escape
                                 for j = 0, VDIM - 1 do
                                     emit quote vsqr = vsqr + v[j] * v[j] end
@@ -193,176 +244,6 @@ terraform local_maxwellian(basis, coeff: &V, quad)
     return rho, u, theta
 end
 
-local RecDiff = concepts.newconcept("RecDiff")
-RecDiff.traits.ninit = concepts.traittag
-RecDiff.traits.depth = concepts.traittag
-RecDiff.traits.eltype = concepts.traittag
-local Stack = concepts.Stack(Number)
-RecDiff.methods.getcoeff = {&RecDiff, concepts.Integral, &Stack} -> {}
-RecDiff.methods.getinit = {&RecDiff, &Stack} -> {}
-
-local Integer = concepts.Integer
-local olver
-terraform olver(alloc, rec: &R, yn: &V)
-    where {R: RecDiff, S: Stack, V: Vector(Number)}
-    var y0 = [svector.StaticVector(R.traits.eltype, R.traits.ninit)].zeros()
-    var nmax = yn:size()
-    var n0 = y0:size()
-    var dim: int64 = nmax - n0
-    var sys = [dmatrix.DynamicMatrix(R.traits.eltype)].zeros(alloc, dim, dim)
-    var rhs = [dvector.DynamicVector(R.traits.eltype)].zeros(alloc, dim)
-    var hrf = [dvector.DynamicVector(R.traits.eltype)].zeros(alloc, dim)
-    var y = [svector.StaticVector(R.traits.eltype, R.traits.depth + 1)].zeros()
-    for i = 0, dim do
-        var n = n0 + i
-        rec:getcoeff(n, &y)
-        for offset = 0, [R.traits.depth] do
-            var j = i + offset - [R.traits.depth] / 2
-            if j >= 0 and j < dim then
-                sys(i, j) = y:get(offset)
-            end
-        end
-        rhs:set(i, y:get([R.traits.depth]))
-    end
-    rec:getinit(&y0)
-    for i = 0, n0 do
-        rec:getcoeff(n0 + i, &y)
-        var r = rhs:get(i)
-        for j = i, n0 do
-            r = r - y:get(j - i) * y0:get(j)
-        end
-        rhs:set(i, r)
-    end
-    var qr = [qr.QRFactory(sys.type, rhs.type)].new(&sys, &hrf)
-    qr:factorize()
-    qr:solve(false, &rhs)
-    for i = 0, n0 do
-        yn:set(i, y0:get(i))
-    end
-    for i = n0, nmax do
-        yn:set(i, rhs:get(i - n0))
-    end
-end
-
-local struct Interval(concepts.Base){
-    left: concepts.Number
-    right: concepts.Number
-}
-Interval.traits.eltype = concepts.traittag
-
-local clenshawcurtis
-terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
-    where {N: concepts.Integral, R: RecDiff, S: Stack, I: Interval}
-    var x = [dvector.DynamicVector(I.traits.eltype)].new(alloc, n)
-    ([range.Unitrange(int)].new(0, n)
-        >> range.transform(
-            [terra(i: int, n: int): I.traits.eltype
-                return tmath.cos(tmath.pi * (2 * i + 1) / (2 * n))
-            end],
-            {n = n})
-    ):collect(&x)
-
-    var nmax = 20
-    if n > 10 then
-        nmax = 2 * n
-    end
-    var mom = [dvector.DynamicVector(R.traits.eltype)].zeros(alloc, nmax)
-    olver(alloc, rec, &mom)
-
-    var w = [dvector.DynamicVector(R.traits.eltype)].zeros(alloc, n)
-    (mom >> range.take(n)):collect(&w)
-    var sys = [dmatrix.DynamicMatrix(R.traits.eltype)].zeros(alloc, n, n)
-    for j = 0, n do
-        sys(0, j) = 1
-        sys(1, j) = x(j)
-    end
-    for i = 2, n do
-        for j = 0, n do
-            sys(i, j) = 2 * x(j) * sys(i - 1, j) - sys(i - 2, j)
-        end
-    end
-    var hrf = [dvector.DynamicVector(R.traits.eltype)].zeros(alloc, n)
-    var qr = [qr.QRFactory(sys.type, w.type)].new(&sys, &hrf)
-    qr:factorize()
-    qr:solve(false, &w)
-
-    var xq = [dvector.DynamicVector(I.traits.eltype)].new(alloc, n)
-    (x >> range.transform([
-            terra(
-                x: I.traits.eltype,
-                a: I.traits.eltype,
-                b: I.traits.eltype
-                )
-                return (b + a) / 2 + (b - a) / 2 * x
-            end],
-            {a = dom.left, b = dom.right})
-    ):collect(&xq)
-
-    var wq = [dvector.DynamicVector(I.traits.eltype)].new(alloc, n)
-    (w >> range.transform([
-            terra(
-                w: I.traits.eltype,
-                a: I.traits.eltype,
-                b: I.traits.eltype
-                )
-                return (b - a) / 2 * w
-            end],
-            {a = dom.left, b = dom.right})
-    ):collect(&wq)
-
-    return xq, wq
-end
-
-local function IntervalFactory(T)
-    local struct impl{
-        left: T
-        right: T
-    }
-    impl.metamethods.__typename = function(self)
-        return ("Interval(%s)"):format(tostring(T))
-    end
-    base.AbstractBase(impl)
-    impl.traits.eltype = T
-    impl.staticmethods.new = terra(left: T, right: T)
-        return impl {left, right}
-    end
-    return impl
-end
-
-local ExpMom = terralib.memoize(function(T)
-    local struct impl(base.AbstractBase) {
-        a: T
-    }
-    function impl.metamethods.__typename(self)
-        return ("ExpMom(%s)"):format(tostring(T))
-    end
-    base.AbstractBase(impl)
-    impl.traits.depth = 5
-    impl.traits.ninit = 2
-    impl.traits.eltype = T
-    terraform impl:getcoeff(n: I, y: &S) where {I: concepts.Integral, S: Stack}
-        var a = self.a
-        y:set(0, -a * (n + 1))
-        y:set(1, -2 * a * (n + 1))
-        y:set(2, -2 * (a + n * n - 1))
-        y:set(3, 2 * a * (n - 1))
-        y:set(4, a * (n - 1))
-        y:set(5, 2 * (tmath.exp(-4 * a) + terralib.select(n % 2 == 0, 1, -1)))
-    end
-    terraform impl:getinit(y: &S) where {S: Stack}
-        var a = self.a
-        var arg = 2 * tmath.sqrt(a)
-        var y0 = tmath.sqrt(tmath.pi) * tmath.erf(arg) / arg 
-        var y1 = -y0 - (tmath.exp(-4 * a) - 1) / (2 * a)
-        y:set(0, y0)
-        y:set(1, y1)
-    end
-    impl.staticmethods.new = terra(a: T)
-        return impl {a}
-    end
-    return impl
-end)
-
 local HalfSpaceQuadrature = terralib.memoize(function(T)
     local SVec = svector.StaticVector(T, VDIM)
     local struct impl {
@@ -373,8 +254,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
     end
     base.AbstractBase(impl)
 
-    local new
-    terraform new(narg ...)
+    local terraform new(narg ...)
         var n: SVec
         escape
             for i = 0, VDIM - 1 do
@@ -408,30 +288,27 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         end
     end
 
-    local ExpMomT = ExpMom(T)
-    local IntT = IntervalFactory(T)
+    local ExpMomT = momfit.ExpMom(T)
+    local IntT = momfit.IntervalFactory(T)
     local VecT = dvector.DynamicVector(T)
 
-    local castvector
-    terraform castvector(dest: &V1, src: &V2)
+    local terraform castvector(dest: &V1, src: &V2)
         where {V1: Vector(concepts.Any), V2: Vector(concepts.Any)}
         (
             @src >> range.transform([
-                terra(x: V2.eltype)
-                    return [V1.eltype](x)
+                terra(x: V2.traits.eltype)
+                    return [V1.traits.eltype](x)
                 end
             ])
         ):collect(dest)
     end
 
-    local normalize
-    terraform normalize(v: &V) where {V: Vector(concepts.Real)}
+    local terraform normalize(v: &V) where {V: Vector(concepts.Real)}
         var nrmsqr = v:dot(v) + 1e-15
         v:scal(1 / tmath.sqrt(nrmsqr))
     end
 
-    local householder
-    terraform householder(v: &V1, h: &V2)
+    local terraform householder(v: &V1, h: &V2)
         where {V1: Vector(Number), V2: Vector(Number)}
         var dot = v:dot(h)
         for i = 0, v:size() do
@@ -439,9 +316,10 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         end
     end
 
-    local io = terralib.includec("stdio.h")
+    local Integral = concepts.Integral
+    local Stack = concepts.Stack
     terraform impl:maxwellian(alloc, n: N, rho: T, u: &S, theta: T)
-        where {N: concepts.Integral, S: Stack}
+        where {N: Integral, S: Stack(T)}
         --[=[
             We compute at quadrature rule for the integration weight
                 [(v, normal) > 0] M[rho, u, theta](v),
@@ -475,10 +353,10 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         -- for modest polynomial degree. ExpMomT contains the recursion for
         -- moments of the the function exp(-scal (x + 1)^2) on the interval (-1, 1).
         -- Hence, we first have to map our unit Maxwellian from (-mach, 0)
-        -- to (-1, 1). This results in the following scaling factor
+        -- to (-1, 1). This results in the following scaling factor:
         var scal = tmath.pow(mach / 2, 2) / 2
         var rec = ExpMomT.new(scal)
-        var qfinite = clenshawcurtis(alloc, n, &rec, &dom)
+        var qfinite = momfit.clenshawcurtis(alloc, n, &rec, &dom)
         var xfinite = VecT.new(alloc, n)
         var wfinite = VecT.new(alloc, n)
         castvector(&xfinite, &qfinite._0)
@@ -503,12 +381,23 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         var xnormal = range.join(xfinite, xhalf)
         var wnormal = range.join(wfinite, whalf)
 
-        var qhermite = hermite(alloc, nhalf)
+        var qhermite = gauss.hermite(
+            alloc,
+            nhalf,
+            {origin = 0, scaling = tmath.sqrt(2.0)}
+        )
         var xhermite = VecT.new(alloc, nhalf)
         var whermite = VecT.new(alloc, nhalf)
         castvector(&xhermite, &qhermite._0)
         castvector(&whermite, &qhermite._1)
+        whermite:scal(tmath.sqrt(1 / (2 * tmath.pi)))
 
+        -- The quadrature is computed for the the reference half space
+        -- defined by the normal (1, 0, 0). This configuration is mapped
+        -- onto the the half space defined by the given normal with a
+        -- Householder reflection, I - 2 diff diff^T, where diff is the 
+        -- normalized diference between the normal n  and the reference
+        -- normal e_1.
         var diff = SVec.new()
         escape
             for i = 0, VDIM - 1 do
@@ -529,9 +418,14 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
                             theta: T,
                             diff: SVec
                         )
+                            -- First rotate the quadrature points from the
+                            -- reference half space to the half space defined
+                            -- by the given normal ...
                             var x = SVec.from(x1, x2, x3)
                             householder(&x, &diff)
                             var y: x.type
+                            -- ... and then shift and scale with the velocity
+                            -- and the temperature of the local Maxwellian.
                             escape
                                 for i = 0, VDIM - 1 do
                                     emit quote
@@ -552,97 +446,315 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
     return impl
 end)
 
-local DefaultAlloc = alloc.DefaultAllocator()
-local dualDouble = dual.DualNumber(double)
-local ddVec = dvector.DynamicVector(dualDouble)
-local ddMat = dmatrix.DynamicMatrix(dualDouble)
-local dStack = stack.DynamicStack(dualDouble)
-local CSR = sparse.CSRMatrix(dualDouble, int32)
-local HalfSpaceDual = HalfSpaceQuadrature(dualDouble)
-local terra outflow(
-    num_threads: int64,
-    -- Dimension of test space and the result arrays
-    ntestx: int64,
-    ntextv: int64,
-    -- Result of half space integral
-    resval: &double,
-    restng: &double,
-    -- Dimension of trial space and the input arrays
-    ntrialx: int64,
-    ntrialv: int64,
-    -- Evaluation point
-    val: &double,
-    -- Direction of derivative
-    tng: &double,
-    -- Number of spatial quadrature points
-    nqx: int64,
-    -- Spatial dimension
-    ndim: int64,
-    -- Sampled normals
-    normal: &double,
-    -- Point evaluation of spatial test functions at quadrature points
-    testnnz: int32,
-    testdata: &double,
-    testrow: &int32,
-    testcolptr: &int32,
-    -- Point evaluation of spatial trial functions at quadrature points
-    trialnnz: int32,
-    trialdata: &double,
-    trialcol: &int32,
-    trialrowptr: &int32,
-    -- Monomial powers of polynomial approximation in velocity
-    test_powers: &int32,
-    trial_powers: &int32
-)
-    var alloc: DefaultAlloc
-    var xvlhs = ddMat.new(&alloc, ntrialx, ntrialv)
-    for i = 0, ntrialx do
-        for j = 0, ntrialv do
-            var idx = j + ntrialv * i
-            xvlhs(i, j) = dualDouble {val[idx], tng[idx]}
+local terraform maxwellian_inflow(
+                    alloc,
+                    testb: &B,
+                    rho,
+                    u,
+                    theta,
+                    normal: &N,
+                    halfmom: &T)
+    where {B, N, T: concepts.Number}
+    var maxtestdegree = testb.velocity:maxpartialdegree()
+    var loc_normal: T[VDIM]
+    for k = 0, VDIM do
+        -- The half space quadrature is defined on the positive half space,
+        -- dot(v, n) > 0. For the boundary condition we need to compute
+        -- the integral over the inflow part of the boundary, that is
+        -- dot(v, n) < 0. One way to archive is to define the half space
+        -- with the negative normal, -n.
+        loc_normal[k] = -normal[k]
+    end
+    var hs = [HalfSpaceQuadrature(T)].new(&loc_normal[0])
+    var qhalf = escape
+        emit quote
+            -- include one extra point for flux weight dot(v, n)
+            var x, w = (
+                hs:maxwellian(alloc, maxtestdegree + 1, rho, &u, theta)
+            )
+        in
+            range.zip(&x, &w)
         end
     end
-
-    var dualtrialdata = dStack.new(&alloc, trialnnz)
-    for i = 0, trialnnz do
-        dualtrialdata:push(trialdata[i])
+    var vn = lambda.new([
+            terra(v: &T, normal: &T)
+                var res: T = 0
+                escape
+                    for k = 0, VDIM - 1 do
+                        emit quote res = res + v[k] * normal[k] end
+                    end
+                end
+                return res
+            end
+        ],
+        {normal = &loc_normal[0]})
+    for i, b in range.enumerate(testb.velocity) do
+        -- Because we integrate over dot(v, -n) > 0 the weight dot(v, n)
+        -- has the wrong sign, so we need to correct it after quadrature.
+        halfmom[i] = -l2inner(b, vn, &qhalf)
     end
-    var qxtrial = CSR.frombuffer(
-                    nqx, ntrialx, trialnnz,
-                    &dualtrialdata(0), trialcol, trialrowptr
-                  )
-    var qvlhs = ddMat.zeros(&alloc, nqx, ntrialv)
-    qvlhs:mul([dualDouble](0), [dualDouble](1), false, &qxtrial, false, &xvlhs)
 end
 
-local ddStack = stack.DynamicStack(dualDouble)
-local lib = terralib.includec("stdlib.h")
-terra main(argc: int, argv: &rawstring)
-    var alloc: DefaultAlloc
-    var n = 5
-    if argc > 1 then
-        n = lib.strtol(argv[1], nil, 10)
+local terraform nonlinear_maxwellian_inflow(
+                    alloc,
+                    testb: &B1,
+                    trialb: &B2,
+                    xvlhs: &C,
+                    normal,
+                    transform
+                ) where {B1, B2, C}
+    -- For the nonlinear boundary condition we have to compute a nested
+    -- integral of space and velocity. First, we discretize the spatial integral
+    -- with quadrature. For this, we need the point evaluation of the spatial
+    -- basis in the quadrature point, stored as a sparse matrix.
+    -- With the coefficients in matrix form and the point evaluation of the spatial
+    -- basis we obtain, for each quadrature point, that is row in qvlhs,
+    -- the partially evaluated distribution function, that is the coefficients
+    -- of the velocity basis at each quadrature point. With this information
+    -- we can compute the velocity integrals.
+    var nq = normal:rows()
+    var nv = xvlhs:cols()
+    var qvlhs = [dmatrix.DynamicMatrix(C.eltype)].zeros(alloc, nq, nv)
+    qvlhs:mul(
+            [C.eltype](0),
+            [C.eltype](1),
+            false,
+            &trialb.space,
+            false,
+            xvlhs
+    )
+    -- Qudrature for the computation of the local Maxwellian.
+    -- We need to integrate a polynomial times (1, v, |v|^2) exactly.
+    -- For the Gauß-Hermite quadrature we only need deg / 2 + 1 points to integrate
+    -- polynomials up to degree deg exactly. We account for (1, v, |v|^2)
+    -- by using two more points.
+    var maxtrialdegree = trialb.velocity:maxpartialdegree()
+    var vhermite, whermite = gauss.hermite(
+                            alloc,
+                            maxtrialdegree / 2 + 1 + 2 + 10,
+                            {origin = 0.0, scaling = tmath.sqrt(2.)}
+                      )
+    whermite:scal(1 / tmath.sqrt(2 * tmath.pi))
+    var res: double = 0
+    for xw in range.zip(&vhermite, &whermite) do
+        var x, w = xw
+        res = res + w * x * x
     end
-    var qh = hermite(&alloc, n)
-    var rule = gauss.productrule(&qh, &qh, &qh)
-    var quad = range.zip(&rule.x, &rule.w)
-    var p = iMat.from(&alloc, {
-        {3, 0, 0},
-        {0, 2, 0},
-        {0, 0, 2},
-    })
-    var basis = MonomialBasis.new(p)
-    var coeff = ddVec.zeros(&alloc, p:rows())
-    for i = 0, coeff:size() do
-        coeff(i).val = 1.0 / 3.0
-        coeff(i).tng = i
+    var qmaxwellian = escape 
+        local arg = {}
+        for i = 1, VDIM do
+            arg[i] = quote
+                         var q = gauss.hermite_t {vhermite, whermite}
+                     in
+                         &q
+                     end
+        end
+        emit quote
+                 var p = gauss.productrule([arg])
+             in
+                 range.zip(&p.x, &p.w)
+             end
     end
-    var rho, u, theta = local_maxwellian(&basis, &coeff, &quad)
-    return 0
+
+    var halfmomq = [dmatrix.DynamicMatrix(C.eltype)].new(
+                                                        alloc,
+                                                        nq,
+                                                        testb:nvelocitydof()
+                                                    )
+    var lhs = [dvector.DynamicVector(C.eltype)].new(alloc, qvlhs:cols())
+    for i = 0, nq do
+        for j = 0, nv do
+            lhs(j) = qvlhs(i, j)
+        end
+        var rho, u, theta = local_maxwellian(
+                                &trialb.velocity, &lhs, qmaxwellian
+                            )
+        transform(&rho, &u, &theta)
+        maxwellian_inflow(
+            alloc, testb, rho, u, theta, &normal(i, 0), &halfmomq(i, 0)
+        )
+    end
+    var halfmom = [dmatrix.DynamicMatrix(C.eltype)].zeros(
+                                                        alloc,
+                                                        testb:nspacedof(),
+                                                        testb:nvelocitydof()
+                                                    )
+    halfmom:mul(
+        [C.eltype](0),
+        [C.eltype](1),
+        false,
+        &testb.space,
+        false,
+        &halfmomq
+    )
+    return halfmom
 end
--- main(0, nil)
--- terralib.saveobj("boltzmann.o", {main = main})
+
+local PrepareInput = terralib.memoize(function(T, I)
+    local Alloc = alloc.Allocator
+    local terra prepare_input(
+        alloc: Alloc,
+        -- Dimension of test space and the result arrays
+        ntestx: int32,
+        ntestv: int32,
+        -- Dimension of trial space and the input arrays
+        ntrialx: int32,
+        ntrialv: int32,
+        -- Basis coefficients
+        val: &T,
+        -- Direction of derivative for basis coefficients
+        tng: &T,
+        -- Number of spatial quadrature points
+        nqx: int32,
+        -- Spatial dimension
+        ndim: int32,
+        -- Sampled normals
+        normalq: &T,
+        -- Point evaluation of spatial test functions at quadrature points transposed
+        testnnz: int32,
+        testdata: &T,
+        testrow: &I,
+        testcolptr: &I,
+        -- Point evaluation of spatial trial functions at quadrature points
+        trialnnz: int32,
+        trialdata: &T,
+        trialcol: &I,
+        trialrowptr: &I,
+        -- Monomial powers of polynomial approximation in velocity
+        test_powers: &I,
+        trial_powers: &I
+    )
+        var testbasis = [TensorBasis(dual.DualNumber(T))].frombuffer(
+                                                            alloc,
+                                                            true,
+                                                            ntestx,
+                                                            nqx,
+                                                            testnnz,
+                                                            testdata,
+                                                            testrow,
+                                                            testcolptr,
+                                                            ntestv,
+                                                            test_powers
+                                                        )
+        var trialbasis = [TensorBasis(dual.DualNumber(T))].frombuffer(
+                                                            alloc,
+                                                            false,
+                                                            nqx,
+                                                            ntrialx,
+                                                            trialnnz,
+                                                            trialdata,
+                                                            trialcol,
+                                                            trialrowptr,
+                                                            ntrialv,
+                                                            trial_powers
+                                                        )
+
+        var normal = [dmatrix.DynamicMatrix(dual.DualNumber(T))].zeros(
+                                                                    alloc,
+                                                                    nqx,
+                                                                    VDIM
+                                                                )
+        for i = 0, nqx do
+            for j = 0, ndim do
+                normal(i, j) = normalq[j + i * ndim]
+            end
+        end
+        -- When solving the linear systems arising from Newton's method for
+        --
+        -- F(x) = 0
+        --
+        -- iteratively, we need to compute matrix-vector products of the form
+        --
+        -- F'(x) t
+        --
+        -- at a given point x and a direction t. This is equivalent to
+        --
+        -- d/d eps [ F(x + t eps) ] |_{eps = 0},
+        --
+        -- which is exactly what is computed when evaluating F with dual numbers.
+        -- For the specific case of the Boltzmann equation, we use a tensor product
+        -- of a spatial basis and a polynomial basis in velocity. Thus, the natural
+        -- way to represent the unknown coefficients and their dual number
+        -- representation is in matrix form with the spatial dof as row and the
+        -- velocity dof as column indices.
+        var xvlhs = [dmatrix.DynamicMatrix(dual.DualNumber(T))].new(
+                                                                    alloc,
+                                                                    ntrialx,
+                                                                    ntrialv
+                                                                )
+        for i = 0, ntrialx do
+            for j = 0, ntrialv do
+                var idx = j + ntrialv * i
+                xvlhs(i, j) = [dual.DualNumber(T)] {val[idx], tng[idx]}
+            end
+        end
+        return testbasis, trialbasis, xvlhs, normal
+    end
+    return prepare_input
+end)
+
+local GenerateBCWrapper = terralib.memoize(function(Transform)
+    local T = double
+    local I = int32
+    local prepare_input = PrepareInput(T, I)
+    local types = prepare_input.type.parameters
+    -- remove the the alloc argument from the parameter list for the C wrapper
+    local sym = types:map(function(T) return symbol(T) end):sub(2, -1)
+    local cap = Transform.entries:map(
+        function(tab)
+            return symbol(tab.type)
+        end
+    )
+
+    local DefaultAlloc = alloc.DefaultAllocator()
+    local alloc = symbol(DefaultAlloc)
+    local data = symbol(prepare_input.type.returntype)
+    local transform = symbol(Transform)
+    local refdata = {}
+    for i = 1, 4 do
+        refdata[i] = `&[data].["_" .. tostring(i - 1)]
+    end
+
+    local resval = symbol(&T)
+    local restng = symbol(&T)
+    local res = symbol(dmatrix.DynamicMatrix(dual.DualNumber(T)))
+    local terra impl([sym], [resval], [restng], [cap])
+        var [alloc]
+        var [data] = prepare_input(&[alloc], [sym])
+        var [transform] = [Transform] {[cap]}
+        var [res] = (
+            nonlinear_maxwellian_inflow(&[alloc], [refdata], &[transform])
+        )
+        var ld = [res].ld
+        for i = 0, [res]:rows() do
+            for j = 0, [res]:cols() do
+                var idx = j + ld * i
+                [resval][idx] = [res](i, j).val
+                [restng][idx] = [res](i, j).tng
+            end
+        end
+    end
+    return impl
+end)
+
+local FixedPressure = terralib.memoize(function(T)
+    local struct fixed_pressure{
+        pressure: T
+    }
+    fixed_pressure.metamethods.__apply = macro(function(self, ...)
+        local arg = {...}
+        local terraform apply(self, rho, u, theta)
+            var pressure = self.pressure
+            @rho = pressure / @theta
+        end
+        return `apply(self, [arg])
+    end)
+    return fixed_pressure
+end)
 
 return {
     HalfSpaceQuadrature = HalfSpaceQuadrature,
+    GenerateBCWrapper = GenerateBCWrapper,
+    PrepareInput = PrepareInput,
+    FixedPressure = FixedPressure,
 }
