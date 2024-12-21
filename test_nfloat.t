@@ -84,10 +84,12 @@ for _, N in pairs(suffix) do
                 var u = T(0)
                 var v = T(1)
                 var w = T(2.934592)
+                var x = T(-1)
             end
             test u:truncatetodouble() == 0.0
             test v:truncatetodouble() == 1.0
             test w:truncatetodouble() == 2.934592
+            test x:truncatetodouble() == -1.0
         end
 
         testset "printing" do
