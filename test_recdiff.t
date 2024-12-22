@@ -36,10 +36,10 @@ for S, tol in pairs(tols) do
             besselj.traits.ninit = 1
             besselj.traits.depth = 3
 
-            local Integral = concepts.Integral
+            local Integer = concepts.Integer
             local Stack = concepts.Stack(T)
             terraform besselj:getcoeff(n: I, y: &S)
-                where {I: Integral, S: Stack}
+                where {I: Integer, S: Stack}
                 y:set(0, -1)
                 y:set(1, (2 * n) / self.x)
                 y:set(2, -1)

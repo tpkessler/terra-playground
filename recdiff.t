@@ -13,7 +13,7 @@ local svector = require("svector")
 import "terraform"
 
 local concept RecDiff(T) where {T: concepts.Number}
-    local Integral = concepts.Integral
+    local Integral = concepts.Integer
     Self.traits.ninit = concepts.traittag
     Self.traits.depth = concepts.traittag
     Self.traits.eltype = T

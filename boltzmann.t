@@ -26,7 +26,7 @@ local qr = require("qr")
 local VDIM = 3
 
 local pow
-terraform pow(n: I, x: T) where {I: concepts.Integral, T: concepts.Real}
+terraform pow(n: I, x: T) where {I: concepts.Integer, T: concepts.Real}
     escape
         local pow_raw = terralib.memoize(function(I, T)
             local terra impl(n: I, x: T): T
@@ -46,7 +46,7 @@ terraform pow(n: I, x: T) where {I: concepts.Integral, T: concepts.Real}
 end
 
 local monomial
-terraform monomial(v: &T, p: &I) where {I: concepts.Integral, T: concepts.Number}
+terraform monomial(v: &T, p: &I) where {I: concepts.Integer, T: concepts.Number}
     var res = [v.type.type](1)
     for i = 0, VDIM do
         res = res * pow(p[i], v[i])
@@ -159,10 +159,10 @@ local TensorBasis = terralib.memoize(function(T)
         ptr: &I)
         where {
                 S: concepts.Number,
-                I1: concepts.Integral,
-                I2: concepts.Integral,
-                I3: concepts.Integral,
-                I4: concepts.Integral
+                I1: concepts.Integer,
+                I2: concepts.Integer,
+                I3: concepts.Integer,
+                I4: concepts.Integer
               }
         var cast = Stack.new(alloc, nnz)
         for i = 0, nnz do
@@ -316,10 +316,10 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         end
     end
 
-    local Integral = concepts.Integral
+    local Integer = concepts.Integer
     local Stack = concepts.Stack
     terraform impl:maxwellian(alloc, n: N, rho: T, u: &S, theta: T)
-        where {N: Integral, S: Stack(T)}
+        where {N: Integer, S: Stack(T)}
         --[=[
             We compute at quadrature rule for the integration weight
                 [(v, normal) > 0] M[rho, u, theta](v),
