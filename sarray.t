@@ -13,7 +13,6 @@ local array = require("arraybase")
 local vec = require("vector")
 local vecblas = require("vector_blas")
 local mat = require("matrix")
-local matblas = require("matrix_blas_dense")
 local range = require("range")
 
 local size_t = uint64

@@ -60,13 +60,12 @@ local productiter = function(...)
     end
 end
 
-local getarrayentry = function(args, multiindex)
-    local expr = args
-    for i, index in ipairs(multiindex) do
-        local s = "_" .. index
-        expr = `(expr).[s]
+local getarrayentryfromexpressiontree = function(args, multiindex)
+    local data = args
+    for k = 1, #multiindex do
+        data = data.expressions[multiindex[k]+1]
     end
-    return expr
+    return data
 end
 
 local function defaultperm(dimension)
@@ -244,36 +243,27 @@ local ArrayBase = function(Array)
         end)
     end
 
-    local function processarraydim(array, size, k)
-        if k < N then
-            size[k+1] = #array[1]
-            for i,v in ipairs(array) do
-                assert(type(v) == "table", "ArgumentError: expected array input of dimension " .. tostring(N) ..".")
-                array[i] = terralib.newlist(v)
-                assert(#array[i] == size[k+1], "ArgumentError: array input size inconsistent with array dimensions.")
-                processarraydim(array[i], size, k+1)
-            end
-        end
-    end
-
-    local function processarrayinput(array)
-        array = terralib.newlist(array)
-        local size = terralib.newlist()
-        size[1] = #array
-        processarraydim(array, size, 1)
-        return size
-    end
-
     local function fillarray(A, arraysize, args)
         return quote
             escape
                 for mi in productiter(unpack(arraysize)) do
+                    local value = getarrayentryfromexpressiontree(args, mi)
                     emit quote 
-                        [A]:set([ mi ], [ getarrayentry(args, mi) ])
+                        [A]:set([ mi ], [ value ])
                     end
                 end
             end
         end
+    end
+
+    local function getarraysize(args)
+        local arraysize = terralib.newlist()
+        while args.expressions do
+            assert(terralib.israwlist(args.expressions))
+            arraysize:insert(#args.expressions)
+            args = args.expressions[1]
+        end
+        return arraysize
     end
 
     if isstatic(Array) then
@@ -285,12 +275,12 @@ local ArrayBase = function(Array)
         end
         --case static array, no allocator
         Array.staticmethods.from = macro(function(args)
-            local arrayentries = terralib.newlist(args:asvalue())
-            local arraysize = processarrayinput(arrayentries)
+            local data = args.tree
+            local arraysize = getarraysize(data)
             checkarraysize(arraysize)
             return quote
                 var A : Array
-                [fillarray(A, arraysize, args)]
+                [fillarray(A, arraysize, data)]
             in
                 A
             end
@@ -298,11 +288,11 @@ local ArrayBase = function(Array)
     else
         --case of a dynamic array there is an allocator
         Array.staticmethods.from = macro(function(alloc, args)
-            local arrayentries = terralib.newlist(args:asvalue())
-            local arraysize = processarrayinput(arrayentries)
+            local data = args.tree
+            local arraysize = getarraysize(data)
             return quote
                 var A = Array.new([alloc], {[arraysize]})
-                [fillarray(A, arraysize, args)]
+                [fillarray(A, arraysize, data)]
             in
                 A
             end
@@ -408,7 +398,6 @@ end
 
 
 return {
-    getarrayentry = getarrayentry,
     productiter = productiter,
     checkperm = checkperm,
     defaultperm = defaultperm,

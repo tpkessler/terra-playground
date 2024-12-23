@@ -1,14 +1,9 @@
 import "terraform"
-local io = terralib.includec("stdio.h")
 local range = require("range")
 local sarray = require("sarray")
 local matrix = require("matrix")
 local nfloat = require("nfloat")
 local complex = require("complex")
-local concepts = require("concepts")
-
-local complex = require("complex")
-local nfloat = require("nfloat")
 local concepts = require("concepts")
 local tmath = require("mathfuns")
 
@@ -21,66 +16,67 @@ local float256 = nfloat.FixedFloat(256)
 
 import "terratest/terratest"
 
+if not __silent__ then
+
+    local SVector = sarray.StaticVector(float, 3)
+    local SMatrix = sarray.StaticMatrix(float, {2, 3}, {perm={1,2}} )
+    local SArray3f = sarray.StaticArray(float, {2, 3, 4}, {perm={1,2,3}} )
+    local SArray4i = sarray.StaticArray(int, {2, 2, 2, 3}, {perm={1,2,3,4}} )
+    local SMatrix23ci = sarray.StaticMatrix(cfloat128, {3, 2})
+
+    local im = cfloat128:unit()
+
+    terra main()
+        var v = SVector.from({1, 2, 3})
+        v:print()
+
+        var A = SMatrix.from({
+            {1, 2, 3},
+            {4, 5, 6}
+        })
+        A:print()
+
+        var B = SArray3f.from({{
+            {1, 2, 3, 4},
+            {5, 6, 7, 8},
+            {9, 10, 11, 12},
+        },{
+            {1, 2, 3, 4},
+            {5, 6, 7, 8},
+            {9, 10, 11, 12},
+        }})
+        B:print()
+
+        var C = SArray4i.from({{{
+            {1, 2, 3},
+            {4, 5, 6},
+        },
+        {
+            {1, 2, 3},
+            {4, 5, 6},
+        }},
+        {{
+            {1, 2, 3},
+            {4, 5, 6},
+        },
+        {
+            {1, 2, 3},
+            {4, 5, 6},
+        }}})
+        C:print()
+
+        var D = SMatrix23ci.zeros()
+        D(0, 1) = 2.0*im + 1.0
+        var E = D:transpose()
+        D:print()
+        E:print()
+    end
+    main()
+
+end --not __silent__
+
 local checkall, checkallcartesian
 local Range = concepts.Range
-
-local SVector = sarray.StaticVector(float, 3)
-local SMatrix = sarray.StaticMatrix(float, {2, 3}, {perm={1,2}} )
-local SArray3f = sarray.StaticArray(float, {2, 3, 4}, {perm={1,2,3}} )
-local SArray4i = sarray.StaticArray(int, {2, 2, 2, 3}, {perm={1,2,3,4}} )
-
-local SMatrix23ci = sarray.StaticMatrix(cfloat128, {2, 3}, {perm={1,2}} )
-
-local im = cfloat128:unit()
-
-terra main()
-    var v = SVector.from({1, 2, 3})
-    v:print()
-
-    var A = SMatrix.from({
-        {1, 2, 3},
-        {4, 5, 6}
-    })
-    A:print()
-
-    var B = SArray3f.from({{
-        {1, 2, 3, 4},
-        {5, 6, 7, 8},
-        {9, 10, 11, 12},
-    },{
-        {1, 2, 3, 4},
-        {5, 6, 7, 8},
-        {9, 10, 11, 12},
-    }})
-    B:print()
-
-    var C = SArray4i.from({{{
-        {1, 2, 3},
-        {4, 5, 6},
-    },
-    {
-        {1, 2, 3},
-        {4, 5, 6},
-    }},
-    {{
-        {1, 2, 3},
-        {4, 5, 6},
-    },
-    {
-        {1, 2, 3},
-        {4, 5, 6},
-    }}})
-    io.printf("re(I) = %0.0f\n", im:real())
-    io.printf("im(I) = %0.0f\n", im:imag())
-    C:print()
-
-    var D = SMatrix23ci.zeros()
-    D(0, 1) = 2.0*im + 1.0
-    var E = D:transpose()
-    D:print()
-    E:print()
-end
-main()
 
 terraform checkall(A : &V, v : T) where {V : Range, T : concepts.Number}
     for a in A do
@@ -160,8 +156,12 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
             testset "all, ones, zeros" do
                 terracode
                     var C = SArray.all(2)
+                    var D = SArray.zeros()
+                    var E = SArray.ones()
                 end
                 test checkall(&C, 2)
+                test checkall(&D, 0)
+                test checkall(&E, 1)
             end
 
             testset "copy" do
@@ -207,12 +207,22 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                 test s == 24 * 6
             end
 
-            testset "norm" do
+            testset "norm2" do
                 terracode
                     var X = SArray.all(2)
                     var s1 = X:norm2()
                 end
                 test s1 == 24 * 4
+            end
+
+            if concepts.Float(T) then
+                testset "norm" do
+                    terracode
+                        var X = SArray.all(2)
+                        var s1 = X:norm()
+                    end
+                    test tmath.isapprox(s1, tmath.sqrt(24. * 4.), 1e-15)
+                end
             end
 
             testset "ranges" do
@@ -231,9 +241,9 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
 end
 
 --testing static vectors of different length and type
-for _,T in ipairs{int32,float,double,float256} do
+for _,T in ipairs{int,float,double,float256} do
     for N=2,4 do
-        testenv(skip, N, T) "Static Vector" do
+        testenv(N, T) "Static Vector" do
             
             local SVector = sarray.StaticVector(T, N)
 
@@ -245,6 +255,7 @@ for _,T in ipairs{int32,float,double,float256} do
                     end                     
                 end
                 test v:length()==N
+                --test checkall(v, range.Unitrange{1, N+1})
                 for i=0,N-1 do              
                     test v:get(i) == T(i+1)
                 end 
@@ -283,7 +294,7 @@ for _,T in ipairs{int32,float,double,float256} do
         end
     end --N
 
-    testenv(skip) "Static Vector - Fixed N" do
+    testenv(T) "Static Vector interface - Fixed N" do
 
         testset "from (N=2)" do
             local SVector = sarray.StaticVector(T, 2)
@@ -346,94 +357,78 @@ for _,T in ipairs{int32,float,double,float256} do
 end --T
 
 --testing static vectors of different length and type
+for N=2,4 do
+
 for _,T in ipairs{float, double, float128, int, cint, cfloat, cdouble, cfloat128} do
-    for N=2,4 do
-        
-        testenv(skip, N, T) "Static Matrix" do
+    
+    testenv(skip, N, T) "Static Matrix creation" do
 
-            local SMatrix = sarray.StaticMatrix(T, {N, N})
+        local SMatrix = sarray.StaticMatrix(T, {N, N})
 
-            testset "new, size, get, set" do
-                terracode
-                    var A = SMatrix.new()
-                    A:fill(2)                
-                end
-                test A:size(0) == N and A:size(1) == N and A:length() == N * N
-                test checkall(&A, T(2))
-            end
-            
-            testset "zeros" do                       
-                terracode                                  
-                    var A = SMatrix.zeros()
-                end
-                test A:size(0) == N and A:size(1) == N and A:length() == N * N
-                test checkall(&A, T(0))
-            end 
-        
-            testset "ones" do                       
-                terracode                                  
-                    var A = SMatrix.ones()
-                end
-                test A:size(0) == N and A:size(1) == N and A:length() == N * N
-                test checkall(&A, T(1))
-            end 
-
-        end
-
-    end --N
-
-    testenv(T) "Static Matrix - fixed N" do
-
-        local SMatrix = sarray.StaticMatrix(T, {3, 2})
-        local SVec2 = sarray.StaticVector(T, 2)
-        local SVec3 = sarray.StaticVector(T, 3)
-
-        local Concept = {
-            Stack = concepts.Stack(T),
-            Vector = concepts.Vector(T),
-            Matrix = concepts.Matrix(T),
-            Range = concepts.Range
-        }
-
-        --test basic concepts
-        test [ Concept.Vector(SMatrix)]
-        test [ Concept.Range(SMatrix) ]
-        test [Concept.Stack(SVec2) and Concept.Stack(SVec3)]
-        test [Concept.Matrix(SMatrix)]
-
-        testset "Apply" do
+        testset "new, size, get, set" do
             terracode
-                var A = SMatrix.from{{1, 2}, {3, 4}, {5, 6}}
-                var x = SVec2.from{1, -1}
-                var y = SVec3.zeros()
-                var yref = SVec3.from{-1, -1, -1}
-                matrix.gemv(T(1), &A, &x, T(0), &y)
+                var A = SMatrix.new()
+                A:fill(2)                
             end
-            test checkall(&y, &yref)
+            test A:size(0) == N and A:size(1) == N and A:length() == N * N
+            test checkall(&A, T(2))
         end
+        
+        testset "zeros" do                       
+            terracode                                  
+                var A = SMatrix.zeros()
+            end
+            test A:size(0) == N and A:size(1) == N and A:length() == N * N
+            test checkall(&A, T(0))
+        end 
+    
+        testset "ones" do                       
+            terracode                                  
+                var A = SMatrix.ones()
+            end
+            test A:size(0) == N and A:size(1) == N and A:length() == N * N
+            test checkall(&A, T(1))
+        end 
+
     end
 
+end
+end
 
-    testenv(T) "Transposed Static matrix - fixed N" do
 
-        local SMatrix = sarray.StaticMatrix(T, {2, 3})
-        local CVector = concepts.Vector(T)
+for _,T in ipairs{int, float, double, float128} do
 
-        --test basic concepts
-        test [ CVector(SMatrix)]
-        test [ Range(SMatrix) ]
+    local SMatrix2x2 = sarray.StaticMatrix(T, {2, 2})
+    local SMatrix3x2 = sarray.StaticMatrix(T, {3, 2})
+    local SMatrix2x3 = sarray.StaticMatrix(T, {2, 3})
+    local SVec2 = sarray.StaticVector(T, 2)
+    local SVec3 = sarray.StaticVector(T, 3)
+    local im = T:unit()
 
+    local Concept = {
+        Stack = concepts.Stack(T),
+        Vector = concepts.Vector(T),
+        Matrix = concepts.Matrix(T),
+        Range = concepts.Range
+    }
+
+    testenv(T) "Transpose view - Real - fixed N" do
+        
         terracode
-            var A = SMatrix.from({
+            var A = SMatrix2x3.from({
                 {1, 2, 3},
                 {4, 5, 6}
             })
             var B = A:transpose()
         end
 
-        --check of transpose type isa Range
-        test [ CVector(B.type.type)]
-        test [ Range(B.type.type) ]
+        --test basic concepts
+        test [ Concept.Vector(SMatrix2x3)]
+        test [ Concept.Range(SMatrix2x3) ]
+        --check of transpose type isa Matrix, Vector and Range
+        test [ Concept.Matrix(B.type.type)]
+        test [ Concept.Vector(B.type.type)]
+        test [ Concept.Range(B.type.type) ]
 
         testset "transpose" do
             terracode
@@ -455,10 +450,155 @@ for _,T in ipairs{float, double, float128, int, cint, cfloat, cdouble, cfloat128
             test checkall(&A, C)
         end
 
-        local SVec2 = sarray.StaticVector(T, 2)
-        local SVec3 = sarray.StaticVector(T, 3)
+    end
 
-        testset "Apply" do
+    testenv(T) "GEMV - Real - fixed N" do
+
+        terracode
+            var A = SMatrix3x2.from{{1, 2}, {3, 4}, {5, 6}}
+        end
+
+        testset "gemv" do
+            terracode
+                var x = SVec2.from{1, -1}
+                var y = SVec3.zeros()
+                var yref = SVec3.from{-1, -1, -1}
+                matrix.gemv(T(1), &A, &x, T(0), &y)
+            end
+            test checkall(&y, &yref)
+        end
+
+        testset "gemv - transpose A" do
+            terracode
+                var x = SVec3.from{1, -1, 2}
+                var y = SVec2.zeros()
+                var yref = SVec2.from{8, 10}
+                matrix.gemv(T(1), A:transpose(), &x, T(0), &y)
+            end
+            test checkall(&y, &yref)
+        end
+
+    end
+
+    testenv(T) "GEMM - Real - fixed N" do
+        
+        terracode
+            var A = SMatrix2x2.from({{1, 2}, {3, 4}})
+            var B = SMatrix2x2.from({{2, -1}, {-2, 3}})
+            var C = SMatrix2x2.zeros()
+        end
+
+        testset "gemm" do
+            terracode
+                matrix.gemm([T](1), &A, &B, T(0), &C)
+                var Cref = SMatrix2x2.from({{-2, 5}, {-2, 9}})
+            end
+            test checkall(&C, &Cref)
+        end
+
+        testset "gemm - transpose A" do
+            terracode
+                matrix.gemm([T](1), A:transpose(), &B, T(0), &C)
+                var Cref = SMatrix2x2.from({{-4, 8}, {-4, 10}})
+            end
+            test checkall(&C, &Cref)
+        end
+
+        testset "gemm - transpose B" do
+            terracode
+                matrix.gemm([T](1), &A, B:transpose(), T(0), &C)
+                var Cref = SMatrix2x2.from({{0, 4}, {2, 6}})
+            end
+            test checkall(&C, &Cref)
+        end
+
+        testset "gemm - transpose A, transpose B" do
+            terracode
+                matrix.gemm([T](1), A:transpose(), B:transpose(), T(0), &C)
+                var Cref = SMatrix2x2.from({{-1, 7}, {0, 8}})
+            end
+            test checkall(&C, &Cref)
+        end
+    end
+
+
+    testenv(T) "Real Static Matrix - fixed N" do
+
+        --test basic concepts
+        test [ Concept.Vector(SMatrix3x2)]
+        test [ Concept.Range(SMatrix3x2) ]
+        test [Concept.Stack(SVec2) and Concept.Stack(SVec3)]
+        test [Concept.Matrix(SMatrix3x2)]
+
+        testset "gemv" do
+            terracode
+                var A = SMatrix3x2.from{{1, 2}, {3, 4}, {5, 6}}
+                var x = SVec2.from{1, -1}
+                var y = SVec3.zeros()
+                var yref = SVec3.from{-1, -1, -1}
+                matrix.gemv(T(1), &A, &x, T(0), &y)
+            end
+            test checkall(&y, &yref)
+        end
+
+        testset "gemm" do
+            terracode
+                var A = SMatrix2x2.from({{1, 2}, {3, 4}})
+                var B = SMatrix2x2.from({{2, -1}, {-1, 2}})
+                var C = SMatrix2x2.zeros()
+                matrix.gemm([T](1), &A, &B, T(0), &C)
+                var Cref = SMatrix2x2.from({{0, 3}, {2, 5}})
+            end
+            test checkall(&C, &Cref)
+        end
+    end
+
+    testenv(T) "Real Transposed Static matrix - fixed N" do
+
+        local Concept = {
+            Stack = concepts.Stack(T),
+            Vector = concepts.Vector(T),
+            Matrix = concepts.Matrix(T),
+            Range = concepts.Range
+        }
+
+        terracode
+            var A = SMatrix2x3.from({
+                {1, 2, 3},
+                {4, 5, 6}
+            })
+            var B = A:transpose()
+        end
+
+        --test basic concepts
+        test [ Concept.Vector(SMatrix2x3)]
+        test [ Concept.Range(SMatrix2x3) ]
+        --check of transpose type isa Matrix, Vector and Range
+        test [ Concept.Matrix(B.type.type)]
+        test [ Concept.Vector(B.type.type)]
+        test [ Concept.Range(B.type.type) ]
+
+        testset "transpose" do
+            terracode
+                B(0,0) = -1 --By mutating B we can check that B is a transposed view of A, not a copy
+            end
+            test B:size(1) == A:size(0) and B:size(0) == A:size(1)
+            for i = 0, 1 do
+                for j = 0, 2 do
+                    test B(j, i) == A(i, j)
+                end
+            end
+        end
+
+        testset "transpose of transpose" do
+            terracode
+                var C = B:transpose()
+            end
+            test C:size(0) == A:size(0) and C:size(1) == A:size(1)
+            test checkall(&A, C)
+        end
+
+        testset "gemv" do
             terracode
                 var x = SVec2.from{1, -1}
                 var y = SVec3.zeros()
@@ -468,7 +608,149 @@ for _,T in ipairs{float, double, float128, int, cint, cfloat, cdouble, cfloat128
             test checkall(&y, &yref)
         end
 
+        testset "gemm" do
+            terracode
+                var A = SMatrix2x2.from({{1, 2}, {3, 4}})
+                var B = SMatrix2x2.from({{2, -1}, {-1, 2}})
+                var C = SMatrix2x2.zeros()
+                matrix.gemm([T](1), A:transpose(), &B, T(0), &C)
+                var Cref = SMatrix2x2.from({{-1, 5}, {0, 6}})
+            end
+            test checkall(&C, &Cref)
+        end
+
     end
 
 end --T
 
+
+for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
+
+    local SMatrix2x2 = sarray.StaticMatrix(T, {2, 2})
+    local SMatrix3x2 = sarray.StaticMatrix(T, {3, 2})
+    local SMatrix2x3 = sarray.StaticMatrix(T, {2, 3})
+    local SVec2 = sarray.StaticVector(T, 2)
+    local SVec3 = sarray.StaticVector(T, 3)
+    local im = T:unit()
+
+    local Concept = {
+        Stack = concepts.Stack(T),
+        Vector = concepts.Vector(T),
+        Matrix = concepts.Matrix(T),
+        Range = concepts.Range
+    }
+
+    testenv(T) "Transpose view - Complex - fixed N" do
+
+        terracode
+            var A = SMatrix2x3.from({
+                {1-2*im,  3-3*im,  5+1*im},
+                {2-1*im,  4+2*im,  6-3*im}
+            })
+            var B = A:transpose()
+        end
+
+        --test basic concepts
+        test [ Concept.Vector(A.type)]
+        test [ Concept.Range(A.type) ]
+        --check of transpose type isa Matrix, Vector and Range
+        test [ Concept.Matrix(B.type.type)]
+        test [ Concept.Vector(B.type.type)]
+        test [ Concept.Range(B.type.type) ]
+
+        testset "transpose" do
+            terracode
+                B(0,0) = -1 --By mutating B we can check that B is a transposed view of A, not a copy
+            end
+            test B:size(1) == A:size(0) and B:size(0) == A:size(1)
+            for i = 0, 1 do
+                for j = 0, 2 do
+                    test B(j, i) == tmath.conj(A(i, j))
+                end
+            end
+        end
+
+        testset "transpose of transpose" do
+            terracode
+                var C = B:transpose()
+            end
+            test C:size(0) == A:size(0) and C:size(1) == A:size(1)
+            test checkall(&A, C)
+        end
+
+    end
+
+    testenv(T) "GEMV - Complex - fixed N" do
+
+        terracode
+            var A = SMatrix2x3.from({
+                {1-2*im,  3-3*im,  5+1*im},
+                {2-1*im,  4+2*im,  6-3*im}
+            })
+        end
+
+        testset "gemv" do
+            terracode
+                var x = SVec3.from{1-im, -1+im, 2 -2*im}
+                var y = SVec2.zeros()
+                var yref = SVec2.from{11 - 5*im, 1 - 19*im}
+                matrix.gemv(T(1), &A, &x, T(0), &y)
+            end
+            test checkall(&y, &yref)
+        end
+
+        testset "gemv - conjugate transpose A" do
+            terracode
+                var x = SVec2.from{1-im, -1+im}
+                var y = SVec3.zeros()
+                var yref = SVec3.from{2*im, 4+6*im, -5-3*im}
+                matrix.gemv(T(1), A:transpose(), &x, T(0), &y)
+            end
+            test checkall(&y, &yref)
+        end
+
+    end
+
+    testenv(T) "GEMM - Complex - fixed N" do
+
+        terracode
+            var A = SMatrix2x2.from({{1 + im, 2 - im}, {3 + 2*im, 4- 3*im}})
+            var B = SMatrix2x2.from({{2 + 2*im, -1 + im}, {-1 - im, 2 + 3*im}})
+            var C = SMatrix2x2.zeros()
+        end
+
+        testset "gemm" do
+            terracode
+                matrix.gemm([T](1), &A, &B, T(0), &C)
+                var Cref = SMatrix2x2.from({{-3+3*im,   5+4*im}, {-5+9*im,  12+7*im}})
+            end
+            test checkall(&C, &Cref)
+        end
+
+        testset "gemm - transpose A" do
+            terracode
+                matrix.gemm([T](1), A:transpose(), &B, T(0), &C)
+                var Cref = SMatrix2x2.from({{-1-1*im, 12+7*im}, {1-1*im,  -4+19*im}})
+            end
+            test checkall(&C, &Cref)
+        end
+
+        testset "gemm - transpose B" do
+            terracode
+                matrix.gemm([T](1), &A, B:transpose(), T(0), &C)
+                var Cref = SMatrix2x2.from({{1-1*im,  -1-8*im}, {3-3*im,  -6-17*im}})
+            end
+            test checkall(&C, &Cref)
+        end
+
+        testset "gemm - transpose A, transpose B" do
+            terracode
+                matrix.gemm([T](1), A:transpose(), B:transpose(), T(0), &C)
+                var Cref = SMatrix2x2.from({{-5-5*im,   0-11*im}, {5-9*im,  14-5*im}})
+            end
+            test checkall(&C, &Cref)
+        end
+
+    end
+
+end --T
