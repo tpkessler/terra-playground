@@ -1,3 +1,8 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
 import "terraform"
 local range = require("range")
 local sarray = require("sarray")
@@ -7,12 +12,13 @@ local complex = require("complex")
 local concepts = require("concepts")
 local tmath = require("tmath")
 
+local float128 = nfloat.FixedFloat(128)
+local float256 = nfloat.FixedFloat(256)
+
+local cint = complex.complex(int)
 local cfloat = complex.complex(float)
 local cdouble = complex.complex(double)
-local cint = complex.complex(int)
-local float128 = nfloat.FixedFloat(128)
 local cfloat128 = complex.complex(float128)
-local float256 = nfloat.FixedFloat(256)
 
 import "terratest/terratest"
 
@@ -101,7 +107,7 @@ end
 for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
     for _,T in ipairs{int, double} do
 
-        testenv(skip,T, Perm) "Arbitrary dimension arrays" do
+        testenv(T, Perm) "Arbitrary dimension arrays" do
 
             local linrange = range.Unitrange(T)
             local SArray = sarray.StaticArray(T, {2, 3, 4}, {perm=Perm} )
@@ -125,11 +131,6 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                 test checkallcartesian(&A, linrange{0,24})
             end
 
-            testset "apply" do
-                test tmath.isapprox(&B, linrange{0,24}, 0)
-                test checkallcartesian(&B, linrange{0,24}, 0)
-            end
-
             testset "all, ones, zeros" do
                 terracode
                     var C = SArray.all(2)
@@ -148,6 +149,15 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                     X:copy(&Y)
                 end
                 test tmath.isapprox(&X, 2, 0)
+            end
+
+            testset "swap" do
+                terracode
+                    var C = SArray.ones()
+                    A:swap(&C)
+                end
+                test tmath.isapprox(&C, linrange{0,24}, 0)
+                test tmath.isapprox(&A, T(1), 0)
             end
 
             testset "fill" do
@@ -268,7 +278,7 @@ for _,T in ipairs{int,float,double,float256} do
                 end 
             end 
             
-        end
+        end --testenv(T, N) "Static Vector" do
     end --N
 
     testenv(T) "Static Vector interface - Fixed N" do
@@ -333,44 +343,45 @@ for _,T in ipairs{int,float,double,float256} do
 
 end --T
 
---testing static vectors of different length and type
-for N=2,4 do
-
+--testing static matrices of different length and type
 for _,T in ipairs{float, double, float128, int, cint, cfloat, cdouble, cfloat128} do
-    
-    testenv(skip, N, T) "Static Matrix creation" do
+    for N=2,4 do
 
-        local SMatrix = sarray.StaticMatrix(T, {N, N})
-
-        testset "new, size, get, set" do
-            terracode
-                var A = SMatrix.new()
-                A:fill(2)                
-            end
-            test A:size(0) == N and A:size(1) == N and A:length() == N * N
-            test tmath.isapprox(&A, T(2), 0)
-        end
+        local M = N+1
         
-        testset "zeros" do                       
-            terracode                                  
-                var A = SMatrix.zeros()
-            end
-            test A:size(0) == N and A:size(1) == N and A:length() == N * N
-            test tmath.isapprox(&A, T(0), 0)
-        end 
-    
-        testset "ones" do                       
-            terracode                                  
-                var A = SMatrix.ones()
-            end
-            test A:size(0) == N and A:size(1) == N and A:length() == N * N
-            test tmath.isapprox(&A, T(1), 0)
-        end 
+        testenv(N, T) "Static Matrix creation" do
 
-    end
+            local SMatrix = sarray.StaticMatrix(T, {M, N})
 
-end
-end
+            testset "new, size, get, set" do
+                terracode
+                    var A = SMatrix.new()
+                    A:fill(2)                
+                end
+                test A:size(0) == M and A:size(1) == N and A:length() == M * N
+                test tmath.isapprox(&A, T(2), 0)
+            end
+            
+            testset "zeros" do                       
+                terracode                                  
+                    var A = SMatrix.zeros()
+                end
+                test A:size(0) == M and A:size(1) == N and A:length() == M * N
+                test tmath.isapprox(&A, T(0), 0)
+            end 
+        
+            testset "ones" do                       
+                terracode                                  
+                    var A = SMatrix.ones()
+                end
+                test A:size(0) == M and A:size(1) == N and A:length() == M * N
+                test tmath.isapprox(&A, T(1), 0)
+            end 
+
+        end --testenv(N, T) "Static Matrix creation" do
+
+    end --N
+end --T
 
 
 for _,T in ipairs{int, float, double, float128} do
@@ -378,8 +389,8 @@ for _,T in ipairs{int, float, double, float128} do
     local SMatrix2x2 = sarray.StaticMatrix(T, {2, 2})
     local SMatrix3x2 = sarray.StaticMatrix(T, {3, 2})
     local SMatrix2x3 = sarray.StaticMatrix(T, {2, 3})
-    local SVec2 = sarray.StaticVector(T, 2)
-    local SVec3 = sarray.StaticVector(T, 3)
+    local SVector2 = sarray.StaticVector(T, 2)
+    local SVector3 = sarray.StaticVector(T, 3)
     local im = T:unit()
 
     local Concept = {
@@ -437,9 +448,9 @@ for _,T in ipairs{int, float, double, float128} do
 
         testset "gemv" do
             terracode
-                var x = SVec2.from{1, -1}
-                var y = SVec3.zeros()
-                var yref = SVec3.from{-1, -1, -1}
+                var x = SVector2.from{1, -1}
+                var y = SVector3.zeros()
+                var yref = SVector3.from{-1, -1, -1}
                 matrix.gemv(T(1), &A, &x, T(0), &y)
             end
             test tmath.isapprox(&y, &yref, 0)
@@ -447,9 +458,9 @@ for _,T in ipairs{int, float, double, float128} do
 
         testset "gemv - transpose A" do
             terracode
-                var x = SVec3.from{1, -1, 2}
-                var y = SVec2.zeros()
-                var yref = SVec2.from{8, 10}
+                var x = SVector3.from{1, -1, 2}
+                var y = SVector2.zeros()
+                var yref = SVector2.from{8, 10}
                 matrix.gemv(T(1), A:transpose(), &x, T(0), &y)
             end
             test tmath.isapprox(&y, &yref, 0)
@@ -498,106 +509,6 @@ for _,T in ipairs{int, float, double, float128} do
         end
     end
 
-
-    testenv(T) "Real Static Matrix - fixed N" do
-
-        --test basic concepts
-        test [ Concept.Vector(SMatrix3x2)]
-        test [ Concept.Range(SMatrix3x2) ]
-        test [Concept.Stack(SVec2) and Concept.Stack(SVec3)]
-        test [Concept.Matrix(SMatrix3x2)]
-
-        testset "gemv" do
-            terracode
-                var A = SMatrix3x2.from{{1, 2}, {3, 4}, {5, 6}}
-                var x = SVec2.from{1, -1}
-                var y = SVec3.zeros()
-                var yref = SVec3.from{-1, -1, -1}
-                matrix.gemv(T(1), &A, &x, T(0), &y)
-            end
-            test tmath.isapprox(&y, &yref, 0)
-        end
-
-        testset "gemm" do
-            terracode
-                var A = SMatrix2x2.from({{1, 2}, {3, 4}})
-                var B = SMatrix2x2.from({{2, -1}, {-1, 2}})
-                var C = SMatrix2x2.zeros()
-                matrix.gemm([T](1), &A, &B, T(0), &C)
-                var Cref = SMatrix2x2.from({{0, 3}, {2, 5}})
-            end
-            test tmath.isapprox(&C, &Cref, 0)
-        end
-    end
-
-    testenv(T) "Real Transposed Static matrix - fixed N" do
-
-        local Concept = {
-            Stack = concepts.Stack(T),
-            Vector = concepts.Vector(T),
-            Matrix = concepts.Matrix(T),
-            Range = concepts.Range
-        }
-
-        terracode
-            var A = SMatrix2x3.from({
-                {1, 2, 3},
-                {4, 5, 6}
-            })
-            var B = A:transpose()
-        end
-
-        --test basic concepts
-        test [ Concept.Vector(SMatrix2x3)]
-        test [ Concept.Range(SMatrix2x3) ]
-        --check of transpose type isa Matrix, Vector and Range
-        test [ Concept.Matrix(B.type.type)]
-        test [ Concept.Vector(B.type.type)]
-        test [ Concept.Range(B.type.type) ]
-
-        testset "transpose" do
-            terracode
-                B(0,0) = -1 --By mutating B we can check that B is a transposed view of A, not a copy
-            end
-            test B:size(1) == A:size(0) and B:size(0) == A:size(1)
-            for i = 0, 1 do
-                for j = 0, 2 do
-                    test B(j, i) == A(i, j)
-                end
-            end
-        end
-
-        testset "transpose of transpose" do
-            terracode
-                var C = B:transpose()
-            end
-            test C:size(0) == A:size(0) and C:size(1) == A:size(1)
-            test tmath.isapprox(&A, C, 0)
-        end
-
-        testset "gemv" do
-            terracode
-                var x = SVec2.from{1, -1}
-                var y = SVec3.zeros()
-                var yref = SVec3.from{-3, -3, -3}
-                matrix.gemv(T(1), B, &x, T(0), &y)
-            end
-            test tmath.isapprox(&y, &yref, 0)
-        end
-
-        testset "gemm" do
-            terracode
-                var A = SMatrix2x2.from({{1, 2}, {3, 4}})
-                var B = SMatrix2x2.from({{2, -1}, {-1, 2}})
-                var C = SMatrix2x2.zeros()
-                matrix.gemm([T](1), A:transpose(), &B, T(0), &C)
-                var Cref = SMatrix2x2.from({{-1, 5}, {0, 6}})
-            end
-            test tmath.isapprox(&C, &Cref, 0)
-        end
-
-    end
-
 end --T
 
 
@@ -606,8 +517,8 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
     local SMatrix2x2 = sarray.StaticMatrix(T, {2, 2})
     local SMatrix3x2 = sarray.StaticMatrix(T, {3, 2})
     local SMatrix2x3 = sarray.StaticMatrix(T, {2, 3})
-    local SVec2 = sarray.StaticVector(T, 2)
-    local SVec3 = sarray.StaticVector(T, 3)
+    local SVector2 = sarray.StaticVector(T, 2)
+    local SVector3 = sarray.StaticVector(T, 3)
     local im = T:unit()
 
     local Concept = {
@@ -668,9 +579,9 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
 
         testset "gemv" do
             terracode
-                var x = SVec3.from{1-im, -1+im, 2 -2*im}
-                var y = SVec2.zeros()
-                var yref = SVec2.from{11 - 5*im, 1 - 19*im}
+                var x = SVector3.from{1-im, -1+im, 2 -2*im}
+                var y = SVector2.zeros()
+                var yref = SVector2.from{11 - 5*im, 1 - 19*im}
                 matrix.gemv(T(1), &A, &x, T(0), &y)
             end
             test tmath.isapprox(&y, &yref, 0)
@@ -678,9 +589,9 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
 
         testset "gemv - conjugate transpose A" do
             terracode
-                var x = SVec2.from{1-im, -1+im}
-                var y = SVec3.zeros()
-                var yref = SVec3.from{2*im, 4+6*im, -5-3*im}
+                var x = SVector2.from{1-im, -1+im}
+                var y = SVector3.zeros()
+                var yref = SVector3.from{2*im, 4+6*im, -5-3*im}
                 matrix.gemv(T(1), A:transpose(), &x, T(0), &y)
             end
             test tmath.isapprox(&y, &yref, 0)
