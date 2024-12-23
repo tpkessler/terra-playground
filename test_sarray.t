@@ -5,7 +5,7 @@ local matrix = require("matrix")
 local nfloat = require("nfloat")
 local complex = require("complex")
 local concepts = require("concepts")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 local cfloat = complex.complex(float)
 local cdouble = complex.complex(double)
@@ -75,31 +75,8 @@ if not __silent__ then
 
 end --not __silent__
 
-local checkall, checkallcartesian
+local checkallcartesian
 local Range = concepts.Range
-
-terraform checkall(A : &V, v : T) where {V : Range, T : concepts.Number}
-    for a in A do
-        if a ~= v then
-            return false
-        end
-    end
-    return true
-end
-
-terraform checkall(A : &V, rn : &R) where {V : Range, R : Range}
-    for t in range.zip(A, rn) do
-        var a, v = t
-        if a ~= v then
-            return false
-        end
-    end
-    return true
-end
-
-terraform checkall(A : &V, rn : R) where {V : Range, R : Range}
-    return checkall(A, &rn)
-end
 
 terraform checkallcartesian(A : &V, v : T) where {V : Range, T : concepts.Number}
     for indices in A:cartesian_indices() do
@@ -144,13 +121,13 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                 test A:size(0) == 2 and A:size(1) == 3 and A:size(2) == 4
                 test A:perm(0) == [ Perm[1] ] and A:perm(1) == [ Perm[2] ] and A:perm(2) == [ Perm[3] ]
                 test A:length() == 24
-                test checkall(&A, linrange{0,24})
+                test tmath.isapprox(&A, linrange{0,24}, 0)
                 test checkallcartesian(&A, linrange{0,24})
             end
 
             testset "apply" do
-                test checkall(&B, linrange{0,24})
-                test checkallcartesian(&B, linrange{0,24})
+                test tmath.isapprox(&B, linrange{0,24}, 0)
+                test checkallcartesian(&B, linrange{0,24}, 0)
             end
 
             testset "all, ones, zeros" do
@@ -159,9 +136,9 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                     var D = SArray.zeros()
                     var E = SArray.ones()
                 end
-                test checkall(&C, 2)
-                test checkall(&D, 0)
-                test checkall(&E, 1)
+                test tmath.isapprox(&C, 2, 0)
+                test tmath.isapprox(&D, 0, 0)
+                test tmath.isapprox(&E, 1, 0)
             end
 
             testset "copy" do
@@ -170,7 +147,7 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                     var X : SArray
                     X:copy(&Y)
                 end
-                test checkall(&X, 2)
+                test tmath.isapprox(&X, 2, 0)
             end
 
             testset "fill" do
@@ -178,7 +155,7 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                     var X : SArray
                     X:fill(2)
                 end
-                test checkall(&X, 2)
+                test tmath.isapprox(&X, 2, 0)
             end
 
             testset "scal" do
@@ -186,7 +163,7 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                     var X = SArray.all(2)
                     X:scal(2)
                 end
-                test checkall(&X, 4)
+                test tmath.isapprox(&X, 4, 0)
             end
 
             testset "axpy" do
@@ -195,7 +172,7 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                     var Y = SArray.all(3)
                     Y:axpy(4, &X)
                 end
-                test checkall(&Y, 11)
+                test tmath.isapprox(&Y, 11, 0)
             end
 
             testset "dot" do
@@ -255,7 +232,7 @@ for _,T in ipairs{int,float,double,float256} do
                     end                     
                 end
                 test v:length()==N
-                --test checkall(v, range.Unitrange{1, N+1})
+                --test tmath.isapprox(v, range.Unitrange{1, N+1})
                 for i=0,N-1 do              
                     test v:get(i) == T(i+1)
                 end 
@@ -371,7 +348,7 @@ for _,T in ipairs{float, double, float128, int, cint, cfloat, cdouble, cfloat128
                 A:fill(2)                
             end
             test A:size(0) == N and A:size(1) == N and A:length() == N * N
-            test checkall(&A, T(2))
+            test tmath.isapprox(&A, T(2), 0)
         end
         
         testset "zeros" do                       
@@ -379,7 +356,7 @@ for _,T in ipairs{float, double, float128, int, cint, cfloat, cdouble, cfloat128
                 var A = SMatrix.zeros()
             end
             test A:size(0) == N and A:size(1) == N and A:length() == N * N
-            test checkall(&A, T(0))
+            test tmath.isapprox(&A, T(0), 0)
         end 
     
         testset "ones" do                       
@@ -387,7 +364,7 @@ for _,T in ipairs{float, double, float128, int, cint, cfloat, cdouble, cfloat128
                 var A = SMatrix.ones()
             end
             test A:size(0) == N and A:size(1) == N and A:length() == N * N
-            test checkall(&A, T(1))
+            test tmath.isapprox(&A, T(1), 0)
         end 
 
     end
@@ -447,7 +424,7 @@ for _,T in ipairs{int, float, double, float128} do
                 var C = B:transpose()
             end
             test C:size(0) == A:size(0) and C:size(1) == A:size(1)
-            test checkall(&A, C)
+            test tmath.isapprox(&A, C, 0)
         end
 
     end
@@ -465,7 +442,7 @@ for _,T in ipairs{int, float, double, float128} do
                 var yref = SVec3.from{-1, -1, -1}
                 matrix.gemv(T(1), &A, &x, T(0), &y)
             end
-            test checkall(&y, &yref)
+            test tmath.isapprox(&y, &yref, 0)
         end
 
         testset "gemv - transpose A" do
@@ -475,7 +452,7 @@ for _,T in ipairs{int, float, double, float128} do
                 var yref = SVec2.from{8, 10}
                 matrix.gemv(T(1), A:transpose(), &x, T(0), &y)
             end
-            test checkall(&y, &yref)
+            test tmath.isapprox(&y, &yref, 0)
         end
 
     end
@@ -493,7 +470,7 @@ for _,T in ipairs{int, float, double, float128} do
                 matrix.gemm([T](1), &A, &B, T(0), &C)
                 var Cref = SMatrix2x2.from({{-2, 5}, {-2, 9}})
             end
-            test checkall(&C, &Cref)
+            test tmath.isapprox(&C, &Cref, 0)
         end
 
         testset "gemm - transpose A" do
@@ -501,7 +478,7 @@ for _,T in ipairs{int, float, double, float128} do
                 matrix.gemm([T](1), A:transpose(), &B, T(0), &C)
                 var Cref = SMatrix2x2.from({{-4, 8}, {-4, 10}})
             end
-            test checkall(&C, &Cref)
+            test tmath.isapprox(&C, &Cref, 0)
         end
 
         testset "gemm - transpose B" do
@@ -509,7 +486,7 @@ for _,T in ipairs{int, float, double, float128} do
                 matrix.gemm([T](1), &A, B:transpose(), T(0), &C)
                 var Cref = SMatrix2x2.from({{0, 4}, {2, 6}})
             end
-            test checkall(&C, &Cref)
+            test tmath.isapprox(&C, &Cref, 0)
         end
 
         testset "gemm - transpose A, transpose B" do
@@ -517,7 +494,7 @@ for _,T in ipairs{int, float, double, float128} do
                 matrix.gemm([T](1), A:transpose(), B:transpose(), T(0), &C)
                 var Cref = SMatrix2x2.from({{-1, 7}, {0, 8}})
             end
-            test checkall(&C, &Cref)
+            test tmath.isapprox(&C, &Cref, 0)
         end
     end
 
@@ -538,7 +515,7 @@ for _,T in ipairs{int, float, double, float128} do
                 var yref = SVec3.from{-1, -1, -1}
                 matrix.gemv(T(1), &A, &x, T(0), &y)
             end
-            test checkall(&y, &yref)
+            test tmath.isapprox(&y, &yref, 0)
         end
 
         testset "gemm" do
@@ -549,7 +526,7 @@ for _,T in ipairs{int, float, double, float128} do
                 matrix.gemm([T](1), &A, &B, T(0), &C)
                 var Cref = SMatrix2x2.from({{0, 3}, {2, 5}})
             end
-            test checkall(&C, &Cref)
+            test tmath.isapprox(&C, &Cref, 0)
         end
     end
 
@@ -595,7 +572,7 @@ for _,T in ipairs{int, float, double, float128} do
                 var C = B:transpose()
             end
             test C:size(0) == A:size(0) and C:size(1) == A:size(1)
-            test checkall(&A, C)
+            test tmath.isapprox(&A, C, 0)
         end
 
         testset "gemv" do
@@ -605,7 +582,7 @@ for _,T in ipairs{int, float, double, float128} do
                 var yref = SVec3.from{-3, -3, -3}
                 matrix.gemv(T(1), B, &x, T(0), &y)
             end
-            test checkall(&y, &yref)
+            test tmath.isapprox(&y, &yref, 0)
         end
 
         testset "gemm" do
@@ -616,7 +593,7 @@ for _,T in ipairs{int, float, double, float128} do
                 matrix.gemm([T](1), A:transpose(), &B, T(0), &C)
                 var Cref = SMatrix2x2.from({{-1, 5}, {0, 6}})
             end
-            test checkall(&C, &Cref)
+            test tmath.isapprox(&C, &Cref, 0)
         end
 
     end
@@ -675,7 +652,7 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
                 var C = B:transpose()
             end
             test C:size(0) == A:size(0) and C:size(1) == A:size(1)
-            test checkall(&A, C)
+            test tmath.isapprox(&A, C, 0)
         end
 
     end
@@ -696,7 +673,7 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
                 var yref = SVec2.from{11 - 5*im, 1 - 19*im}
                 matrix.gemv(T(1), &A, &x, T(0), &y)
             end
-            test checkall(&y, &yref)
+            test tmath.isapprox(&y, &yref, 0)
         end
 
         testset "gemv - conjugate transpose A" do
@@ -706,7 +683,7 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
                 var yref = SVec3.from{2*im, 4+6*im, -5-3*im}
                 matrix.gemv(T(1), A:transpose(), &x, T(0), &y)
             end
-            test checkall(&y, &yref)
+            test tmath.isapprox(&y, &yref, 0)
         end
 
     end
@@ -724,7 +701,7 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
                 matrix.gemm([T](1), &A, &B, T(0), &C)
                 var Cref = SMatrix2x2.from({{-3+3*im,   5+4*im}, {-5+9*im,  12+7*im}})
             end
-            test checkall(&C, &Cref)
+            test tmath.isapprox(&C, &Cref, 0)
         end
 
         testset "gemm - transpose A" do
@@ -732,7 +709,7 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
                 matrix.gemm([T](1), A:transpose(), &B, T(0), &C)
                 var Cref = SMatrix2x2.from({{-1-1*im, 12+7*im}, {1-1*im,  -4+19*im}})
             end
-            test checkall(&C, &Cref)
+            test tmath.isapprox(&C, &Cref, 0)
         end
 
         testset "gemm - transpose B" do
@@ -740,7 +717,7 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
                 matrix.gemm([T](1), &A, B:transpose(), T(0), &C)
                 var Cref = SMatrix2x2.from({{1-1*im,  -1-8*im}, {3-3*im,  -6-17*im}})
             end
-            test checkall(&C, &Cref)
+            test tmath.isapprox(&C, &Cref, 0)
         end
 
         testset "gemm - transpose A, transpose B" do
@@ -748,7 +725,7 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
                 matrix.gemm([T](1), A:transpose(), B:transpose(), T(0), &C)
                 var Cref = SMatrix2x2.from({{-5-5*im,   0-11*im}, {5-9*im,  14-5*im}})
             end
-            test checkall(&C, &Cref)
+            test tmath.isapprox(&C, &Cref, 0)
         end
 
     end

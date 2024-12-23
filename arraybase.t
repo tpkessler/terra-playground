@@ -6,7 +6,7 @@
 local io = terralib.includec("stdio.h")
 local err = require("assert")
 local tup = require("tuple")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local range = require("range")
 local luafun = require("fun")
 

@@ -6,7 +6,7 @@
 import "terraform"
 local err = require("assert")
 local concepts = require("concepts")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local range = require("range")
 
 

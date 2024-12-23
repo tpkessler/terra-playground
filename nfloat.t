@@ -23,7 +23,7 @@ import "terraform"
 local C = terralib.includec("stdio.h")
 
 local base = require("base")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local concepts = require("concepts")
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}

@@ -123,10 +123,23 @@ terraform tmath.dist(a: T, b: T) where {T: concepts.Number}
     return tmath.abs(a - b)
 end
 
+terraform tmath.norm(a : T) where {T : concepts.Real}
+    return tmath.abs(a)
+end
+
+terraform tmath.norm(a : T) where {T : concepts.Complex}
+    return tmath.abs(a:real()) + tmath.abs(a:imag())
+end
+
+terraform tmath.norm(a : T) where {T : concepts.ComplexOverField(concepts.Float)}
+    var re, im = a:real(), a:imag()
+    return tmath.sqrt(re*re + im*im)
+end
+
 -- comparing functions
-terraform tmath.isapprox(a: T, b: T, atol: S)
-    where {T: concepts.Any, S: concepts.Any}
-    return tmath.dist(a, b) < atol
+terraform tmath.isapprox(a : T1, b : T2, atol : S)
+    where {T1: concepts.Number, T2: concepts.Number, S : concepts.Real}
+    return tmath.norm(a - b) <= atol
 end
 
 for _, name in pairs({"real", "imag", "conj"}) do

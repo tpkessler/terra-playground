@@ -9,7 +9,7 @@ local base = require("base")
 local concepts = require("concepts")
 local template = require("template")
 local lambda = require("lambda")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local nfloat = require("nfloat")
 local err = require("assert")
 
@@ -1175,6 +1175,32 @@ local reverse = macro(function()
     --call transform to apply the above macro
     return `transform(rev)
 end)
+
+--math functions
+
+terraform tmath.isapprox(A : &V, v : T, atol : S) where {V : concepts.Range, T : concepts.Number, S : concepts.Real}
+    for a in A do
+        if not tmath.isapprox(a, v, atol) then
+            return false
+        end
+    end
+    return true
+end
+
+terraform tmath.isapprox(A : &V, rn : &R, atol : S) where {V : concepts.Range, R : concepts.Range, S : concepts.Real}
+    for t in zip(A, rn) do
+        var a, v = t
+        if not tmath.isapprox(a, v, atol) then
+            return false
+        end
+    end
+    return true
+end
+
+terraform tmath.isapprox(A : &V, rn : R, atol : S) where {V : concepts.Range, R : concepts.Range, S : concepts.Real}
+    return tmath.isapprox(A, &rn, atol)
+end
+
 
 --export functionality for developing new ranges
 local develop = {

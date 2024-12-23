@@ -12,7 +12,7 @@ local C = terralib.includecstring[[
 
 local base = require("base")
 local concepts = require("concepts")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 local complex = terralib.memoize(function(T)
 
