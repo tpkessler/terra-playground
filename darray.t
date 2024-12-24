@@ -7,13 +7,15 @@ local io = terralib.includec("stdio.h")
 local err = require("assert")
 local alloc = require("alloc")
 local base = require("base")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local concepts = require("concepts")
 local array = require("arraybase")
-local vecbase = require("vector")
---local matbase = require("matrix")
-local tup = require("tuple")
+local vec = require("vector")
+local vecblas = require("vector_blas")
+local stack = require("stack")
+local mat = require("matrix")
 local range = require("range")
+local tup = require("tuple")
 
 local luafun = require("fun")
 
@@ -24,7 +26,7 @@ local size_t = uint64
 __boundscheck__ = true
 
 
-local DArrayRawType = function(T, Dimension, options)
+local DArrayRawType = function(typename, T, Dimension, options)
 
     --check input
     assert(terralib.types.istype(T), "ArgumentError: first argument is not a valid terra type.")
@@ -42,13 +44,25 @@ local DArrayRawType = function(T, Dimension, options)
         cumsize : size_t[Dimension] --cumulative product dimensions - is ordered according to 'perm'
     }
 
-    --add base functionality
+    --global type traits
+    local traits = {}
+    traits.eltype = T
+    traits.ndims = Dimension
+    traits.perm = Perm
+
+    --__typename needs to be called before base.AbstractBase due to some caching 
+    --issue with the typename.
+    function Array.metamethods.__typename(self)
+        return typename(traits)
+    end
+
+    --add base functionality - traits, templates table, etc
     base.AbstractBase(Array)
 
-    --global type traits
-    Array.traits.eltype = T
-    Array.traits.ndims = Dimension
-    Array.traits.perm = Perm
+    --add traits to Array.traits table
+    for key,val in pairs(traits) do
+        Array.traits[key] = val
+    end
 
     return Array
 end
@@ -62,19 +76,33 @@ local DArrayStackBase = function(Array)
         return self.cumsize[ [N-1] ]
     end
     
-    Array.methods.data = macro(function(self, i)
-        return `self.data(i)
-    end)
+    terra Array:getdataptr() : &T
+        return &self.data(0)
+    end
+
+    if not Array.methods.getdata then
+        Array.methods.getdata = macro(function(self, i)
+            return `self.data(i)
+        end)
+    end
+
+    if not Array.methods.setdata then
+        Array.methods.setdata = macro(function(self, i, v)
+            return quote self.data(i) = v end
+        end)
+    end
 
     --element size as a terra method
-    Array.methods.size = terralib.overloadedfunction("size", {
-        terra(self : &Array, i : size_t)
-            return self.size[i]
-        end,
-        terra(self : &Array)
-            return self.size
-        end
-    })
+    if not Array.methods.size then
+        Array.methods.size = terralib.overloadedfunction("size", {
+            terra(self : &Array, i : size_t)
+                return self.size[i]
+            end,
+            terra(self : &Array)
+                return self.size
+            end
+        })
+    end
 
     --get lowlevel base functionality for nd arrays
     local arraybase = array.ArrayBase(Array)
@@ -113,6 +141,32 @@ local DArrayStackBase = function(Array)
         Array.staticmethods.new = new
     end
 
+    --for N==1 we allow casting from a dynamic stack
+    if N==1 then
+        local dstack = stack.DynamicStack(T)
+
+        Array.metamethods.__cast = function(from, to, exp)
+            if from == dstack and to == Array then
+                --only allow rvalues to be cast from a dstack to a dvector
+                --a dynamic stack can reallocate, which makes it unsafe to cast
+                --an lvalue since the lvalue may be modified (reallocate) later
+                if not exp:islvalue() then
+                    return quote
+                        var tmp = exp
+                        var v : Array
+                        v.data = tmp.data:__move() --we move the resources over
+                        v.size[0] = tmp.size --as size we provide the whole resource
+                        v.cumsize[0] = v.size[0]
+                    in
+                        v
+                    end
+                end
+            else
+                error("ArgumentError: not able to cast " .. tostring(from) .. " to " .. tostring(to) .. ".")
+            end
+        end
+    end
+
 end
 
 local DArrayVectorBase = function(Array)
@@ -121,7 +175,15 @@ local DArrayVectorBase = function(Array)
     local N = Array.traits.ndims
     local Sizes = tup.ntuple(size_t, N)
 
-    vecbase.VectorBase(Array) --add fall-back routines
+    vec.VectorBase(Array) --add fall-back routines
+
+    --add level-1 BLAS fall-back routines
+    if concepts.BLASNumber(T) then
+        terra Array:getblasinfo()
+            return self:length(), self:getdataptr(), 1
+        end
+        vecblas.BLASVectorBase(Array)
+    end
 
     local all = function(S)
         return terra(alloc : Allocator, size : S, value : T)
@@ -145,22 +207,36 @@ local DArrayVectorBase = function(Array)
         end
     end
 
-
     if N == 1 then
-
         Array.staticmethods.all = terralib.overloadedfunction("all", {all(size_t), all(Sizes)})
 
         if concepts.Number(T) then
             Array.staticmethods.zeros = terralib.overloadedfunction("zeros", {zeros(size_t), zeros(Sizes)})
             Array.staticmethods.ones = terralib.overloadedfunction("ones", {ones(size_t), ones(Sizes)})
         end
-
     else
         Array.staticmethods.all = all(Sizes)
         
         if concepts.Number(T) then
             Array.staticmethods.zeros = zeros(Sizes)
             Array.staticmethods.ones = ones(Sizes)
+        end
+    end
+
+    --check if vector concept is satisfied
+    local CVector = concepts.Vector(T)
+    assert(CVector(Array), "ConceptError: " .. tostring(Array) .. " does not satisfy concept " .. tostring(CVector))
+end
+
+
+local DArrayMatrixBase = function(DMatrix)
+    
+    assert(DMatrix.traits.ndims == 2) --these methods are only for matrices
+    local T = DMatrix.traits.eltype
+
+    if concepts.BLASNumber(T) then
+        terra DMatrix:getblasdenseinfo()
+            return self:size(0), self:size(1), self:getdataptr(), self.cumsize[0]
         end
     end
 
@@ -200,40 +276,142 @@ local DArrayIteratorBase = function(Array)
     end
 
     --standard iterator is added in VectorBase
-    vecbase.IteratorBase(Array) --add fall-back routines
+    vec.IteratorBase(Array) --add fall-back routines
  
 end
 
 local DynamicArray = function(T, Dimension, options)
     
-    --generate the raw type
-    local Array = DArrayRawType(T, Dimension, options)
-    
     --print typename
-    function Array.metamethods.__typename(self)
+    local function typename(traits)
         local sizes = "{"
         local perm = "{"
-        for i = 1, Array.traits.ndims-1 do
-            perm = perm .. tostring(Array.traits.perm[i]) .. ","
+        for i = 1, traits.ndims-1 do
+            perm = perm .. tostring(traits.perm[i]) .. ","
         end
-        perm = perm .. tostring(Array.traits.perm[Array.traits.ndims]) .. "}"
-        return "DynamicArray(" .. tostring(T) ..", " .. tostring(Array.traits.ndims) .. ", perm = " .. perm .. ")"
+        perm = perm .. tostring(traits.perm[traits.ndims]) .. "}"
+        return "DynamicArray(" .. tostring(T) ..", " .. tostring(traits.ndims) .. ", perm = " .. perm .. ")"
     end
 
+    --generate the raw type
+    local Array = DArrayRawType(typename, T, Dimension, options)
+    
     --implement interfaces
     DArrayStackBase(Array)
     DArrayVectorBase(Array)
-    --DArrayIteratorBase(Array)
+    DArrayIteratorBase(Array)
 
     return Array
 end
 
+--DynamicVector is reimplemented separately from 'Array' because otherwise
+--DynamicVector.metamethods.__typename is memoized incorrectly
+local DynamicVector = terralib.memoize(function(T)
+    
+    local function typename(traits)
+        return ("DynamicVector(%s)"):format(tostring(T))
+    end
+
+    --generate the raw type
+    local DVector = DArrayRawType(typename, T, 1)
+
+    --implement interfaces
+    DArrayStackBase(DVector)
+    DArrayVectorBase(DVector)
+    DArrayIteratorBase(DVector)
+
+    return DVector
+end)
+
+local TransposedDMatrix = function(ParentMatrix)
+
+    assert(ParentMatrix.traits.ndims == 2)
+
+    local T = ParentMatrix.traits.eltype
+    local Perm = terralib.newlist{ParentMatrix.traits.perm[2], ParentMatrix.traits.perm[1]}
+
+    local typename
+    if concepts.Complex(T) then
+        typename = function(traits)
+            return ("ConjugateTranspose{DMatrix(%s)}"):format(tostring(T))
+        end
+    else
+        typename = function(traits)
+            return ("Transpose{DMatrix(%s)}"):format(tostring(T))
+        end
+    end
+
+    local DMatrix = DArrayRawType(typename, T, 2, {perm=Perm})
+
+    --trait to signal that this is a transposed view
+    DMatrix.traits.istransposed = true
+
+    --overload the set / get behavior to get conjugate transpose
+    --for complex data types
+    if concepts.Complex(T) then
+        DMatrix.methods.getdata = macro(function(self, i)
+            return `tmath.conj(self.data(i))
+        end)
+        DMatrix.methods.setdata = macro(function(self, i, v)
+            return quote self.data(i) = tmath.conj(v) end
+        end)
+    end
+
+    DMatrix.methods.size = terralib.overloadedfunction("size", {
+        terra(self : &DMatrix, i : size_t)
+            return self.size[1-i]
+        end,
+        terra(self : &DMatrix)
+            return self.size[1], self.size[0]
+        end
+    })
+
+    --implement interfaces
+    DArrayStackBase(DMatrix)
+    DArrayVectorBase(DMatrix)
+    DArrayIteratorBase(DMatrix)
+    DArrayMatrixBase(DMatrix)
+
+    return DMatrix
+end
+
+
+local DynamicMatrix = terralib.memoize(function(T, options)
+
+    local function typename(traits)
+        return ("DynamicMatrix(%s)"):format(tostring(T))
+    end
+
+    local DMatrix = DArrayRawType(typename, T, 2, options)
+
+    --check that a matrix-type was generated
+    assert(DMatrix.traits.ndims == 2, "ArgumentError: second argument should be a table with matrix dimensions.")
+
+    --implement interfaces
+    DArrayStackBase(DMatrix)
+    DArrayVectorBase(DMatrix)
+    DArrayIteratorBase(DMatrix)
+    DArrayMatrixBase(DMatrix)
+
+    local TransposedType = TransposedDMatrix(DMatrix)
+
+    terra DMatrix:transpose()
+        return [&TransposedType](self)
+    end
+
+    terra TransposedType:transpose()
+        return [&DMatrix](self)
+    end
+
+    return DMatrix
+end)
 
 return {
+    DynamicArray = DynamicArray,
     DArrayRawType = DArrayRawType,
     DArrayStackBase = DArrayStackBase,
+    DArrayVectorBase = DArrayVectorBase,
     DArrayIteratorBase = DArrayIteratorBase,
-    DynamicArray = DynamicArray,
-    --DynamicVector = DynamicVector,
-    --DynamicMatrix = DynamicMatrix
+    DynamicVector = DynamicVector,
+    DynamicMatrix = DynamicMatrix
 }

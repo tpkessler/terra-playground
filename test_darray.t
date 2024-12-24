@@ -6,6 +6,7 @@
 import "terraform"
 local range = require("range")
 local alloc = require("alloc")
+local stack = require("stack")
 local darray = require("darray")
 local matrix = require("matrix")
 local nfloat = require("nfloat")
@@ -20,17 +21,17 @@ local float128 = nfloat.FixedFloat(128)
 local cfloat128 = complex.complex(float128)
 local float256 = nfloat.FixedFloat(256)
 
+local DefaultAllocator = alloc.DefaultAllocator()
+
 import "terratest/terratest"
 
 if not __silent__ then
-
-    local DefaultAllocator = alloc.DefaultAllocator()
 
     local DVector = darray.DynamicArray(float, 1)
     local DMatrix = darray.DynamicArray(float, 2, {perm={1,2}} )
     local DArray3f = darray.DynamicArray(float, 3, {perm={1,2,3}} )
     local DArray4i = darray.DynamicArray(int, 4, {perm={1,2,3,4}} )
-    local DMatrix23ci = sarray.StaticMatrix(cfloat128, {3, 2})
+    local DMatrixci = darray.DynamicMatrix(cfloat128)
 
     local im = cfloat128:unit()
 
@@ -152,7 +153,7 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
             testset "copy" do
                 terracode
                     var Y = DArray.all(&alloc, {2, 3, 4}, 2)
-                    var X : DArray.zeros(&alloc, {2, 3, 4})
+                    var X = DArray.zeros(&alloc, {2, 3, 4})
                     X:copy(&Y)
                 end
                 test tmath.isapprox(&X, 2, 0)
@@ -164,12 +165,12 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                     A:swap(&C)
                 end
                 test tmath.isapprox(&C, linrange{0,24}, 0)
-                test tmath.isapprox(&C, T(1), 0)
+                test tmath.isapprox(&A, T(1), 0)
             end
 
             testset "fill" do
                 terracode
-                    var X : DArray.zeros(&alloc, {2, 3, 4})
+                    var X = DArray.zeros(&alloc, {2, 3, 4})
                     X:fill(2)
                 end
                 test tmath.isapprox(&X, 2, 0)
@@ -178,7 +179,7 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
             testset "scal" do
                 terracode
                     var X = DArray.all(&alloc, {2, 3, 4}, 2)
-                    X:scal(2)
+                    X:scal(T(2))
                 end
                 test tmath.isapprox(&X, 4, 0)
             end
@@ -187,7 +188,7 @@ for _,Perm in ipairs{ {3,2,1}, {1,2,3} } do
                 terracode
                     var X = DArray.all(&alloc, {2, 3, 4}, 2)
                     var Y = DArray.all(&alloc, {2, 3, 4}, 3)
-                    Y:axpy(4, &X)
+                    Y:axpy(T(4), &X)
                 end
                 test tmath.isapprox(&Y, 11, 0)
             end
@@ -335,7 +336,7 @@ for _,T in ipairs{int,float,double,float256} do
             terracode
                 var v = DVector.from(&alloc, {1, 2, 3, 4, 5})
                 var w = DVector.from(&alloc, {5, 4, 3, 2, 1})
-                w:axpy(1, &v)
+                w:axpy(T(1), &v)
             end
             test w:length() == 5
             for i = 0, 4 do
@@ -350,6 +351,21 @@ for _,T in ipairs{int,float,double,float256} do
                 var res = w:dot(&v)
             end
             test res == 35
+        end
+
+        local dstack = stack.DynamicStack(T)
+
+        testset "__move from a dstack" do
+            terracode
+                var s = dstack.new(&alloc, 3)
+                s:push(1.0)
+                s:push(2.0)
+                var v : DVector = s:__move()
+            end
+            test s.data:isempty()
+            test v.data:owns_resource()
+            test v:length() == 2
+            test v(0) == 1.0 and v(1) == 2.0
         end
 
         testset "range" do
@@ -509,7 +525,7 @@ for _,T in ipairs{int, float, double, float128} do
         testset "gemm" do
             terracode
                 matrix.gemm([T](1), &A, &B, T(0), &C)
-                var Cref = SMatrix2x2.from({{-2, 5}, {-2, 9}})
+                var Cref = DMatrix.from(&alloc, {{-2, 5}, {-2, 9}})
             end
             test tmath.isapprox(&C, &Cref, 0)
         end
@@ -517,7 +533,7 @@ for _,T in ipairs{int, float, double, float128} do
         testset "gemm - transpose A" do
             terracode
                 matrix.gemm([T](1), A:transpose(), &B, T(0), &C)
-                var Cref = SMatrix2x2.from({{-4, 8}, {-4, 10}})
+                var Cref = DMatrix.from(&alloc, {{-4, 8}, {-4, 10}})
             end
             test tmath.isapprox(&C, &Cref, 0)
         end
@@ -525,7 +541,7 @@ for _,T in ipairs{int, float, double, float128} do
         testset "gemm - transpose B" do
             terracode
                 matrix.gemm([T](1), &A, B:transpose(), T(0), &C)
-                var Cref = SMatrix2x2.from({{0, 4}, {2, 6}})
+                var Cref = DMatrix.from(&alloc, {{0, 4}, {2, 6}})
             end
             test tmath.isapprox(&C, &Cref, 0)
         end
@@ -533,7 +549,7 @@ for _,T in ipairs{int, float, double, float128} do
         testset "gemm - transpose A, transpose B" do
             terracode
                 matrix.gemm([T](1), A:transpose(), B:transpose(), T(0), &C)
-                var Cref = SMatrix2x2.from({{-1, 7}, {0, 8}})
+                var Cref = DMatrix.from(&alloc, {{-1, 7}, {0, 8}})
             end
             test tmath.isapprox(&C, &Cref, 0)
         end
@@ -619,7 +635,7 @@ for _,T in ipairs{cint, cfloat, cdouble, cfloat128} do
             terracode
                 var x = DVector.from(&alloc, {1-im, -1+im})
                 var y = DVector.zeros(&alloc, 3)
-                var yref = DVector.from(&alloc, 2*im, 4+6*im, -5-3*im})
+                var yref = DVector.from(&alloc, {2*im, 4+6*im, -5-3*im})
                 matrix.gemv(T(1), A:transpose(), &x, T(0), &y)
             end
             test tmath.isapprox(&y, &yref, 0)
