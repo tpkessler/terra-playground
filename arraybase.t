@@ -294,7 +294,7 @@ local ArrayBase = function(Array)
                 var A = Array.new([alloc], {[arraysize]})
                 [fillarray(A, arraysize, data)]
             in
-                A
+               &A
             end
         end)
     end

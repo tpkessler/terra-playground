@@ -14,6 +14,8 @@ local complex = require("complex")
 local concepts = require("concepts")
 local tmath = require("tmath")
 
+local io = terralib.includec("stdio.h")
+
 local cfloat = complex.complex(float)
 local cdouble = complex.complex(double)
 local cint = complex.complex(int)
@@ -41,6 +43,13 @@ if not __silent__ then
 
         --vector
         var v = DVector.from(&alloc, {1, 2, 3, -1})
+        if v.data:owns_resource() then
+            io.printf("owns resource\n")
+        elseif v.data:borrows_resource() then
+            io.printf("borrows resource\n")
+        elseif v.data:isempty() then
+            io.printf("isempty\n")
+        end
         v:print()
 
         --matrix
@@ -256,6 +265,7 @@ for _,T in ipairs{int,float,double,float256} do
                     end                     
                 end
                 test v:length()==N
+                test v.data:owns_resource()
                 for i=0,N-1 do              
                     test v:get(i) == T(i+1)
                 end 
@@ -266,6 +276,7 @@ for _,T in ipairs{int,float,double,float256} do
                     var v = DVector.zeros(&alloc, N)
                 end
                 test v:length()==N
+                test v.data:owns_resource()
                 for i=0,N-1 do              
                     test v:get(i) == 0
                 end 
@@ -276,6 +287,7 @@ for _,T in ipairs{int,float,double,float256} do
                     var v = DVector.ones(&alloc, N)
                 end 
                 test v:length()==N
+                test v.data:owns_resource()
                 for i=0,N-1 do              
                     test v:get(i) == T(1)
                 end 
@@ -286,6 +298,7 @@ for _,T in ipairs{int,float,double,float256} do
                     var v = DVector.all(&alloc, N, T(3))
                 end 
                 test v:length()==N
+                test v.data:owns_resource()
                 for i=0,N-1 do              
                     test v:get(i) == T(3)
                 end 
@@ -305,6 +318,7 @@ for _,T in ipairs{int,float,double,float256} do
             terracode
                 var v = DVector.from(&alloc, {1, 2})
             end
+            test v.data:owns_resource()
             test v:length() == 2
             test v:get(0) == 1
             test v:get(1) == 2
@@ -314,6 +328,7 @@ for _,T in ipairs{int,float,double,float256} do
             terracode
                 var v = DVector.from(&alloc, {1, 2, 3})
             end
+            test v.data:owns_resource()
             test v:length() == 3
             test v:get(0) == 1
             test v:get(1) == 2
@@ -326,6 +341,8 @@ for _,T in ipairs{int,float,double,float256} do
                 var w = DVector.new(&alloc, 4)
                 w:copy(&v)
             end
+            --test v.data:owns_resource()
+            test w.data:owns_resource()
             test w:length() == 4
             for i = 0, 3 do
                 test w:get(i) == i + 1
@@ -338,6 +355,8 @@ for _,T in ipairs{int,float,double,float256} do
                 var w = DVector.from(&alloc, {5, 4, 3, 2, 1})
                 w:axpy(T(1), &v)
             end
+            test v.data:owns_resource()
+            test w.data:owns_resource()
             test w:length() == 5
             for i = 0, 4 do
                 test w:get(i) == 6
@@ -350,6 +369,8 @@ for _,T in ipairs{int,float,double,float256} do
                 var w = DVector.from(&alloc, {5, 4, 3, 2, 1, 0})
                 var res = w:dot(&v)
             end
+            test v.data:owns_resource()
+            test w.data:owns_resource()
             test res == 35
         end
 
@@ -362,6 +383,7 @@ for _,T in ipairs{int,float,double,float256} do
                 s:push(2.0)
                 var v : DVector = s:__move()
             end
+            test v.data:owns_resource()
             test s.data:isempty()
             test v.data:owns_resource()
             test v:length() == 2

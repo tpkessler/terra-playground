@@ -159,12 +159,12 @@ local unitrange = terralib.memoize(function(T)
         terra(a : T, b : T) return new(a, b, false) end
     })
 
-    terra range:size()
+    terra range:length()
         return self.b - self.a
     end
 
     range.metamethods.__apply = terra(self : &range, i : size_t)
-        err.assert(i < self:size())
+        err.assert(i < self:length())
         return self.a + i
     end
 
@@ -218,12 +218,12 @@ local steprange = terralib.memoize(function(T)
         terra(a : T, b : T, step : T) return new(a, b, step, false) end
     })
     
-    terra range:size() : size_t
+    terra range:length() : size_t
         return truncate((self.b-self.a) / self.step)
     end
 
     range.metamethods.__apply = terra(self : &range, i : size_t)
-        err.assert(i < self:size())
+        err.assert(i < self:length())
         return self.a + i * self.step
     end
 

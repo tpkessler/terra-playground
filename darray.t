@@ -121,11 +121,18 @@ local DArrayStackBase = function(Array)
     end
 
     --create a new dynamic array
+    --ToDo: fix terralib typechecker to perform raii initializers correctly
     local new = terra(alloc: Allocator, size : tup.ntuple(size_t, N))
         var __size = [ &size_t[N] ](&size)  --we need the size as an array
         var cumsize = getcumsize(@__size)   --compute cumulative sizes
         var length = cumsize[N-1]           --length is last entry in 'cumsum'
-        return Array{alloc:allocate(sizeof(T), length), @__size, cumsize}
+        --return Array{alloc:allocate(sizeof(T), length), @__size, cumsize}
+        var v : Array
+        v.data = alloc:allocate(sizeof(T), length)
+        err.assert(v.data:owns_resource())
+        v.size = @__size
+        v.cumsize = cumsize
+        return v
     end
 
     --For N==1 we allow passing the size as an integer or as a tuple holding

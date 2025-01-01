@@ -3,21 +3,23 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local tmath = require('mathfuns')
+local io = terralib.includec("stdio.h")
+
+local tmath = require('tmath')
 local alloc = require('alloc')
 local stack = require('stack')
-local svector = require('svector')
-local dvector = require('dvector')
+local sarray = require('sarray')
+local darray = require('darray')
 local poly = require('poly')
 local err = require("assert")
 local range = require("range")
 
 local size_t = uint32
 local Allocator = alloc.Allocator
-local dvec = dvector.DynamicVector(double)
+local dvec = darray.DynamicVector(double)
 local dstack = stack.DynamicStack(double)
 
---table that holds the main implementations of quadrature rules
+--table that holds the main implemexntations of quadrature rules
 local imp = {}
 --table containing api overloaded functions calling underlying implementation
 local gauss = {}
@@ -42,7 +44,7 @@ end
 --affine scaling of quadrature rule
 local terra affinescaling(x : &dvec, w : &dvec, a : double, b : double, alpha : double, beta : double)
     var sb, sa, s, exp = b / 2., a / 2., (b-a) / 2.0, alpha+beta+1.0
-    for i = 0, x:size() do
+    for i = 0, x:length() do
         x(i) = (x(i) + 1) * sb + (1 - x(i)) * sa
         w(i) = w(i) * tmath.pow(s, exp)
     end
@@ -56,7 +58,7 @@ local terra iseven(n : int)
     return n % 2 == 0
 end
 
-local svec8d = svector.StaticVector(double, 8)
+local svec8d = sarray.StaticVector(double, 8)
 
 local airy_roots_8 = terralib.constant(terralib.new(double[8], {
 --the first 8 roots of the Airy function in Float64 precision
@@ -174,7 +176,7 @@ local terra hermite_initialguess(alloc : Allocator, n : size_t)
     if isodd(n) then
         x:push(0.0)
     end
-    -- return as a dvector
+    -- return as a darray
     return [dvec](x:__move())
 end
 
@@ -232,7 +234,8 @@ local terra hermite_rec(alloc : Allocator, n : size_t)
         w:set(i, q._1)
     end
     --use symmetry to establish complete rule
-    x.size = n --ToDo: we used x as a view here. Fix when views are ready.
+    x.size[0] = n --ToDo: we used x as a view here. Fix when views are ready.
+    x.cumsize[0] = n
     --use symmetry to get the other Legendre nodes and weights:
     var m = terralib.select(isodd(n), (n+1) >> 1, n >> 1)
     var alpha = tmath.sqrt(tmath.pi)
@@ -243,6 +246,8 @@ local terra hermite_rec(alloc : Allocator, n : size_t)
         w(i) = w(i) * tmath.exp(-tmath.pow(xx, 2)) * alpha
         w(n - 1 - i) = w(i)
     end
+    err.assert(x.data:owns_resource())
+    --err.assert(w.data:owns_resource())
     return x, w
 end
 
@@ -255,7 +260,7 @@ terra imp.unweightedgausshermite(alloc : Allocator, n : size_t)
         return x, w
     elseif n <= 100 then
        --Newton's method with three-term recurrence
-       var x, w = hermite_rec(&alloc, n)
+       var x, w = hermite_rec(alloc, n)
        return x, w
     end
 end
@@ -308,8 +313,8 @@ terra bessel_zero_roots(alloc : Allocator, m : size_t)
     --Use McMahon's expansion for the remainder (NIST, 10.21.19):
     var jk = dvec.new(alloc, m)
     var c = arrayof(double, 1071187749376. / 315., 0.0, -401743168. / 105., 0.0, 120928. / 15., 0.0, -124. / 3., 0.0, 1.0, 0.0)
-    var p2 = poly2.from(1.0, c[6], c[4])
-    var p3 = poly3.from(1.0, c[6], c[4], c[2])
+    var p2 = poly2.from({1.0, c[6], c[4]})
+    var p3 = poly3.from({1.0, c[6], c[4], c[2]})
     --First 20 are precomputed:
     for jj = 0, tmath.min(m, 20) do
         jk(jj) = besselj0_roots[jj]
@@ -333,10 +338,10 @@ terra besselJ1(alloc : Allocator, m : size_t)
     --expansion (NIST, 10.21.19)
     var Jk2 = dvec.new(alloc, m)
     var c = arrayof(double, -171497088497. / 15206400., 461797. / 1152., -172913. / 8064., 151. / 80., -7. / 24., 0.0, 2.0)
-    var p1 = poly1.from(c[4], c[3])
-    var p2 = poly2.from(c[4], c[3], c[2])
-    var p3 = poly3.from(c[4], c[3], c[2], c[1])
-    var p4 = poly4.from(c[4], c[3], c[2], c[1], c[0])
+    var p1 = poly1.from({c[4], c[3]})
+    var p2 = poly2.from({c[4], c[3], c[2]})
+    var p3 = poly3.from({c[4], c[3], c[2], c[1]})
+    var p4 = poly4.from({c[4], c[3], c[2], c[1], c[0]})
     --first 10 are precomputed:
     for jj = 0, tmath.min(m, 10) do
         Jk2(jj) = besselj1_on_besselj0_roots[jj]
@@ -364,15 +369,16 @@ terra besselJ1(alloc : Allocator, m : size_t)
     return Jk2
 end
 
-local terra legpts_nodes(alloc : Allocator, n : size_t, a : dvec)
+local terra legpts_nodes(alloc : Allocator, n : size_t, a : &dvec)
     --asymptotic expansion for the Gauss-Legendre nodes
     var vn = 1. / (n + 0.5)
-    var m = a:size()
-    var nodes = dvec.new(&alloc, n)
-    a:map(&nodes, tmath.cot)
+    var transform = @a >> range.transform(tmath.cot)
+    var nodes = dvec.new(alloc, n)
+    transform:collect(&nodes)
     var vn2 = vn * vn
     var vn4 = vn2 * vn2
-    var p = poly2.from(2595. / 15360., 6350. / 15360., 3779. / 15360.)
+    var p = poly2.from({2595. / 15360., 6350. / 15360., 3779. / 15360.})
+    var m = a:length()
     if n <= 255 then
         var vn6 = vn4 * vn2
         for i = 0, m do
@@ -401,17 +407,18 @@ local terra legpts_nodes(alloc : Allocator, n : size_t, a : dvec)
     return nodes
 end
 
-local terra legpts_weights(alloc : Allocator, n : size_t, a : dvec)
+local terra legpts_weights(alloc : Allocator, n : size_t, a : &dvec)
     --asymptotic expansion for the Gauss-Legendre weights
-    var m = a:size()
     var vn = 1. / (n + 0.5)
     var vn2 = vn * vn
-    var weights = dvec.new(&alloc, n)
-    a:map(&weights, tmath.cot)
-    var p2 = poly2.from(-27.0, -84.0, -56.0)
-    var p3 = poly3.from(153. / 1024., 295. / 256., 187. / 96., 151. / 160.)
-    var q2 = poly2.from(-65. / 1024., -119. / 768., -35. / 384.)
-    var r2 = poly2.from(5. / 512., 15. / 512., 7. / 384.)
+    var transform = @a >> range.transform(tmath.cot)
+    var weights = dvec.new(alloc, n)
+    transform:collect(&weights)
+    var p2 = poly2.from({-27.0, -84.0, -56.0})
+    var p3 = poly3.from({153. / 1024., 295. / 256., 187. / 96., 151. / 160.})
+    var q2 = poly2.from({-65. / 1024., -119. / 768., -35. / 384.})
+    var r2 = poly2.from({5. / 512., 15. / 512., 7. / 384.})
+    var m = a:length()
     if n <= 170 then
         for i = 0, m do
             var u = weights(i)
@@ -422,12 +429,12 @@ local terra legpts_weights(alloc : Allocator, n : size_t, a : dvec)
             var air2 = 1. / ai2
             var ua = u * ai
             var W1 = tmath.fusedmuladd(ua-1., air2, 1.0) / 8.
-            var W2 = poly2.from(
+            var W2 = poly2.from({
                 p2(u2), 
                 tmath.fusedmuladd(-3.0, tmath.fusedmuladd(u2, -2.0, 1.0), 6. * ua), 
                 tmath.fusedmuladd(ua, -31.0, 81.0)
-            )
-            var W3 = poly6.from(
+            })
+            var W3 = poly6.from({
                 p3(u2), 
                 q2(u2) * u, 
                 r2(u2), 
@@ -435,8 +442,8 @@ local terra legpts_weights(alloc : Allocator, n : size_t, a : dvec)
                 tmath.fusedmuladd(u2, -7. / 384., 53. / 3072.), 
                 3749. / 15360. * u, 
                 -1125. / 1024.
-            )
-            var W = poly2.from(1. / vn2 + W1, W2(air2) / 384., W3(air1))
+            })
+            var W = poly2.from({1. / vn2 + W1, W2(air2) / 384., W3(air1)})
             weights(i) = W(vn2)
         end
     end
@@ -456,15 +463,15 @@ local terra asy(alloc : Allocator, n : size_t)
     var m = (n + 1) >> 1
     var a = bessel_zero_roots(&alloc, m)
     a:scal(1. / (n + 0.5))
-    var x = legpts_nodes(&alloc, n, a)
-    var w = legpts_weights(&alloc, n, a)
+    var x = legpts_nodes(&alloc, n, &a)
+    var w = legpts_weights(&alloc, n, &a)
     return x, w
 end
 
 local terra innerRec(x : &dvec, myPm1 : &dvec, myPPm1 : &dvec)
     --Evaluate Legendre and its derivative using three-term recurrence relation.
-    var n = x:size()
-    var m = myPm1:size()
+    var n = x:length()
+    var m = myPm1:length()
     for j = 0, m do
         var xj = x(j)
         var Pm2 = 1.0
@@ -486,9 +493,9 @@ local terra rec(alloc : Allocator, n : size_t)
     --three-term recurrence is used for evaluation. Complexity O(n^2).
     --initial guesses:
     var m = (n + 1) >> 1
-    var x, w = asy(&alloc, n)
+    var x, w = asy(alloc, n)
     --allocate vectors for Newton corrections
-    var PP1, PP2 = dvec.new(&alloc, m), dvec.new(&alloc, m)
+    var PP1, PP2 = dvec.new(alloc, m), dvec.new(alloc, m)
     --perform Newton to find zeros of Legendre polynomial:
     for iter = 0, 3 do
         innerRec(&x, &PP1, &PP2)
@@ -512,21 +519,21 @@ end
 terra imp.legendre(alloc : Allocator, n : size_t)
     err.assert(n < 101)
     if n==1 then
-        return dvec.from(&alloc, 0.0), dvec.from(&alloc, 2.0)
+        return dvec.from(&alloc, {0.0}), dvec.from(&alloc, {2.0})
     elseif n==2 then
-        return dvec.from(&alloc, -1.0 / tmath.sqrt(3.0), 1.0 / tmath.sqrt(3.0)), 
-            dvec.from(&alloc, 1.0, 1.0)
+        return dvec.from(&alloc, {-1.0 / tmath.sqrt(3.0), 1.0 / tmath.sqrt(3.0)}), 
+            dvec.from(&alloc, {1.0, 1.0})
     elseif n==3 then
-        return dvec.from(&alloc, -tmath.sqrt(3.0 / 5.0), 0.0, tmath.sqrt(3.0 / 5.0)), 
-            dvec.from(&alloc, 5.0 / 9.0, 8.0 / 9.0, 5.0 / 9.0)
+        return dvec.from(&alloc, {-tmath.sqrt(3.0 / 5.0), 0.0, tmath.sqrt(3.0 / 5.0)}), 
+            dvec.from(&alloc, {5.0 / 9.0, 8.0 / 9.0, 5.0 / 9.0})
     elseif n==4 then
         var a = 2.0 / 7.0 * tmath.sqrt(6.0 / 5.0)
-        return dvec.from(&alloc, -tmath.sqrt(3. / 7. + a), -tmath.sqrt(3./7.-a), tmath.sqrt(3./7.-a), tmath.sqrt(3./7.+a)),
-            dvec.from(&alloc, (18. - tmath.sqrt(30.)) / 36., (18. + tmath.sqrt(30.)) / 36., (18. + tmath.sqrt(30.)) / 36., (18. - tmath.sqrt(30.)) / 36.)
+        return dvec.from(&alloc, {-tmath.sqrt(3. / 7. + a), -tmath.sqrt(3./7.-a), tmath.sqrt(3./7.-a), tmath.sqrt(3./7.+a)}),
+            dvec.from(&alloc, {(18. - tmath.sqrt(30.)) / 36., (18. + tmath.sqrt(30.)) / 36., (18. + tmath.sqrt(30.)) / 36., (18. - tmath.sqrt(30.)) / 36.})
     elseif n==5 then
         var b = 2.0 * tmath.sqrt(10.0 / 7.0)
-        return dvec.from(&alloc, -tmath.sqrt(5. + b) / 3., -tmath.sqrt(5. - b) / 3., 0.0, tmath.sqrt(5. - b) / 3., tmath.sqrt(5. + b) / 3.),
-            dvec.from(&alloc, (322. - 13. * tmath.sqrt(70.)) / 900., (322. + 13. * tmath.sqrt(70.)) / 900., 128. / 225., (322. + 13. * tmath.sqrt(70.)) / 900., (322. - 13. * tmath.sqrt(70.)) / 900.)
+        return dvec.from(&alloc, {-tmath.sqrt(5. + b) / 3., -tmath.sqrt(5. - b) / 3., 0.0, tmath.sqrt(5. - b) / 3., tmath.sqrt(5. + b) / 3.}),
+            dvec.from(&alloc, {(322. - 13. * tmath.sqrt(70.)) / 900., (322. + 13. * tmath.sqrt(70.)) / 900., 128. / 225., (322. + 13. * tmath.sqrt(70.)) / 900., (322. - 13. * tmath.sqrt(70.)) / 900.})
     elseif n <= 60 then
         --Newton's method with three-term recurrence
         var x, w = rec(&alloc, n)
@@ -580,7 +587,7 @@ end
 
 local terra innerjacobi_rec(n : size_t, x : &dvec, alpha : double, beta : double, P : &dvec, PP : &dvec)
     --Evaluate Jacobi polyniomials and its derivative using three-term recurrence.
-    var N = x:size()
+    var N = x:length()
     for j = 0, N do
         var xj = x(j)
         var Pj = (alpha - beta + (alpha + beta + 2.) * xj) / 2.
@@ -616,7 +623,7 @@ local terra half_rec(alloc : Allocator, n : size_t, alpha : double, beta : doubl
     else
         r = steprange_d.new(tmath.floor(n / 2.), 1, -1, range.include_last)
     end
-    var m = r:size()
+    var m = r:length()
     var c1 = 1. / (2. * n + alpha + beta + 1.)
     var a1 = 0.25 - alpha*alpha
     var b1 = 0.25 - beta*beta
@@ -652,7 +659,7 @@ local terra jacobi_rec(alloc : Allocator, n : size_t, alpha : double, beta : dou
     var x21, x22 = half_rec(&alloc, n, beta, alpha, false)
     --allocate vectors for nodes and weights
     var x, w = dvec.new(&alloc, n), dvec.new(&alloc, n)
-    var m1, m2 = x11:size(), x21:size()
+    var m1, m2 = x11:length(), x21:length()
     var sum_w = 0.0
     for i = 0, m2 do
         var idx = m2 - 1 - i
@@ -806,7 +813,7 @@ gauss.jacobi = terralib.overloadedfunction("jacobi",
 
 --affine scaling of quadrature rule
 local terra hermitescaling(x : &dvec, w : &dvec, o : double, s : double)
-    for i = 0, x:size() do
+    for i = 0, x:length() do
         x(i) = s * x(i) + o
         w(i) = s * w(i) 
     end
