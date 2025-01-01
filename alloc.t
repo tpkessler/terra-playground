@@ -78,7 +78,9 @@ local function AllocatorBase(A, Imp)
     --a pointer to this method is set to block.alloc_f
     terra A:__allocators_best_friend(blk : &block, elsize : size_t, counter : size_t)
         var requested_size_in_bytes = elsize * counter
-        if not blk:isempty() then
+        if blk:isempty() and requested_size_in_bytes > 0 then
+            self:allocatefor(blk, elsize, counter)
+        else
             if requested_size_in_bytes == 0 then
                 --free memory
                 self:deallocate(blk)
@@ -101,9 +103,15 @@ local function AllocatorBase(A, Imp)
         end
     end
 
-    terra A:allocate(elsize : size_t, counter : size_t)
-        var blk = Imp.__allocate(elsize, counter)
+    terra A:allocatefor(blk : &block, elsize : size_t, counter : size_t)
+        err.assert(blk:isempty())
+        Imp.__allocate(blk, elsize, counter)
         blk.alloc = self
+    end
+
+    terra A:allocate(elsize : size_t, counter : size_t)
+        var blk : block
+        self:allocatefor(&blk, elsize, counter)
         return blk
     end
 
@@ -132,43 +140,51 @@ local DefaultAllocator = function(options)
 
     --low-level functions that need to be implemented
     local Imp = {}
-    terra Imp.__allocate :: {size_t, size_t} -> {block}
+    terra Imp.__allocate   :: {&block, size_t, size_t} -> {}
     terra Imp.__reallocate :: {&block, size_t, size_t} -> {}
     terra Imp.__deallocate :: {&block} -> {}
     
     if Alignment == 0 then --use natural alignment
         if not Initialize then
-            terra Imp.__allocate(elsize : size_t, counter : size_t)
-                var size = elsize * counter
-                var ptr = C.malloc(size)
-                __abortonerror(ptr, size)
-                return block{ptr, size}
+            terra Imp.__allocate(blk : &block, elsize : size_t, counter : size_t)
+                err.assert(blk:isempty()) --sanity check
+                var size_in_bytes = elsize * counter
+                var ptr = C.malloc(size_in_bytes)
+                __abortonerror(ptr, size_in_bytes)
+                blk.ptr = ptr
+                blk.nbytes = size_in_bytes
             end
         else --initialize to zero using 'calloc'
-            terra Imp.__allocate(elsize : size_t, counter : size_t)
-                var size = elsize * counter
-                var newcounter = round_to_aligned(size, elsize) / elsize
-                var ptr = C.calloc(newcounter, elsize)
-                __abortonerror(ptr, size)
-                return block{ptr, size}
+            terra Imp.__allocate(blk : &block, elsize : size_t, counter : size_t)
+                err.assert(blk:isempty()) --sanity check
+                var size_in_bytes = elsize * counter
+                var ptr = C.calloc(counter, elsize)
+                __abortonerror(ptr, size_in_bytes)
+                blk.ptr = ptr
+                blk.nbytes = size_in_bytes
             end
         end
     else --use user defined alignment (multiple of 8 size_in_bytes)
         if not Initialize then
-            terra Imp.__allocate(elsize : size_t, counter : size_t)
-                var size = elsize * counter
-                var ptr = C.aligned_alloc(Alignment, round_to_aligned(size, Alignment))
-                __abortonerror(ptr, size)
-                return block{ptr, size}
+            terra Imp.__allocate(blk : &block, elsize : size_t, counter : size_t)
+                err.assert(blk:isempty()) --sanity check
+                var newcounter = round_to_aligned(elsize * counter, Alignment) / elsize
+                var size_in_bytes = newcounter * elsize
+                var ptr = C.aligned_alloc(Alignment, size_in_bytes)
+                __abortonerror(ptr, size_in_bytes)
+                blk.ptr = ptr
+                blk.nbytes = size_in_bytes
             end
         else --initialize to zero using 'memset'
-            terra Imp.__allocate(elsize : size_t, counter : size_t)
-                var size = elsize * counter
-                var len = round_to_aligned(size, Alignment)
-                var ptr = C.aligned_alloc(Alignment, len)
+            terra Imp.__allocate(blk : &block, elsize : size_t, counter : size_t)
+                err.assert(blk:isempty()) --sanity check
+                var newcounter = round_to_aligned(elsize * counter, Alignment) / elsize
+                var size_in_bytes = newcounter * elsize
+                var ptr = C.aligned_alloc(Alignment, size_in_bytes)
                 __abortonerror(ptr, size)
-                C.memset(ptr, 0, len)
-                return block{ptr, size}
+                C.memset(ptr, 0, size_in_bytes)
+                blk.ptr = ptr
+                blk.nbytes = size_in_bytes
             end
         end
     end
@@ -178,11 +194,11 @@ local DefaultAllocator = function(options)
         --reallocation is done using realloc
         terra Imp.__reallocate(blk : &block, elsize : size_t, newcounter : size_t)
             err.assert(blk:size_in_bytes() % elsize == 0) --sanity check
-            var newsize = elsize * newcounter
-            if blk:owns_resource() and (blk:size_in_bytes() < newsize)  then
-                blk.ptr = C.realloc(blk.ptr, newsize)
-                blk.nbytes = newsize
-                __abortonerror(blk.ptr, newsize)
+            var newsize_in_bytes = elsize * newcounter
+            if blk:owns_resource() and (blk:size_in_bytes() < newsize_in_bytes)  then
+                blk.ptr = C.realloc(blk.ptr, newsize_in_bytes)
+                blk.nbytes = newsize_in_bytes
+                __abortonerror(blk.ptr, newsize_in_bytes)
             end
         end
     else 
@@ -191,11 +207,12 @@ local DefaultAllocator = function(options)
         --and then memcpy
         terra Imp.__reallocate(blk : &block, elsize : size_t, newcounter : size_t)
             err.assert(blk:size_in_bytes() % elsize == 0) --sanity check
-            var newsize = elsize * newcounter
-            if not blk:isempty() and (blk:size_in_bytes() < newsize)  then
+            var newsize_in_bytes = elsize * newcounter
+            if not blk:isempty() and (blk:size_in_bytes() < newsize_in_bytes)  then
                 --get new resource using '__allocate'
-                var tmpblk = __allocate(elsize, newcounter)
-                __abortonerror(tmpblk.ptr, newsize)
+                var tmpblk : block
+                __allocate(&tmpblk, elsize, newcounter)
+                __abortonerror(tmpblk.ptr, newsize_in_bytes)
                 --copy size_in_bytes over
                 if not tmpblk:isempty() then
                     C.memcpy(tmpblk.ptr, blk.ptr, blk:size_in_bytes())
@@ -204,7 +221,7 @@ local DefaultAllocator = function(options)
                 blk:__dtor()
                 --move resources
                 blk.ptr = tmpblk.ptr
-                blk.nbytes = newsize
+                blk.nbytes = newsize_in_bytes
                 blk.alloc = tmpblk.alloc
                 tmpblk:__init()
             end

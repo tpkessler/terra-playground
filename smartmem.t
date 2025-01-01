@@ -85,11 +85,6 @@ local function Base(block, T)
 
     terralib.ext.addmissing.__move(block)
 
-    --exact clone of the block
-    block.methods.clone = terra(self : &block)
-        return block{self.ptr, self.nbytes, self.alloc}
-    end
-
 end
 
 --abstraction of a memory block without any type information.
@@ -264,6 +259,11 @@ local SmartBlock = terralib.memoize(function(T)
 
         terra block:reallocate(size : size_t)
             self.alloc:__allocators_best_friend(self, sizeof(T), size)
+        end
+
+        --exact clone of the block
+        block.methods.deepcopy = terra(self : &block)
+            return block{self.ptr, self.nbytes, self.alloc}
         end
 
         --declaring __dtor for use in implementation below
