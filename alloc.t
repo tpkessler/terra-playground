@@ -39,10 +39,11 @@ local block = smartmem.block
 --the 'owns' method enables composition of allocators
 --and allows for a sanity check when 'deallocate' is called.
 local Allocator = interface.Interface:new{
-	allocate = {size_t, size_t} -> {block},
+	new        = {size_t, size_t} -> {block},
+    allocate   = {&block, size_t, size_t} -> {},
     reallocate = {&block, size_t, size_t} -> {},
 	deallocate = {&block} -> {},
-	owns = {&block} -> {bool}
+	owns       = {&block} -> {bool}
 }
 
 --an allocator may also use one or more of the following options:
@@ -71,26 +72,6 @@ local function AllocatorBase(A, Imp)
         return false
     end
 
-    --single method that can free and reallocate memory
-    --this method is similar to the 'lua_Alloc' function,
-    --although we don't allow allocation here (yet). 
-    --see also 'https://nullprogram.com/blog/2023/12/17/'
-    --a pointer to this method is set to block.alloc_f
-    terra A:__allocators_best_friend(blk : &block, elsize : size_t, counter : size_t)
-        var requested_size_in_bytes = elsize * counter
-        if blk:isempty() and requested_size_in_bytes > 0 then
-            self:allocatefor(blk, elsize, counter)
-        else
-            if requested_size_in_bytes == 0 then
-                --free memory
-                self:deallocate(blk)
-            elseif requested_size_in_bytes > blk:size_in_bytes() then
-                --reallocate memory
-                self:reallocate(blk, elsize, counter)
-            end
-        end
-    end
-
     terra A:deallocate(blk : &block)
         err.assert(self:owns(blk))
         Imp.__deallocate(blk)
@@ -100,19 +81,40 @@ local function AllocatorBase(A, Imp)
         err.assert(self:owns(blk) and (blk:size_in_bytes() % elsize == 0))
         if not blk:isempty() and (blk:size_in_bytes() < elsize * newcounter)  then
             Imp.__reallocate(blk, elsize, newcounter)
+            blk.alloc = self
         end
     end
 
-    terra A:allocatefor(blk : &block, elsize : size_t, counter : size_t)
+    terra A:allocate(blk : &block, elsize : size_t, counter : size_t)
         err.assert(blk:isempty())
         Imp.__allocate(blk, elsize, counter)
         blk.alloc = self
     end
 
-    terra A:allocate(elsize : size_t, counter : size_t)
+    terra A:new(elsize : size_t, counter : size_t)
         var blk : block
-        self:allocatefor(&blk, elsize, counter)
+        self:allocate(&blk, elsize, counter)
         return blk
+    end
+
+    --single method that can free and reallocate memory
+    --this method is similar to the 'lua_Alloc' function,
+    --although we don't allow allocation here (yet). 
+    --see also 'https://nullprogram.com/blog/2023/12/17/'
+    --a pointer to this method is set to block.alloc_f
+    terra A:__allocators_best_friend(blk : &block, elsize : size_t, counter : size_t) : {}
+        var requested_size_in_bytes = elsize * counter
+        if blk:isempty() and requested_size_in_bytes > 0 then
+            self:allocate(blk, elsize, counter)
+        else
+            if requested_size_in_bytes == 0 then
+                --free memory
+                self:deallocate(blk)
+            elseif requested_size_in_bytes > blk:size_in_bytes() then
+                --reallocate memory
+                self:reallocate(blk, elsize, counter)
+            end
+        end
     end
 
 end
@@ -233,12 +235,12 @@ local DefaultAllocator = function(options)
         blk:__init()
     end
 
-    --local base class
-    local Base = function(A) AllocatorBase(A, Imp) end
-
     --the default allocator
-    local struct default(Base){
+    local struct default{
     }
+
+    --add functionality from base class
+    AllocatorBase(default, Imp)
 
     --sanity check - is the allocator interface implemented
     Allocator:isimplemented(default)

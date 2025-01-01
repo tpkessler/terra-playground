@@ -4,6 +4,11 @@
 -- SPDX-License-Identifier: MIT
 
 require "terralibext"
+
+local C = terralib.includecstring[[
+    #include <string.h>
+]]
+
 local base = require("base")
 local interface = require("interface")
 local range = require("range")
@@ -84,6 +89,18 @@ local function Base(block, T)
     end
 
     terralib.ext.addmissing.__move(block)
+
+    --exact clone of the block
+    block.methods.clone = terra(self : &block)
+        --allocate memory for exact clone
+        var newblk : block
+        self.alloc:__allocators_best_friend(&newblk, [ block.elsize ], self:size())
+        --copy size_in_bytes over
+        if not newblk:isempty() then
+            C.memcpy(newblk.ptr, self.ptr, self:size_in_bytes())
+        end
+        return newblk
+    end
 
 end
 
@@ -259,11 +276,6 @@ local SmartBlock = terralib.memoize(function(T)
 
         terra block:reallocate(size : size_t)
             self.alloc:__allocators_best_friend(self, sizeof(T), size)
-        end
-
-        --exact clone of the block
-        block.methods.deepcopy = terra(self : &block)
-            return block{self.ptr, self.nbytes, self.alloc}
         end
 
         --declaring __dtor for use in implementation below
