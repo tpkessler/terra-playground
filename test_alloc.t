@@ -9,9 +9,10 @@ import "terratest/terratest"
 local alloc = require("alloc")
 local DefaultAllocator = alloc.DefaultAllocator()
 
+
 testenv "Block - Default allocator" do
 
-	local doubles = alloc.SmartBlock(double)
+	local doubles = alloc.SmartBlock(double, {copyby = "view"})
 
 	--metamethod used here for testing - counting the number
 	--of times the __dtor method is called
@@ -65,15 +66,42 @@ testenv "Block - Default allocator" do
 		test x:isempty()
 	end
 
-	testset "__copy - constructor - generated" do
+    local integers = alloc.SmartBlock(int, {copyby = "move"})
+
+	testset "copyby - move" do
 		terracode
-			var x = A:new(sizeof(double), 2)
+			var x : integers = A:new(sizeof(int), 2)
+            x:set(0, 1)
+            x:set(1, 2)
+			var y = x
+		end
+		test x:isempty() and y:owns_resource()
+		test y:size() == 2 and y:get(0) == 1 and y:get(1) == 2
+	end
+
+    local integers = alloc.SmartBlock(int, {copyby = "clone"})
+
+	testset "copyby - clone" do
+		terracode
+			var x : integers = A:new(sizeof(int), 2)
+            x:set(0, 1)
+            x:set(1, 2)
+			var y = x
+		end
+        test x:owns_resource() and y:owns_resource()
+        test y.ptr ~= x.ptr
+		test y:size() == 2 and y:get(0) == 1 and y:get(1) == 2
+	end
+
+    local integers = alloc.SmartBlock(int, {copyby = "view"})
+
+	testset "copyby - view" do
+		terracode
+			var x : integers = A:new(sizeof(int), 2)
 			var y = x
 		end
 		test y.ptr == x.ptr
-		test y.alloc.data == nil
-        test y.alloc.tab == nil
-		test y:size_in_bytes() == 16
+		test y:size() == 2
 		test x:owns_resource() and y:borrows_resource()
 	end
 
@@ -153,6 +181,9 @@ testenv "Block - Default allocator" do
 			var x = y:clone()
 		end
 		test x:size() == 3
+        test x.ptr ~= y.ptr
+        test y:owns_resource()
+        test x:owns_resource()
 		for i=0,2 do
 			test x:get(i)==i
 		end
@@ -166,7 +197,7 @@ testenv "singly linked list - that is a cycle" do
 
     --implementation of singly-linked list
     local struct s_node
-    local smrt_s_node = alloc.SmartBlock(s_node)
+    local smrt_s_node = alloc.SmartBlock(s_node, {copyby = "view"})
 
     --metamethod used here for testing - counting the number
     --of times the __dtor method is called
@@ -264,7 +295,7 @@ testenv "doubly linked list - that is a cycle" do
 
     --implementation of double-linked list
     local struct d_node
-    local smrt_d_node = alloc.SmartBlock(d_node)
+    local smrt_d_node = alloc.SmartBlock(d_node, {copyby = "view"})
 
     --metamethod used here for testing - counting the number
     --of times the __dtor method is called
