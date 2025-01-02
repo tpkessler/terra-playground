@@ -195,6 +195,8 @@ testenv "Block - Default allocator" do
 
 end
 
+import "terraform"
+
 testenv "SmartObject" do
 
     local struct myobj{
@@ -202,8 +204,13 @@ testenv "SmartObject" do
         b : int
     }
 
-    terra myobj:getage()
+    terra myobj:product()
         return self.a * self.b
+    end
+
+    terraform myobj:add(x : T) where {T}
+        self.a = self.a + x
+        self.b = self.b + x
     end
 
     local smrtobj = alloc.SmartObject(myobj)
@@ -220,7 +227,14 @@ testenv "SmartObject" do
 	end
 
     testset "get method" do
-        test obj:getage() == 6 
+        test obj:product() == 6 
+	end
+
+    testset "get template method" do
+        terracode
+            obj:add(1)
+        end
+        test obj:product() == 12 
 	end
     
 
