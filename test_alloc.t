@@ -9,6 +9,10 @@ import "terratest/terratest"
 local alloc = require("alloc")
 local DefaultAllocator = alloc.DefaultAllocator()
 
+local size_t = uint64
+local block = alloc.block
+local Allocator = alloc.Allocator
+
 
 testenv "Block - Default allocator" do
 
@@ -190,6 +194,38 @@ testenv "Block - Default allocator" do
 	end
 
 end
+
+testenv "SmartObject" do
+
+    local struct myobj{
+        a : int
+        b : int
+    }
+
+    terra myobj:getage()
+        return self.a * self.b
+    end
+
+    local smrtobj = alloc.SmartObject(myobj)
+
+    terracode
+		var A : DefaultAllocator
+        var obj = smrtobj.new(&A)   --allocate a new smart object
+        obj.a = 2
+        obj.b = 3
+	end
+
+    testset "get entries" do
+        test obj.a == 2 and obj.b == 3
+	end
+
+    testset "get method" do
+        test obj:getage() == 6 
+	end
+    
+
+end
+
 
 testenv "singly linked list - that is a cycle" do
 

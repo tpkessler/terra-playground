@@ -244,10 +244,6 @@ local SmartBlock = terralib.memoize(function(T, options)
 
     function block.metamethods.__staticinitialize(self)
 
-        --add methods, staticmethods and templates table and template fallback mechanism 
-        --allowing concept-based function overloading at compile-time
-        base.AbstractBase(block)
-
         --add base functionality
         Base(block, T, options)
 

@@ -72,12 +72,12 @@ local function AllocatorBase(A, Imp)
         return false
     end
 
-    terra A:deallocate(blk : &block)
+    terra A:deallocate(blk : &block) : {}
         err.assert(self:owns(blk))
         Imp.__deallocate(blk)
     end
 
-    terra A:reallocate(blk : &block, elsize : size_t, newcounter : size_t)
+    terra A:reallocate(blk : &block, elsize : size_t, newcounter : size_t) : {}
         err.assert(self:owns(blk) and (blk:size_in_bytes() % elsize == 0))
         if not blk:isempty() and (blk:size_in_bytes() < elsize * newcounter)  then
             Imp.__reallocate(blk, elsize, newcounter)
@@ -85,13 +85,13 @@ local function AllocatorBase(A, Imp)
         end
     end
 
-    terra A:allocate(blk : &block, elsize : size_t, counter : size_t)
+    terra A:allocate(blk : &block, elsize : size_t, counter : size_t) : {}
         err.assert(blk:isempty())
         Imp.__allocate(blk, elsize, counter)
         blk.alloc = self
     end
 
-    terra A:new(elsize : size_t, counter : size_t)
+    terra A:new(elsize : size_t, counter : size_t) : block
         var blk : block
         self:allocate(&blk, elsize, counter)
         return blk
@@ -248,9 +248,46 @@ local DefaultAllocator = function(options)
     return default
 end
 
+
+--abstraction of a memory block with type information.
+local SmartObject = terralib.memoize(function(obj, options)
+
+    --SmartObject is a special SmartBlock
+    local smrtobj = smartmem.SmartBlock(obj, options)
+
+    --allocate an empty obj
+    smrtobj.staticmethods.new = terra(A : Allocator) : smrtobj
+        var S : smrtobj = A:new(sizeof(obj), 1)
+        return S
+    end
+
+    smrtobj.metamethods.__getmethod = function(self, methodname)
+        local fnlike = self.methods[methodname] or smrtobj.staticmethods[methodname]
+        --if no implementation is found try __methodmissing
+        if not fnlike and terralib.ismacro(self.metamethods.__methodmissing) then
+            fnlike = terralib.internalmacro(function(ctx, tree, ...)
+                return self.metamethods.__methodmissing:run(ctx, tree, methodname, ...)
+            end)
+        end
+        return fnlike
+    end
+
+    smrtobj.metamethods.__entrymissing = macro(function(entryname, self)
+        return `self.ptr.[entryname]
+    end)
+
+    smrtobj.metamethods.__methodmissing = macro(function(method, self, ...)
+        local args = terralib.newlist{...}
+        return `self.ptr:[method](args)
+    end)
+
+    return smrtobj
+end)
+
 return {
     block = smartmem.block,
     SmartBlock = smartmem.SmartBlock,
+    SmartObject = SmartObject,
     Allocator = Allocator,
     AllocatorBase = AllocatorBase,
     DefaultAllocator = DefaultAllocator
