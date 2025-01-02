@@ -51,15 +51,10 @@ local funs = {
     cbrt = "cbrt",
     erf = "erf",
     erfc = "erfc",
-    gamma = "tgamma",
-    loggamma = "lgamma",
     abs = "fabs",
     floor = "floor",
     ceil = "ceil",
     round = "round",
-    j0 = "j0",
-    j1 = "j1",
-    jn = "jn",
     pow = "pow",
     atan2 = "atan2",
     hypot = "hypot",
@@ -71,6 +66,32 @@ for tname, cname in pairs(funs) do
     local f = terralib.overloadedfunction(tname)
     for _, T in ipairs{float,double} do
         local cfun = (T == float and C[cname.."f"] or C[cname])
+        local sig = cfun.type
+        local arg = sig.parameters
+        local sym = arg:map(function(T) return symbol(T) end)
+        local impl = terra([sym]) return cfun([sym]) end
+        impl:setinlined(true)
+        f:adddefinition(impl)
+    end
+    tmath[tname] = f
+end
+
+--for some reason the Bessel functions are only implemented for
+--double precision for macos, while on linux for both float and
+--double.
+--so we only add implementations for double precision.
+local funs_special = {
+    gamma = "tgamma",
+    loggamma = "lgamma",
+    j0 = "j0",
+    j1 = "j1",
+    jn = "jn",
+}
+
+for tname, cname in pairs(funs_special) do
+    local f = terralib.overloadedfunction(tname)
+    for _, T in ipairs{double} do
+        local cfun = C[cname]
         local sig = cfun.type
         local arg = sig.parameters
         local sym = arg:map(function(T) return symbol(T) end)

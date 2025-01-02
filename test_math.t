@@ -30,8 +30,8 @@ local funs_single_var = {
     "cbrt",
     "erf",
     "erfc",
-    "gamma",
-    "loggamma",
+    --"gamma",
+    --"loggamma",
     "abs"
 }
 
