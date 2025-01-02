@@ -19,7 +19,7 @@ local Tree = terralib.memoize(function(T)
     tree:complete()
 
     tree.staticmethods.new = terra(alloc: Allocator, data: T, nsons: uint64)
-        return tree {data, alloc:allocate(sizeof(tree), nsons)}
+        return tree {data, alloc:new(sizeof(tree), nsons)}
     end
 
     tree.metamethods.__for = function(iter, body)

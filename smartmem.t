@@ -78,9 +78,6 @@ local function Base(block, T, options)
         end
     end
 
-    --add raii move method
-    terralib.ext.addmissing.__move(block)
-
     --initialize to empty block
     block.methods.__init = terra(self : &block)
         self.ptr = nil
@@ -133,6 +130,9 @@ local function Base(block, T, options)
         end
 
     end
+
+    --add raii move method
+    terralib.ext.addmissing.__move(block)
 
 end
 

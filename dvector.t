@@ -62,7 +62,7 @@ local DynamicVector = terralib.memoize(function(T)
 
     V.staticmethods.new = terra(alloc: Allocator, size: size_t)
         var vec : V
-        vec.data = alloc:allocate(sizeof(T), size)
+        vec.data = alloc:new(sizeof(T), size)
         vec.size = size
         vec.inc = 1
         return vec
