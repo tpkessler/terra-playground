@@ -96,4 +96,11 @@ testenv "Correctness of selected math functions" do
         test tmath.isapprox(tmath.cos([double](tmath.pi)), -1, 1e-15) 
     end
 
+    testset "j0" do
+        if not tmath.expert.isspecial("j0") then
+            test tmath.isapprox(tmath.j0(1.0f), 0.7651976865579666f, 1e-7f)
+        end
+        test tmath.isapprox(tmath.j0(1.0), 0.7651976865579666, 1e-15)
+    end
+
 end

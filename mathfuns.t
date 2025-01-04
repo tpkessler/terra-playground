@@ -60,27 +60,6 @@ local funs = {
     hypot = "hypot",
     fmod = "fmod",
     fusedmuladd = "fma",
-}
-
-for tname, cname in pairs(funs) do
-    local f = terralib.overloadedfunction(tname)
-    for _, T in ipairs{float,double} do
-        local cfun = (T == float and C[cname.."f"] or C[cname])
-        local sig = cfun.type
-        local arg = sig.parameters
-        local sym = arg:map(function(T) return symbol(T) end)
-        local impl = terra([sym]) return cfun([sym]) end
-        impl:setinlined(true)
-        f:adddefinition(impl)
-    end
-    tmath[tname] = f
-end
-
---for some reason the Bessel functions are only implemented for
---double precision for macos, while on linux for both float and
---double.
---so we only add implementations for double precision.
-local funs_special = {
     gamma = "tgamma",
     loggamma = "lgamma",
     j0 = "j0",
@@ -88,10 +67,31 @@ local funs_special = {
     jn = "jn",
 }
 
-for tname, cname in pairs(funs_special) do
+-- These functions don't have a single precision implemention on POSIX systems
+-- like Apple's Darwin. For these functions, we can only provide a double
+-- precision implementation
+local ffi = require("ffi")
+local OS = ffi.os
+tmath.expert = {}
+local function isspecial(tname)
+    local funs_special = {
+        gamma = true, loggamma = true, j0 = true, j1 = true, jn = true
+    }
+    if OS ~= "Linux" and funs_special[tname] then
+        return true
+    else
+        return false
+    end
+end
+tmath.expert.isspecial = isspecial
+
+for tname, cname in pairs(funs) do
     local f = terralib.overloadedfunction(tname)
-    for _, T in ipairs{double} do
-        local cfun = C[cname]
+    for _, T in ipairs{float, double} do
+        if T == float and isspecial(tname) then
+            break
+        end
+        local cfun = (T == float and C[cname.."f"] or C[cname])
         local sig = cfun.type
         local arg = sig.parameters
         local sym = arg:map(function(T) return symbol(T) end)
