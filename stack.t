@@ -78,7 +78,7 @@ local DynamicStack = terralib.memoize(function(T)
 
     stack.staticmethods.new = terra(alloc : Allocator, capacity: size_t)
         var s : stack
-        s.data = alloc:allocate(sizeof(T), capacity)
+        s.data = alloc:new(sizeof(T), capacity)
         s.size = 0
         return s
     end
