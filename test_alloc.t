@@ -9,9 +9,14 @@ import "terratest/terratest"
 local alloc = require("alloc")
 local DefaultAllocator = alloc.DefaultAllocator()
 
+local size_t = uint64
+local block = alloc.block
+local Allocator = alloc.Allocator
+
+
 testenv "Block - Default allocator" do
 
-	local doubles = alloc.SmartBlock(double)
+	local doubles = alloc.SmartBlock(double, {copyby = "view"})
 
 	--metamethod used here for testing - counting the number
 	--of times the __dtor method is called
@@ -28,9 +33,22 @@ testenv "Block - Default allocator" do
 		var A : DefaultAllocator
 	end
 
-	testset "cast opaque block to typed block" do
+	testset "allocate - inplace - cast opaque block to typed block" do
 		terracode
-			var y : doubles = A:allocate(sizeof(double), 2)
+            var y : doubles
+			A:allocate(&y, sizeof(double), 2)
+			y:set(0, 1.0)
+			y:set(1, 2.0)
+		end
+        test y:isempty() == false
+		test y:get(0) == 1.0
+		test y:get(1) == 2.0
+		test y:size() == 2
+	end
+
+	testset "allocate - return - cast opaque block to typed block" do
+		terracode
+            var y : doubles = A:new(sizeof(double), 2)
 			y:set(0, 1.0)
 			y:set(1, 2.0)
 		end
@@ -52,21 +70,48 @@ testenv "Block - Default allocator" do
 		test x:isempty()
 	end
 
-	testset "__copy - constructor - generated" do
+    local integers = alloc.SmartBlock(int, {copyby = "move"})
+
+	testset "copyby - move" do
 		terracode
-			var x = A:allocate(sizeof(double), 2)
+			var x : integers = A:new(sizeof(int), 2)
+            x:set(0, 1)
+            x:set(1, 2)
+			var y = x
+		end
+		test x:isempty() and y:owns_resource()
+		test y:size() == 2 and y:get(0) == 1 and y:get(1) == 2
+	end
+
+    local integers = alloc.SmartBlock(int, {copyby = "clone"})
+
+	testset "copyby - clone" do
+		terracode
+			var x : integers = A:new(sizeof(int), 2)
+            x:set(0, 1)
+            x:set(1, 2)
+			var y = x
+		end
+        test x:owns_resource() and y:owns_resource()
+        test y.ptr ~= x.ptr
+		test y:size() == 2 and y:get(0) == 1 and y:get(1) == 2
+	end
+
+    local integers = alloc.SmartBlock(int, {copyby = "view"})
+
+	testset "copyby - view" do
+		terracode
+			var x : integers = A:new(sizeof(int), 2)
 			var y = x
 		end
 		test y.ptr == x.ptr
-		test y.alloc.data == nil
-        test y.alloc.tab == nil
-		test y:size_in_bytes() == 16
+		test y:size() == 2
 		test x:owns_resource() and y:borrows_resource()
 	end
 
 	testset "__dtor - explicit" do
 		terracode
-			var x = A:allocate(sizeof(double), 2)
+			var x = A:new(sizeof(double), 2)
 			x:__dtor()
 		end
 		test x.ptr == nil
@@ -78,7 +123,7 @@ testenv "Block - Default allocator" do
 
 	testset "__dtor - explicit - borrowed resource" do
 		terracode
-			var x = A:allocate(sizeof(double), 2)
+			var x = A:new(sizeof(double), 2)
 			var y = x --y is a view of the data
 			y:__dtor()
 		end
@@ -90,7 +135,7 @@ testenv "Block - Default allocator" do
 		terracode
 			do
 				__dtor_counter = 0
-				var y : doubles = A:allocate(sizeof(double), 2)
+				var y : doubles = A:new(sizeof(double), 2)
 			end
 		end
 		test __dtor_counter==1
@@ -98,7 +143,7 @@ testenv "Block - Default allocator" do
 
 	testset "allocator - owns" do
 		terracode
-			var x = A:allocate(sizeof(double), 2)
+			var x = A:new(sizeof(double), 2)
 		end
 		test x:isempty() == false
 		test x:size_in_bytes() == 16
@@ -107,7 +152,7 @@ testenv "Block - Default allocator" do
 
 	testset "allocator - free" do
 		terracode
-			var x = A:allocate(sizeof(double), 2)
+			var x = A:new(sizeof(double), 2)
 			A:deallocate(&x)
 		end
 		test x.ptr == nil
@@ -119,7 +164,7 @@ testenv "Block - Default allocator" do
 
 	testset "allocator - reallocate" do
 		terracode
-			var y : doubles = A:allocate(sizeof(double), 3)
+			var y : doubles = A:new(sizeof(double), 3)
 			for i=0,3 do
 				y:set(i, i)
 			end
@@ -131,7 +176,70 @@ testenv "Block - Default allocator" do
 		end
 	end
 
+    testset "block - clone" do
+		terracode
+			var y : doubles = A:new(sizeof(double), 3)
+			for i=0,3 do
+				y:set(i, i)
+			end
+			var x = y:clone()
+		end
+		test x:size() == 3
+        test x.ptr ~= y.ptr
+        test y:owns_resource()
+        test x:owns_resource()
+		for i=0,2 do
+			test x:get(i)==i
+		end
+	end
+
 end
+
+import "terraform"
+
+testenv "SmartObject" do
+
+    local struct myobj{
+        a : int
+        b : int
+    }
+
+    terra myobj:product()
+        return self.a * self.b
+    end
+
+    terraform myobj:add(x : T) where {T}
+        self.a = self.a + x
+        self.b = self.b + x
+    end
+
+    local smrtobj = alloc.SmartObject(myobj)
+
+    terracode
+		var A : DefaultAllocator
+        var obj = smrtobj.new(&A)   --allocate a new smart object
+        obj.a = 2
+        obj.b = 3
+	end
+
+    testset "get entries" do
+        test obj.a == 2 and obj.b == 3
+	end
+
+    testset "get method" do
+        test obj:product() == 6 
+	end
+
+    testset "get template method" do
+        terracode
+            obj:add(1)
+        end
+        test obj:product() == 12 
+	end
+    
+
+end
+
 
 testenv "singly linked list - that is a cycle" do
 
@@ -139,7 +247,7 @@ testenv "singly linked list - that is a cycle" do
 
     --implementation of singly-linked list
     local struct s_node
-    local smrt_s_node = alloc.SmartBlock(s_node)
+    local smrt_s_node = alloc.SmartBlock(s_node, {copyby = "view"})
 
     --metamethod used here for testing - counting the number
     --of times the __dtor method is called
@@ -175,7 +283,7 @@ testenv "singly linked list - that is a cycle" do
     end
 
     terra smrt_s_node:allocate_next(A : Allocator)
-        self.next = A:allocate(sizeof(s_node), 1)
+        self.next = A:new(sizeof(s_node), 1)
         self.next.index = self.index + 1
     end
 
@@ -190,7 +298,7 @@ testenv "singly linked list - that is a cycle" do
     testset "next" do
         terracode
             --define head node
-            var head : smrt_s_node = A:allocate(sizeof(s_node), 1)
+            var head : smrt_s_node = A:new(sizeof(s_node), 1)
             head.index = 0
             --make allocations
             head:allocate_next(&A)  --node 1
@@ -216,7 +324,7 @@ testenv "singly linked list - that is a cycle" do
             smrt_s_node_dtor_counter = 0
             do
                 --define head node
-                var head : smrt_s_node = A:allocate(sizeof(s_node), 1)
+                var head : smrt_s_node = A:new(sizeof(s_node), 1)
                 head.index = 0
                 --make allocations
                 head:allocate_next(&A)  --node 1
@@ -237,7 +345,7 @@ testenv "doubly linked list - that is a cycle" do
 
     --implementation of double-linked list
     local struct d_node
-    local smrt_d_node = alloc.SmartBlock(d_node)
+    local smrt_d_node = alloc.SmartBlock(d_node, {copyby = "view"})
 
     --metamethod used here for testing - counting the number
     --of times the __dtor method is called
@@ -275,7 +383,7 @@ testenv "doubly linked list - that is a cycle" do
     end
 
     terra smrt_d_node:allocate_next(A : Allocator)
-        self.next = A:allocate(sizeof(d_node), 1)
+        self.next = A:new(sizeof(d_node), 1)
         self.next.index = self.index + 1
         self.next.prev = self --create a view
     end
@@ -295,7 +403,7 @@ testenv "doubly linked list - that is a cycle" do
     testset "next and prev" do
         terracode
             --define head node
-            var head : smrt_d_node = A:allocate(sizeof(d_node), 1)
+            var head : smrt_d_node = A:new(sizeof(d_node), 1)
             head.index = 0
             --make allocations
             head:allocate_next(&A)  --node 1
@@ -327,7 +435,7 @@ testenv "doubly linked list - that is a cycle" do
             smrt_d_node_dtor_counter = 0
             do
                 --define head node
-                var head : smrt_d_node = A:allocate(sizeof(d_node), 1)
+                var head : smrt_d_node = A:new(sizeof(d_node), 1)
                 head.index = 0
                 --make allocations
                 head:allocate_next(&A)  --node 1

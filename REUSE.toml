@@ -46,3 +46,9 @@ path = "toml.lua"
 precendence = "override"
 SPDX-FileCopyrightText = "2017 Jonathan Stoler"
 SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "nonlinearbc.h"
+precendence = "override"
+SPDX-FileCopyrightText = "2025 Torsten Keßler <t.kessler@posto.de>"
+SPDX-License-Identifier = "CC0-1.0"

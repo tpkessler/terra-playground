@@ -35,8 +35,8 @@ for _, T in ipairs{int, double, float256} do
 
         testset "collect in a block" do
             terracode
-                var x : smrtptr = alloc:allocate(sizeof(T), 3)
-                var y : smrtptr = alloc:allocate(sizeof(T), 3)
+                var x : smrtptr = alloc:new(sizeof(T), 3)
+                var y : smrtptr = alloc:new(sizeof(T), 3)
                 y:set(0, 1)
                 y:set(1, 2)
                 y:set(2, 3)

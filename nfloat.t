@@ -65,32 +65,18 @@ local binary_math = {
 
 --extract the exponent of an nfloat
 local exponent = macro(function(value)
-    return quote
-        var tmp = [&uint32](&value.data.head)
-    in
-        @tmp
-    end
+    return `value.data.head[0]
 end)
 
 --extract the sign of an nfloat
 local sign = macro(function(value)
-    return quote
-        var sign = [&uint32](&value.data.head[1])
-        var s = 1
-        if @sign % 2 == 1 then s = -1 end
-    in
-        s
-    end
+    return `terralib.select(value.data.head[1]==0, 1, -1)
 end)
 
 --extract the significant 64-bit part of the mantissa of an nfloat
 local significant_part_mantissa = macro(function(value)
     local M = value:gettype().type.traits.precision / 64
-    return quote
-        var n = [&uint64](&value.data.d[M-1])
-    in
-        @n
-    end
+    return `value.data.d[M-1]
 end)
 
 --shift significat 64-bit part of mantissa
@@ -177,7 +163,7 @@ local FixedFloat = terralib.memoize(function(N)
             return {{1ULL, 0ULL}, d}
         elseif value == "eps" then
             d[M] = bitshiftone
-            return {{-N, 0ULL}, d}
+            return {{N*-1ULL, 0ULL}, d}
         end
     end
     
@@ -323,10 +309,14 @@ local FixedFloat = terralib.memoize(function(N)
     end
 
     terra nfloat:truncatetodouble()
-        var m = significant_part_mantissa(self)
-        var e = exponent(self)
-        var s = sign(self)
-        return s * shiftandscale(m, e)
+        if @self == 0 then
+            return 0.0
+        else
+            var e = exponent(self)
+            var m = significant_part_mantissa(self)
+            var s = sign(self)
+            return s * shiftandscale(m, e)
+        end
     end
 
     --for now we format up to double precision.
