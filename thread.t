@@ -555,7 +555,7 @@ threadpool.staticmethods.worker_thread = (
 -- to allocate memory in an address space that outlives the new() method, that
 -- is we cannot declare
 --
--- var tp: thread_pool
+-- var tp: threadpool
 --
 -- inside the function and then initialized the physical thread with a reference
 -- to tp. The threads live beyond the scope of this function but the instance
