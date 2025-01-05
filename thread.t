@@ -576,8 +576,8 @@ threadpool.staticmethods.new = (
         tp.done = false
         tp.threads = alloc:new(nthreads, sizeof(thread))
         tp.joiner = join_threads {tp.threads}
-        -- The point of no return. From this point on, we running the program
-        -- concurrently.
+        -- The point of no return. From this point on, we are running the 
+        -- program concurrently.
         for i = 0, nthreads do
             tp.threads(i) = (
                 thread.new(
