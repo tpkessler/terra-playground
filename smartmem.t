@@ -4,6 +4,12 @@
 -- SPDX-License-Identifier: MIT
 
 require "terralibext"
+
+local C = terralib.includecstring[[
+    #include <stdio.h>
+    #include <string.h>
+]]
+
 local base = require("base")
 local interface = require("interface")
 local range = require("range")
@@ -24,7 +30,13 @@ local function ismanaged(args)
     return false
 end
 
-local function Base(block, T)
+local function Base(block, T, options)
+
+    local options = terralib.newlist(options)
+    --cloning is the default copy-assignment
+    options.copyby = options.copyby or "clone"
+    --copy-assignment is one of the following three options
+    assert(options.copyby == "move" or options.copyby == "view" or options.copyby == "clone")
 
     --type traits
     block.isblock = true
@@ -74,21 +86,53 @@ local function Base(block, T)
         self.alloc.tab = nil
     end
 
-    --specialized copy-assignment, returning a non-owning view of the data
-    block.methods.__copy = terra(from : &block, to : &block)
-        to.ptr = from.ptr
-        to.nbytes = from.nbytes
-        --no allocator
-        to.alloc.data = nil
-        to.alloc.tab = nil
-    end
-
-    terralib.ext.addmissing.__move(block)
-
     --exact clone of the block
     block.methods.clone = terra(self : &block)
-        return block{self.ptr, self.nbytes, self.alloc}
+        --allocate memory for exact clone
+        var newblk : block
+        if not self:isempty() then
+            self.alloc:__allocators_best_friend(&newblk, [ block.elsize ], self:size())
+            if not newblk:isempty() then
+                C.memcpy(newblk.ptr, self.ptr, self:size_in_bytes())
+            end
+        end
+        return newblk
     end
+
+    --specialized copy-assignment, moving resources over
+    if options.copyby == "move" then
+
+        block.methods.__copy = terra(from : &block, to : &block)
+            --set to
+            to.ptr = from.ptr
+            to.nbytes = from.nbytes
+            to.alloc = from.alloc
+            --reset from
+            from:__init()
+        end
+
+    --specialized copy-assignment, returning a non-owning view of the data
+    elseif options.copyby == "view" then
+
+        block.methods.__copy = terra(from : &block, to : &block)
+            to.ptr = from.ptr
+            to.nbytes = from.nbytes
+            --no allocator
+            to.alloc.data = nil
+            to.alloc.tab = nil
+        end
+
+    --specialized copy-assignment, returning a deepcopy or clone
+    elseif options.copyby == "clone" then
+
+        block.methods.__copy = terra(from : &block, to : &block)
+            @to = from:clone()
+        end
+
+    end
+
+    --add raii move method
+    terralib.ext.addmissing.__move(block)
 
 end
 
@@ -126,7 +170,7 @@ block:complete()
 
 
 --abstraction of a memory block with type information.
-local SmartBlock = terralib.memoize(function(T)
+local SmartBlock = terralib.memoize(function(T, options)
 
     local struct block{
         ptr : &T
@@ -200,12 +244,8 @@ local SmartBlock = terralib.memoize(function(T)
 
     function block.metamethods.__staticinitialize(self)
 
-        --add methods, staticmethods and templates table and template fallback mechanism 
-        --allowing concept-based function overloading at compile-time
-        base.AbstractBase(block)
-
         --add base functionality
-        Base(block, T)
+        Base(block, T, options)
 
         --setters and getters
         block.methods.get = terra(self : &block, i : size_t)

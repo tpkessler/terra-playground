@@ -62,7 +62,7 @@ local DynamicMatrix = terralib.memoize(function(T)
     end
 
     terra M.staticmethods.new(alloc: Allocator, rows: size_t, cols: size_t)
-        return M {alloc:allocate(sizeof(T), rows * cols), rows, cols, cols}
+        return M {alloc:new(sizeof(T), rows * cols), rows, cols, cols}
     end
 
     terra M.staticmethods.like(alloc: Allocator, m: &M)
