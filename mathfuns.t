@@ -81,11 +81,21 @@ for tname, cname in pairs(funs) do
         )
         local sig = cfun.type
         local arg = sig.parameters
-        local sym = arg:map(function(T) return symbol(T) end)
+        local sym = arg:map(function(S)
+            if T==float and S==double then
+                --calling signature requires 'float', while we call
+                --the 'double' precision implementation.
+                return symbol(float)
+            else
+                return symbol(S)
+            end
+        end)
         -- We need to explicitly cast the result of cfun as we may call the
         -- double precision implementation for a single precision result,
         -- see the above comment.
-        local impl = terra([sym]) return [T](cfun([sym])) end
+        local impl = terra([sym]) : T
+            return cfun([sym])
+        end
         impl:setinlined(true)
         f:adddefinition(impl)
     end
