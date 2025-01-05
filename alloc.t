@@ -120,7 +120,7 @@ local function AllocatorBase(A, Imp)
 end
 
 --implementation of the default allocator using malloc and free.
-local DefaultAllocator = function(options)
+local DefaultAllocator = terralib.memoize(function(options)
 
     --get input options
     local options = options or {}
@@ -246,7 +246,7 @@ local DefaultAllocator = function(options)
     Allocator:isimplemented(default)
 
     return default
-end
+end)
 
 
 --abstraction of a memory block with type information.
