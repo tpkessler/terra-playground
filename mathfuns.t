@@ -51,30 +51,47 @@ local funs = {
     cbrt = "cbrt",
     erf = "erf",
     erfc = "erfc",
-    gamma = "tgamma",
-    loggamma = "lgamma",
     abs = "fabs",
     floor = "floor",
     ceil = "ceil",
     round = "round",
-    --j0 = "j0",
-    --j1 = "j1",
-    --jn = "jn",
     pow = "pow",
     atan2 = "atan2",
     hypot = "hypot",
     fmod = "fmod",
     fusedmuladd = "fma",
+    gamma = "tgamma",
+    loggamma = "lgamma",
+    j0 = "j0",
+    j1 = "j1",
+    jn = "jn",
 }
 
 for tname, cname in pairs(funs) do
     local f = terralib.overloadedfunction(tname)
-    for _, T in ipairs{float,double} do
-        local cfun = (T == float and C[cname.."f"] or C[cname])
-        local sig = cfun.type
-        local arg = sig.parameters
-        local sym = arg:map(function(T) return symbol(T) end)
-        local impl = terra([sym]) return cfun([sym]) end
+    for _, T in ipairs{float, double} do
+        -- Some math functions like j0 or loggamma don't have a POSIX
+        -- compatible single precision implementation but only exist as
+        -- a glibc extension. In this case, the table lookup will fail and
+        -- we use the double precision implementation as a fallback.
+        local cfun = (
+            T == float
+            and (rawget(C, cname .. "f") or C[cname])
+            or C[cname]
+        )
+        local arg = cfun.type.parameters
+        -- We need to explicitly map the input type to our target type T in
+        -- case we use a double precision implementation for a single precision
+        -- computation.
+        local sym = arg:map(
+            function(S)
+                if S == double and T == float then
+                    S = T
+                end
+                return symbol(S)
+            end
+        )
+        local impl = terra([sym]) return [T](cfun([sym])) end
         impl:setinlined(true)
         f:adddefinition(impl)
     end

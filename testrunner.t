@@ -4,6 +4,13 @@
 -- SPDX-License-Identifier: MIT
 
 local toml = require("toml")
+local alloc = require("alloc")
+local lambda = require("lambda")
+local thread = require("thread")
+local C = terralib.includecstring[[
+#include <stdio.h>
+#include <stdlib.h>
+]]
 
 local prefix = arg[-1]
 local config = "config/testrunner.toml"
@@ -91,13 +98,68 @@ print(format.normal)
 --global - use silent output - only testenv summary
 __silent__ = true
 
---print teststatistics for test environments
+
 config = process_config(config)
-for filename in list_tests(config, path) do
-    local execstring = prefix .. " " .. filename .. " --test --silent"
-    local exitcode = os.execute(execstring)
-    if exitcode ~= 0 then
-        local message = format.bold .. format.red .. "Process exited with exitcode " .. tostring(exitcode)
-        io.write(string.format("%-25s%-59s%-30s\n", filename, message, "NA"..format.normal))
+
+local gmutex = global(thread.mutex)
+gmutex:get():__init()
+terra main()
+    var alloc: alloc.DefaultAllocator()
+    var tp = thread.threadpool.new(&alloc, thread.max_threads())
+    escape
+        for filename in list_tests(config, path) do
+            local execstring = prefix .. " " .. filename .. " --test --silent"
+            emit quote
+                tp:submit(
+                    &alloc,
+                    lambda.new(
+                        [
+                            terra(cmd: rawstring)
+                                var stream = C.popen(cmd, "r")
+                                do
+                                    -- var grd: thread.lock_guard = gmutex
+                                    while true do
+                                        var c = C.fgetc(stream)
+                                        if c < 0 then
+                                            break
+                                        end
+                                        C.putchar(c)
+                                    end
+                                end
+                                var res = C.pclose(stream)
+                                if res ~= 0 then
+                                    escape
+                                    local message = (
+                                        format.bold ..
+                                        format.red ..
+                                        "Process exited with exitcode "
+                                    )
+                                    emit quote
+                                            do
+                                                -- var grd: thread.lock_guard = (
+                                                --     gmutex
+                                                -- )
+                                                C.printf(
+                                                    "%-25s%-59s%d%-30s\n",
+                                                    [filename],
+                                                    [message],
+                                                    res,
+                                                    ["NA" .. format.normal]
+                                                )
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        ],
+                        {cmd = [execstring]}
+                    )
+                )
+            end
+        end
     end
+    return 0
 end
+main()
+
+gmutex:get():__dtor()
