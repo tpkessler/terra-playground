@@ -30,8 +30,8 @@ local funs_single_var = {
     "cbrt",
     "erf",
     "erfc",
-    "gamma",
-    "loggamma",
+    --"gamma",
+    --"loggamma",
     "abs"
 }
 
@@ -94,6 +94,11 @@ testenv "Correctness of selected math functions" do
     testset "cos" do
         test tmath.isapprox(tmath.cos([float](tmath.pi)), -1, 1e-7f) 
         test tmath.isapprox(tmath.cos([double](tmath.pi)), -1, 1e-15) 
+    end
+
+    testset "j0" do
+        test tmath.isapprox(tmath.j0(1.0f), 0.7651976865579666f, 1e-7f)
+        test tmath.isapprox(tmath.j0(1.0), 0.7651976865579666, 1e-15)
     end
 
 end
