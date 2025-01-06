@@ -80,12 +80,11 @@ local thrd = (
         }
     )
 )
-local ffi = require("ffi")
-local OS = ffi.os
-if OS == "Linux" then
+
+local uname = io.popen("uname", "r"):read("*a")
+if uname == "Linux\n" then
     terralib.linklibrary("libpthread.so.0")
-elseif OS == "Darwin" then
-    error("Rene, your turn!")
+elseif uname == "Darwin\n" then
     terralib.linklibrary("libpthread.dylib")
 else
     error("Unsupported platform for multithreading")
