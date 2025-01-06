@@ -79,23 +79,19 @@ for tname, cname in pairs(funs) do
             and (rawget(C, cname .. "f") or C[cname])
             or C[cname]
         )
-        local sig = cfun.type
-        local arg = sig.parameters
-        local sym = arg:map(function(S)
-            if T==float and S==double then
-                --calling signature requires 'float', while we call
-                --the 'double' precision implementation.
-                return symbol(float)
-            else
+        local arg = cfun.type.parameters
+        -- We need to explicitly map the input type to our target type T in
+        -- case we use a double precision implementation for a single precision
+        -- computation.
+        local sym = arg:map(
+            function(S)
+                if S == double and T == float then
+                    S = T
+                end
                 return symbol(S)
             end
-        end)
-        -- We need to explicitly cast the result of cfun as we may call the
-        -- double precision implementation for a single precision result,
-        -- see the above comment.
-        local impl = terra([sym]) : T
-            return cfun([sym])
-        end
+        )
+        local impl = terra([sym]) return [T](cfun([sym])) end
         impl:setinlined(true)
         f:adddefinition(impl)
     end
