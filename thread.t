@@ -4,7 +4,6 @@
 -- SPDX-License-Identifier: MIT
 local alloc = require("alloc") -- SmartBlock, Allocator
 local base = require("base") -- AbstractBase
-local time = terralib.includec("time.h")
 local atomics = require("atomics")
 
 -- SPDX-SnippetBegin
@@ -58,22 +57,22 @@ require("terralibext")
 -- https://en.cppreference.com/w/c/thread
 local thrd = (
     setmetatable(
-        terralib.includec("threads.h"),
+        terralib.includec("pthread.h"),
         {__index = (
                 function(self, name)
                     return (
                         -- Since C doesn't have name spaces, most functions
-                        -- and data types are prefixed with "thrd_". When using
-                        -- this in terra it can be inconvenient to type
+                        -- and data types are prefixed with "pthread_". When
+                        -- using this in terra it can be inconvenient to type
                         --
-                        -- thrd.thrd_FOO
+                        -- thrd.pthread_FOO
                         --
                         -- when trying to access the function FOO. Hence, we
                         -- define our own __index function for the terra wrapper
                         -- of the threads.h header. The rawget() function
                         -- bypasses the __index function as otherwise we'd
                         -- trigger an infinite recursion.
-                        rawget(self, "thrd_" .. name)
+                        rawget(self, "pthread_" .. name)
                         or rawget(self, name)
                     )
                 end
@@ -81,31 +80,25 @@ local thrd = (
         }
     )
 )
-
-local struct timespec {
-    data: time.timespec
-}
-base.AbstractBase(timespec)
-
-do
-    local new = terralib.overloadedfunction("newtimespec")
-    local terra newdouble(t: double)
-        var ts: timespec
-        ts.data = time.timespec {t}
-        return ts
-    end
-    -- TODO from string
-    new:adddefinition(newdouble)
-    timespec.staticmethods.new = new
+local ffi = require("ffi")
+local OS = ffi.os
+if OS == "Linux" then
+    terralib.linklibrary("libpthread.so.0")
+elseif OS == "Darwin" then
+    error("Rene, your turn!")
+    terralib.linklibrary("libpthread.dylib")
+else
+    error("Unsupported platform for multithreading")
 end
+local sched = terralib.includec("sched.h")
 
 -- A thread has a unique ID that executes a given function with signature FUNC.
 -- Its argument is stored as a managed pointer on the (global) heap. This way,
 -- threads can be passed to other functions and executed there. The life time
 -- of the argument arg is thus not bound to the life time of the local stack.
-local FUNC = &opaque -> int
+local FUNC = &opaque -> &opaque
 local struct thread {
-    id: thrd.thrd_t
+    id: thrd.pthread_t
     func: FUNC
     arg: alloc.SmartBlock(int8, {copyby = "view"})
 }
@@ -115,45 +108,24 @@ terra thread.metamethods.__eq(self: &thread, other: &thread)
     return thrd.equal(self.id, other.id)
 end
 
-thread.staticmethods.current = (
-    terra()
-        var id = thrd.current()
-        return thread {id}
-    end
-)
-
-thread.staticmethods.sleep = (
-    terra(duration: &timespec)
-        -- Ignore possible remaining time after sleep
-        return thrd.sleep(&duration.data, nil)
-    end
-)
-
 -- Pause the calling thread for a short period and resume afterwards.
 thread.staticmethods.yield = (
     terra()
-        return thrd.yield()
+        return sched.sched_yield()
     end
 )
 
 -- Exit thread with given the return value res.
 thread.staticmethods.exit = (
-    terra(res: int)
-        return thrd.exit(res)
+    terra()
+        return thrd.exit(nil)
     end
 )
 
--- Run given thread as a background thread.
-terra thread:detach()
-    return thrd.detach(self.id)
-end
-
 -- After a new thread is created, it forks from the calling thread. To access
 -- results of the forked thread we have to join it with the calling thread.
--- Optionally, the return value of the thread function can be obtained when
--- passing a non-nil value to the join function.
-terra thread:join(res: &int)
-    return thrd.join(self.id, res)
+terra thread:join()
+    return thrd.join(self.id, nil)
 end
 
 -- This is the heart of the thread module.
@@ -181,7 +153,7 @@ local submit = macro(function(allocator, func, ...)
     local sym = typ:map(function(T) return symbol(T) end)
     local functype = func:gettype()
     typ:insert(1, functype)
-    -- tuple is a special struct type where fields are named _0, _1, ...
+    -- tuple is a special struct type whose fields are named _0, _1, ...
     local arg_t = tuple(unpack(typ))
     local funcsym = symbol(functype)
 
@@ -189,14 +161,15 @@ local submit = macro(function(allocator, func, ...)
     local terra pfunc(parg: &opaque)
         var arg = [&arg_t](parg)
         var [funcsym] = arg._0
-        -- We escape ... end we can always leave terra and get access again to
-        -- lua. Here, we use it for loop unrolling.
+        -- With escape ... end we can always leave terra and get access again
+        -- to lua. Here, we use it for loop unrolling.
         escape
             for i = 1, #sym do
                 emit quote var [ sym[i] ] = arg.["_" .. i] end
             end
         end
-        return [funcsym]([sym])
+        [funcsym]([sym])
+        return parg
     end
 
     -- Now that we have the function wrapper pfunc and the wrapper type for
@@ -228,7 +201,7 @@ thread.staticmethods.new = macro(function(allocator, func, ...)
         -- This sets up all the wrapper stuff ...
         var t = submit(allocator, func, [arg])
         -- ... and then spawns a thread.
-        thrd.create(&t.id, t.func, &t.arg(0))
+        thrd.create(&t.id, nil, t.func, &t.arg(0))
     in
         t
     end
@@ -236,20 +209,20 @@ end)
 
 -- With a mutex you can restrict code access to a single thread.
 local struct mutex {
-    id: thrd.mtx_t
+    id: thrd.mutex_t
 }
 base.AbstractBase(mutex)
 
 terra mutex:__init()
-    thrd.mtx_init(&self.id, thrd.mtx_plain)
+    thrd.mutex_init(&self.id, nil)
 end
 
 terra mutex:__dtor()
-    thrd.mtx_destroy(&self.id)
+    thrd.mutex_destroy(&self.id)
 end
 
 for _, method in pairs{"lock", "trylock", "unlock"} do
-    local func = thrd["mtx_" .. method]
+    local func = thrd["mutex_" .. method]
     mutex.methods[method] = terra(self: &mutex)
         return func(&self.id)
     end
@@ -283,22 +256,22 @@ end
 -- Conditions can used to synchronize threads. You can wait until a condition
 -- is met and signal one or all waiting threads.
 local struct cond {
-    id: thrd.cnd_t
+    id: thrd.cond_t
 }
 base.AbstractBase(cond)
 
 terra cond:__init()
-    thrd.cnd_init(&self.id)
+    thrd.cond_init(&self.id, nil)
 end
 
 terra cond:__dtor()
-    thrd.cnd_destroy(&self.id)
+    thrd.cond_destroy(&self.id)
 end
 
 -- cond:signal() notifies one waiting thread, broadcast notifies all waiting
 -- threads.
 for _, method in pairs{"signal", "broadcast"} do
-    local func = thrd["cnd_" .. method]
+    local func = thrd["cond_" .. method]
     cond.methods[method] = terra(self: &cond)
         return func(&self.id)
     end
@@ -307,7 +280,7 @@ end
 -- cond:wait() takes a locked mutex and waits until another thread signals
 -- the same condition.
 terra cond:wait(mtx: &mutex)
-    return thrd.cnd_wait(&self.id, &mtx.id)
+    return thrd.cond_wait(&self.id, &mtx.id)
 end
 
 local stack = require("stack")
@@ -367,13 +340,9 @@ local struct join_threads {
 }
 
 terra join_threads:__dtor()
-    var res: int = 0
     for i = 0, self.data:size() do
-        var locres: int = 0
-        self.data(i):join(&locres)
-        res = res or locres
+        self.data(i):join()
     end
-    return res
 end
 
 local queue_thread = ThreadsafeQueue(thread)
