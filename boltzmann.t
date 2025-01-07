@@ -61,10 +61,9 @@ local struct MonomialBasis(base.AbstractBase){
 
 terra MonomialBasis:maxpartialdegree()
     var maxdeg = -1
-    var p = self.p
-    for i = 0, p:rows() do
-        for j = 0, p:cols() do
-            maxdeg = tmath.max(maxdeg, p(i, j))
+    for i = 0, self.p:rows() do
+        for j = 0, self.p:cols() do
+            maxdeg = tmath.max(maxdeg, self.p(i, j))
         end
     end
     return maxdeg
