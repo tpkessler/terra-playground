@@ -642,4 +642,13 @@ terra main()
     parfor(&alloc, &rn, lambda.new(heavy_work, {tsum = &sum}))
     io.printf("Parallel mean is %.7e\n", sum / nwork)
 end
-main()
+-- main()
+return {
+    thread = thread,
+    mutex = mutex,
+    lock_guard = lock_guard,
+    cond = cond,
+    threadpool = threadpool,
+    max_threads = boost.hardware_concurrency,
+    parfor = parfor,
+}

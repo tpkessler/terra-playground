@@ -33,10 +33,13 @@ end
 local function Base(block, T, options)
 
     local options = terralib.newlist(options)
-    --cloning is the default copy-assignment
-    options.copyby = options.copyby or "clone"
+    options.copyby = options.copyby or "view"
     --copy-assignment is one of the following three options
-    assert(options.copyby == "move" or options.copyby == "view" or options.copyby == "clone")
+    local valid_copyby = {["move"] = true, ["view"] = true, ["clone"] = true}
+    assert(
+        valid_copyby[options.copyby],
+        "Provided invalid option " .. options.copyby .. " for copy constructor"
+    )
 
     --type traits
     block.isblock = true
