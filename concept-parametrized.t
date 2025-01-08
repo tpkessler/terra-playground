@@ -18,7 +18,7 @@ local function subtable(tab, k)
     return terralib.newlist(subtab)
 end
 
-local function parametrizedconcept(name)
+local parametrizedconcept = terralib.memoize(function(name)
     local tp = template.Template:new()
     rawset(tp, "name", name)
     rawset(tp, "type", "parametrizedconcept")
@@ -67,7 +67,7 @@ local function parametrizedconcept(name)
     end
 
     return tp
-end
+end)
 
 local function isparametrizedconcept(C)
     return type(C) == "table" and C.type == "parametrizedconcept"

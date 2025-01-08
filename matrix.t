@@ -34,7 +34,8 @@ local function MatrixBase(M)
         end
     end
     
-    terraform M:apply(trans : bool, alpha : T, x : &V, beta : T, y : &V) where {V :Vector}
+    terraform M:apply(trans : bool, alpha : T, x : &V1, beta : T, y : &V2)
+        where {V1: Vector, V2: Vector}
         if trans then
             var ns = self:rows()
             var ms = self:cols()
