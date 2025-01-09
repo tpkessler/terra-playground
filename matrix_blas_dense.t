@@ -32,13 +32,8 @@ local function BLASDenseMatrixBase(M)
         end
     end
 
-    terraform M:apply(trans : bool, alpha : T1, x : &V1, beta : T2, y : &V2) 
-            where {T1 : BLASNumber, V1 : BLASVector, T2 : BLASNumber, V2 : BLASVector}
-        escape
-            local T = M.eltype
-            assert(T == V1.eltype)
-            assert(T == V2.eltype)
-        end
+    terraform M:apply(trans : bool, alpha : T, x : &V1, beta : T, y : &V2) 
+            where {V1 : BLASVector, V2 : BLASVector}
         var nx, xptr, incx = x:getblasinfo()
         var ny, yptr, incy = y:getblasinfo()
         var rows, cols, aptr, ld = self:getblasdenseinfo()
@@ -58,13 +53,8 @@ local function BLASDenseMatrixBase(M)
                     beta, yptr, incy)
     end
 
-    terraform M:mul(beta : S1, alpha : S2, atrans : bool, a : &M1, btrans : bool, b : &M2) 
-            where {S1 : BLASNumber, S2 : BLASNumber, M1 : BLASDenseMatrix, M2 : BLASDenseMatrix}
-        escape
-            local T = M.eltype
-            assert(T == M1.eltype)
-            assert(T == M2.eltype)
-        end
+    terraform M:mul(beta : T, alpha : T, atrans : bool, a : &M1, btrans : bool, b : &M2) 
+            where {M1 : BLASDenseMatrix, M2 : BLASDenseMatrix}
         var nc, mc, ptrc, ldc = self:getblasdenseinfo()
         var na, ma, ptra, lda = a:getblasdenseinfo()
         var nb, mb, ptrb, ldb = b:getblasdenseinfo()

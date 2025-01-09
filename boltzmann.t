@@ -565,7 +565,7 @@ local terraform nonlinear_maxwellian_inflow(
                     transform: transform.type,
                     nv: nv.type,
                     qvlhs: qvlhs.type,
-                    testb: trialb.type,
+                    testb: testb.type,
                     trialb: trialb.type,
                     qmaxwellian: qmaxwellian.type,
                     normal: normal.type,

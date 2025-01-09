@@ -7,195 +7,205 @@ local io = terralib.includec("stdio.h")
 import "terratest/terratest"
 
 local alloc = require("alloc")
-local DefaultAllocator = alloc.DefaultAllocator()
 
 local size_t = uint64
 local block = alloc.block
 local Allocator = alloc.Allocator
 
+for _, alignment in ipairs{0, 64} do
 
-testenv "Block - Default allocator" do
+    testenv(alignment) "Block - Default allocator" do
 
-	local doubles = alloc.SmartBlock(double, {copyby = "view"})
+        --Alignment = 0 - corresponds to natural alignment
+        --Alignment = 64 - allocate aligned memory, size is different
+        local DefaultAllocator = alloc.DefaultAllocator({Alignment = alignment})
 
-	--metamethod used here for testing - counting the number
-	--of times the __dtor method is called
-	local __dtor_counter = global(int, 0)
-	doubles.metamethods.__dtor = macro(function(self)
-		return quote
-			if self:owns_resource() then
-				__dtor_counter = __dtor_counter + 1
-			end
-		end
-	end)
 
-	terracode
-		var A : DefaultAllocator
-	end
+        local doubles = alloc.SmartBlock(double, {copyby = "view"})
 
-	testset "allocate - inplace - cast opaque block to typed block" do
-		terracode
-            var y : doubles
-			A:allocate(&y, sizeof(double), 2)
-			y:set(0, 1.0)
-			y:set(1, 2.0)
-		end
-        test y:isempty() == false
-		test y:get(0) == 1.0
-		test y:get(1) == 2.0
-		test y:size() == 2
-	end
+        --metamethod used here for testing - counting the number
+        --of times the __dtor method is called
+        local __dtor_counter = global(int, 0)
+        doubles.metamethods.__dtor = macro(function(self)
+            return quote
+                if self:owns_resource() then
+                    __dtor_counter = __dtor_counter + 1
+                end
+            end
+        end)
 
-	testset "allocate - return - cast opaque block to typed block" do
-		terracode
-            var y : doubles = A:new(sizeof(double), 2)
-			y:set(0, 1.0)
-			y:set(1, 2.0)
-		end
-        test y:isempty() == false
-		test y:get(0) == 1.0
-		test y:get(1) == 2.0
-		test y:size() == 2
-	end
+        terracode
+            var A : DefaultAllocator
+        end
 
-	testset "__init - generated" do
-		terracode
-			var x : alloc.block
-		end
-		test x.ptr == nil
-		test x.nbytes == 0
-		test x.alloc.data == nil
-        test x.alloc.tab == nil
-		test x:size() == 0
-		test x:isempty()
-	end
+        testset "allocate - inplace - cast opaque block to typed block" do
+            terracode
+                var y : doubles
+                A:allocate(&y, sizeof(double), 2)
+                y:set(0, 1.0)
+                y:set(1, 2.0)
+            end
+            test y:isempty() == false
+            test y:get(0) == 1.0
+            test y:get(1) == 2.0
+            test y:size() == terralib.select(alignment == 0, 2, 64 / sizeof(double))
+        end
 
-    local integers = alloc.SmartBlock(int, {copyby = "move"})
+        testset "allocate - return - cast opaque block to typed block" do
+            terracode
+                var y : doubles = A:new(sizeof(double), 2)
+                y:set(0, 1.0)
+                y:set(1, 2.0)
+            end
+            test y:isempty() == false
+            test y:get(0) == 1.0
+            test y:get(1) == 2.0
+            test y:size() == terralib.select(alignment == 0, 2, 64 / sizeof(double))
+        end
 
-	testset "copyby - move" do
-		terracode
-			var x : integers = A:new(sizeof(int), 2)
-            x:set(0, 1)
-            x:set(1, 2)
-			var y = x
-		end
-		test x:isempty() and y:owns_resource()
-		test y:size() == 2 and y:get(0) == 1 and y:get(1) == 2
-	end
+        testset "__init - generated" do
+            terracode
+                var x : alloc.block
+            end
+            test x.ptr == nil
+            test x.nbytes == 0
+            test x.alloc.data == nil
+            test x.alloc.tab == nil
+            test x:size() == 0
+            test x:isempty()
+        end
 
-    local integers = alloc.SmartBlock(int, {copyby = "clone"})
+        local integers = alloc.SmartBlock(int, {copyby = "move"})
 
-	testset "copyby - clone" do
-		terracode
-			var x : integers = A:new(sizeof(int), 2)
-            x:set(0, 1)
-            x:set(1, 2)
-			var y = x
-		end
-        test x:owns_resource() and y:owns_resource()
-        test y.ptr ~= x.ptr
-		test y:size() == 2 and y:get(0) == 1 and y:get(1) == 2
-	end
+        testset "copyby - move" do
+            terracode
+                var x : integers = A:new(sizeof(int), 2)
+                x:set(0, 1)
+                x:set(1, 2)
+                var y = x
+            end
+            test x:isempty() and y:owns_resource()
+            test y:size() == terralib.select(alignment == 0, 2, 64 / sizeof(int))
+            test y:get(0) == 1 and y:get(1) == 2
+        end
 
-    local integers = alloc.SmartBlock(int, {copyby = "view"})
+        local integers = alloc.SmartBlock(int, {copyby = "clone"})
 
-	testset "copyby - view" do
-		terracode
-			var x : integers = A:new(sizeof(int), 2)
-			var y = x
-		end
-		test y.ptr == x.ptr
-		test y:size() == 2
-		test x:owns_resource() and y:borrows_resource()
-	end
+        testset "copyby - clone" do
+            terracode
+                var x : integers = A:new(sizeof(int), 2)
+                x:set(0, 1)
+                x:set(1, 2)
+                var y = x
+            end
+            test x:owns_resource() and y:owns_resource()
+            test y.ptr ~= x.ptr
+            test y:size() == terralib.select(alignment == 0, 2, 64 / sizeof(int))
+            test y:get(0) == 1 and y:get(1) == 2
+        end
 
-	testset "__dtor - explicit" do
-		terracode
-			var x = A:new(sizeof(double), 2)
-			x:__dtor()
-		end
-		test x.ptr == nil
-		test x.alloc.data == nil
-		test x.alloc.tab == nil
-		test x:size() == 0
-		test x:isempty()
-	end
+        local integers = alloc.SmartBlock(int, {copyby = "view"})
 
-	testset "__dtor - explicit - borrowed resource" do
-		terracode
-			var x = A:new(sizeof(double), 2)
-			var y = x --y is a view of the data
-			y:__dtor()
-		end
-		test x:size_in_bytes() == 16
-		test x:owns_resource() and y:isempty()
-	end
+        testset "copyby - view" do
+            terracode
+                var x : integers = A:new(sizeof(int), 2)
+                var y = x
+            end
+            test y.ptr == x.ptr
+            test y:size() == terralib.select(alignment == 0, 2, 64 / sizeof(int))
+            test x:owns_resource() and y:borrows_resource()
+        end
 
-	testset "__dtor - generated - owned resource" do
-		terracode
-			do
-				__dtor_counter = 0
-				var y : doubles = A:new(sizeof(double), 2)
-			end
-		end
-		test __dtor_counter==1
-	end
+        testset "__dtor - explicit" do
+            terracode
+                var x = A:new(sizeof(double), 2)
+                x:__dtor()
+            end
+            test x.ptr == nil
+            test x.alloc.data == nil
+            test x.alloc.tab == nil
+            test x:size() == 0
+            test x:isempty()
+        end
 
-	testset "allocator - owns" do
-		terracode
-			var x = A:new(sizeof(double), 2)
-		end
-		test x:isempty() == false
-		test x:size_in_bytes() == 16
-		test A:owns(&x)
-	end
+        testset "__dtor - explicit - borrowed resource" do
+            terracode
+                var x = A:new(sizeof(double), 2)
+                var y = x --y is a view of the data
+                y:__dtor()
+            end
+            test x:size_in_bytes() == terralib.select(alignment == 0, 16, 64)
+            test x:owns_resource() and y:isempty()
+        end
 
-	testset "allocator - free" do
-		terracode
-			var x = A:new(sizeof(double), 2)
-			A:deallocate(&x)
-		end
-		test x.ptr == nil
-		test x.alloc.data == nil
-		test x.alloc.tab == nil
-		test x:size() == 0
-		test x:isempty()
-	end
+        testset "__dtor - generated - owned resource" do
+            terracode
+                do
+                    __dtor_counter = 0
+                    var y : doubles = A:new(sizeof(double), 2)
+                end
+            end
+            test __dtor_counter==1
+        end
 
-	testset "allocator - reallocate" do
-		terracode
-			var y : doubles = A:new(sizeof(double), 3)
-			for i=0,3 do
-				y:set(i, i)
-			end
-			A:reallocate(&y, sizeof(double), 5)
-		end
-		test y:size() == 5
-		for i=0,2 do
-			test y:get(i)==i
-		end
-	end
+        testset "allocator - owns" do
+            terracode
+                var x = A:new(sizeof(double), 2)
+            end
+            test x:isempty() == false
+            test x:size_in_bytes() == terralib.select(alignment == 0, 16, 64)
+            test A:owns(&x)
+        end
 
-    testset "block - clone" do
-		terracode
-			var y : doubles = A:new(sizeof(double), 3)
-			for i=0,3 do
-				y:set(i, i)
-			end
-			var x = y:clone()
-		end
-		test x:size() == 3
-        test x.ptr ~= y.ptr
-        test y:owns_resource()
-        test x:owns_resource()
-		for i=0,2 do
-			test x:get(i)==i
-		end
-	end
+        testset "allocator - free" do
+            terracode
+                var x = A:new(sizeof(double), 2)
+                A:deallocate(&x)
+            end
+            test x.ptr == nil
+            test x.alloc.data == nil
+            test x.alloc.tab == nil
+            test x:size() == 0
+            test x:isempty()
+        end
 
+        testset "allocator - reallocate" do
+            terracode
+                var y : doubles = A:new(sizeof(double), 3)
+                for i=0,3 do
+                    y:set(i, i)
+                end
+                A:reallocate(&y, sizeof(double), 5)
+            end
+            test y:size() == terralib.select(alignment == 0, 5, 64 / sizeof(double))
+            for i=0,2 do
+                test y:get(i)==i
+            end
+        end
+
+        testset "block - clone" do
+            terracode
+                var y : doubles = A:new(sizeof(double), 3)
+                for i=0,3 do
+                    y:set(i, i)
+                end
+                var x = y:clone()
+            end
+            test x:size() == terralib.select(alignment == 0, 3, 64 / sizeof(double))
+            test x.ptr ~= y.ptr
+            test y:owns_resource()
+            test x:owns_resource()
+            for i=0,2 do
+                test x:get(i)==i
+            end
+        end
+
+    end
 end
 
 import "terraform"
+
+local DefaultAllocator = alloc.DefaultAllocator()
 
 testenv "SmartObject" do
 
