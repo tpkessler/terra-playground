@@ -650,4 +650,5 @@ return {
     cond = cond,
     threadpool = threadpool,
     max_threads = boost.hardware_concurrency,
+    parfor = parfor,
 }

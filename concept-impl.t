@@ -28,7 +28,7 @@ table.size = function(t)
 end
 
 local function isempty(tab)
-    return table.size(tab) == 0
+    return next(tab) == nil
 end
 
 --local function isempty(tab)
@@ -427,8 +427,12 @@ function is_specialized_over(C1, C2)
     end
 end
 
+local newconcepttype = terralib.memoize(function(name)
+    return terralib.types.newstruct(name)
+end)
+
 local newconcept = function(name, check)
-    local C = terralib.types.newstruct(name)
+    local C = newconcepttype(name)
     Base(C, check)
     return C
 end

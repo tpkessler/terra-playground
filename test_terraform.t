@@ -658,7 +658,7 @@ testenv "defining parametrized concepts" do
     testset "Multipe inheritance" do
 		local SVec = concepts.parametrizedconcept("SVec")
 
-        concept SVec()
+        concept SVec() where {}
             Self.traits.length = concepts.traittag
 			Self.methods.length = &Self -> Integer
         end

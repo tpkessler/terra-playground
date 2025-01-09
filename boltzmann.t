@@ -18,6 +18,7 @@ local gauss = require("gauss")
 local halfhermite = require("halfrangehermite")
 local lambda = require("lambda")
 local tmath = require("mathfuns")
+local thread = require("thread")
 local momfit = require("momfit")
 local sparse = require("sparse")
 local stack = require("stack")
@@ -61,10 +62,9 @@ local struct MonomialBasis(base.AbstractBase){
 
 terra MonomialBasis:maxpartialdegree()
     var maxdeg = -1
-    var p = self.p
-    for i = 0, p:rows() do
-        for j = 0, p:cols() do
-            maxdeg = tmath.max(maxdeg, p(i, j))
+    for i = 0, self.p:rows() do
+        for j = 0, self.p:cols() do
+            maxdeg = tmath.max(maxdeg, self.p(i, j))
         end
     end
     return maxdeg
@@ -535,11 +535,6 @@ local terraform nonlinear_maxwellian_inflow(
                             {origin = 0.0, scaling = tmath.sqrt(2.)}
                       )
     whermite:scal(1 / tmath.sqrt(2 * tmath.pi))
-    var res: double = 0
-    for xw in range.zip(&vhermite, &whermite) do
-        var x, w = xw
-        res = res + w * x * x
-    end
     var qmaxwellian = escape 
         local arg = {}
         for i = 1, VDIM do
@@ -561,19 +556,57 @@ local terraform nonlinear_maxwellian_inflow(
                                                         nq,
                                                         testb:nvelocitydof()
                                                     )
-    var lhs = [dvector.DynamicVector(C.eltype)].new(alloc, qvlhs:cols())
-    for i = 0, nq do
-        for j = 0, nv do
-            lhs(j) = qvlhs(i, j)
-        end
-        var rho, u, theta = local_maxwellian(
-                                &trialb.velocity, &lhs, qmaxwellian
-                            )
-        transform(&rho, &u, &theta)
-        maxwellian_inflow(
-            alloc, testb, rho, u, theta, &normal(i, 0), &halfmomq(i, 0)
+    var qrange = [range.Unitrange(int64)].new(0, nq)
+    thread.parfor(alloc, qrange, lambda.new(
+            [
+                terra(
+                    i: int64,
+                    alloc: alloc.type,
+                    transform: transform.type,
+                    nv: nv.type,
+                    qvlhs: qvlhs.type,
+                    testb: testb.type,
+                    trialb: trialb.type,
+                    qmaxwellian: qmaxwellian.type,
+                    normal: normal.type,
+                    halfmomq: halfmomq.type
+                )
+                    var lhs = (
+                        [
+                            dvector.DynamicVector(C.eltype)
+                        ].new(alloc, qvlhs:cols())
+                    )
+                    for j = 0, nv do
+                        lhs(j) = qvlhs(i, j)
+                    end
+                    var rho, u, theta = local_maxwellian(
+                                            &trialb.velocity, &lhs, qmaxwellian
+                                        )
+                    transform(&rho, &u, &theta)
+                    maxwellian_inflow(
+                        alloc,
+                        testb,
+                        rho,
+                        u,
+                        theta,
+                        &normal(i, 0),
+                        &halfmomq(i, 0)
+                    )
+                end
+            ],
+            {
+                alloc = alloc,
+                transform = transform,
+                nv = nv,
+                qvlhs = qvlhs,
+                testb = testb,
+                trialb = trialb,
+                qmaxwellian = qmaxwellian,
+                normal = normal,
+                halfmomq = halfmomq
+            }
         )
-    end
+    )
     var halfmom = [dmatrix.DynamicMatrix(C.eltype)].zeros(
                                                         alloc,
                                                         testb:nspacedof(),
