@@ -213,7 +213,7 @@ local DefaultAllocator = terralib.memoize(function(options)
             if not blk:isempty() and (blk:size_in_bytes() < newsize_in_bytes)  then
                 --get new resource using '__allocate'
                 var tmpblk : block
-                __allocate(&tmpblk, elsize, newcounter)
+                Imp.__allocate(&tmpblk, elsize, newcounter)
                 __abortonerror(tmpblk.ptr, newsize_in_bytes)
                 --copy size_in_bytes over
                 if not tmpblk:isempty() then
