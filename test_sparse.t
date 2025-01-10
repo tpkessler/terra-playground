@@ -8,6 +8,8 @@ local sparse = require("sparse")
 local nfloat = require("nfloat")
 local complex = require("complex")
 local dvector = require("dvector")
+local matrix = require("matrix")
+local dmatrix = require("dmatrix")
 local tmath = require("mathfuns")
 
 local complexDouble = complex.complex(double)
@@ -27,6 +29,7 @@ for T, tol in pairs(tols) do
     for _, I in pairs({int32, int64, uint32, uint64}) do
         local CSR = sparse.CSRMatrix(T, I)
         local Vec = dvector.DynamicVector(T)
+        local Mat = dmatrix.DynamicMatrix(T)
         testenv(T, I) "Sparse CSR Matrix" do
             terracode
                 var alloc: DefaultAlloc
@@ -98,9 +101,32 @@ for T, tol in pairs(tols) do
 
                 test c:rows() == 5
                 test c:cols() == 5
-                for ii = 0, 5 -1 do
+                for ii = 0, 5 - 1 do
                     test tmath.isapprox(yv(ii), yvref(ii), [tol])
                 end
+            end
+
+            testset "Mult" do
+                terracode
+                    var rows = 250
+                    var cols = 200
+                    var a = CSR.new(&alloc, rows, rows)
+                    for i = 0, rows do
+                        a:set(i, i, 3)
+                    end
+                    for i = 1, rows do
+                        a:set(i, i - 1, -1)
+                    end
+                    for i = 0, rows - 1 do
+                        a:set(i, i + 1, -1)
+                    end
+                    var b = Mat.new(&alloc, rows, cols)
+                    b:fill([T](2))
+                    var c = Mat.new(&alloc, rows, cols)
+                    c:fill([T](3))
+                    matrix.scaledaddmul([T](1), false, &a, false, &b, [T](-1),&c)
+                end
+                test tmath.isapprox(c(rows - 2, cols - 3), -3 + 2, [tol])
             end
         end
     end

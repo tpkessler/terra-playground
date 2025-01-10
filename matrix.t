@@ -6,6 +6,7 @@
 import "terraform"
 local concepts = require("concepts")
 local template = require("template")
+local tmath = require("mathfuns")
 local err = require("assert")
 
 local Bool = concepts.Bool
@@ -13,27 +14,76 @@ local Integer = concepts.Integer
 local Number = concepts.Number
 local Real = concepts.Real
 local Complex = concepts.Complex
+local Matrix = concepts.Matrix
+
+local function get(A, atrans, i, j)
+    if atrans then
+        return quote var x = [A]:get([j], [i]) in tmath.conj(x) end
+    else
+        return `[A]:get([i], [j])
+    end
+end
+
+local function kernel(C, beta, alpha, atrans, A, btrans, B)
+    local dim = quote
+        var d: uint64
+        if atrans then
+            d = [A]:rows()
+        else
+            d = [A]:cols()
+        end
+    in
+        d
+    end
+    return quote
+        for i = 0, [C]:rows() do
+            for j = 0, [C]:cols() do
+                var sum = beta * [C]:get(i, j)
+                for k = 0, [dim] do
+                    sum = sum + alpha * [get(A, atrans, i, k)]
+                                      * [get(B, btrans, k, j)]
+                end
+                [C]:set(i, j, sum)
+            end
+        end
+    end
+end
+
+local terraform scaledaddmul(
+    alpha: T,
+    atrans: bool,
+    a: &M1,
+    btrans: bool,
+    b: &M2,
+    beta: T,
+    c: &M3
+) where {T: Number, M1: Matrix(Number), M2: Matrix(Number), M3: Matrix(Number)}
+    if atrans and btrans then
+        err.assert(c:rows() == a:cols() and c:cols() == b:rows())
+        err.assert(a:rows() == b:cols())
+        [kernel(`c, `beta, `alpha, true, `a, true, `b)]
+    elseif atrans and not btrans then
+        err.assert(c:rows() == a:cols() and c:cols() == b:cols())
+        err.assert(a:rows() == b:rows())
+        [kernel(`c, `beta, `alpha, true, `a, false, `b)]
+    elseif not atrans and btrans then
+        err.assert(c:rows() == a:rows() and c:cols() == b:rows())
+        err.assert(a:cols() == b:cols())
+        [kernel(`c, `beta, `alpha, false, `a, true, `b)]
+    else
+        err.assert(c:rows() == a:rows() and c:cols() == b:cols())
+        err.assert(a:cols() == b:rows())
+        [kernel(`c, `beta, `alpha, false, `a, false, `b)]
+    end
+end
 
 local function MatrixBase(M)
     local T = M.eltype
 
-    --operator concept
     local Vector = concepts.Vector(T)
     local Operator = concepts.Operator(T)
     local Matrix = concepts.Matrix(T)
 
-    local function get(A, atrans, i, j)
-        if atrans then
-            if Complex(T) then
-                return quote var x = [A]:get([j], [i]) in x:conj() end
-            else
-                return `[A]:get([j], [i])
-            end
-        else
-            return `[A]:get([i], [j])
-        end
-    end
-    
     terraform M:apply(trans : bool, alpha : T, x : &V1, beta : T, y : &V2)
         where {V1: Vector, V2: Vector}
         if trans then
@@ -65,7 +115,6 @@ local function MatrixBase(M)
         end
     end
 
-    --check if operator concept is implemented
     assert(Operator(M))
     
     terra M:fill(a : T)
@@ -194,56 +243,10 @@ local function MatrixBase(M)
         end
     end
     
-    local function kernel(C, beta, alpha, atrans, A, btrans, B)
-        local dim = quote
-            var d: uint64
-            if atrans then
-                d = [A]:rows()
-            else
-                d = [A]:cols()
-            end
-        in
-            d
-        end
-        return quote
-            for i = 0, [C]:rows() do
-                for j = 0, [C]:cols() do
-                    var sum = beta * [C]:get(i, j)
-                    for k = 0, [dim] do
-                        sum = sum + alpha * [get(A, atrans, i, k)]
-                                          * [get(B, btrans, k, j)]
-                    end
-                    [C]:set(i, j, sum)
-                end
-            end
-        end
-    end
-    
-    terraform M:mul(beta : T, alpha : T, atrans : bool, a : &Mat, btrans : bool, b : &Mat) 
-        where {Mat : Matrix}
-        if atrans and btrans then
-            err.assert(self:rows() == a:cols() and self:cols() == b:rows())
-            err.assert(a:rows() == b:cols())
-            [kernel(`self, `beta, `alpha, true, `a, true, `b)]
-        elseif atrans and not btrans then
-            err.assert(self:rows() == a:cols() and self:cols() == b:cols())
-            err.assert(a:rows() == b:rows())
-            [kernel(`self, `beta, `alpha, true, `a, false, `b)]
-        elseif not atrans and btrans then
-            err.assert(self:rows() == a:rows() and self:cols() == b:rows())
-            err.assert(a:cols() == b:cols())
-            [kernel(`self, `beta, `alpha, false, `a, true, `b)]
-        else
-            err.assert(self:rows() == a:rows() and self:cols() == b:cols())
-            err.assert(a:cols() == b:rows())
-            [kernel(`self, `beta, `alpha, false, `a, false, `b)]
-        end
-    end
-
-    --check if the Matrix concept is satisfied
     assert(Matrix(M))
 end
 
 return {
+    scaledaddmul = scaledaddmul,
     MatrixBase = MatrixBase,
 }

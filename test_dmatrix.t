@@ -5,6 +5,7 @@
 
 import "terratest/terratest"
 
+local matrix = require("matrix")
 local dmatrix = require("dmatrix")
 local dvector = require("dvector")
 local alloc = require("alloc")
@@ -179,11 +180,11 @@ for _, T in pairs({double, float, int64, cdouble, cfloat, cint, float128, cfloat
                 var a = Mat.from(&alloc, {{1, 2}, {3, 4}})
                 var b = Mat.from(&alloc, {{2, -1}, {-1, 2}})
                 var c = Mat.zeros_like(&alloc, &a)
-                c:mul([T](0), [T](1), false, &a, false, &b)
+                matrix.scaledaddmul([T](1), false, &a, false, &b, [T](0), &c)
                 var cref = Mat.from(&alloc, {{0, 3}, {2, 5}})
                 var ct = Mat.zeros_like(&alloc, &a)
                 var ctref = Mat.from(&alloc, {{-1, 5}, {0, 6}})
-                ct:mul([T](0), [T](1), true, &a, false, &b)
+                matrix.scaledaddmul([T](1), true, &a, false, &b, [T](0), &ct)
             end
             test c:rows() == 2
             test c:cols() == 2
@@ -211,7 +212,7 @@ for _, T in pairs({double, float, int64, cdouble, cfloat, cint, float128, cfloat
                     var b = Mat.from(&alloc, {{2, -1 - I}, {-1 + I, 2}})
                     var c = Mat.zeros_like(&alloc, &a)
                     var cref = Mat.from(&alloc, {{-3 + 7 * I, 7 + I}, {1 + 7 * I, 7 - 3 * I}})
-                    c:mul([T](0), [T](1), false, &a, true, &b)
+                    matrix.scaledaddmul([T](1), false, &a, true, &b, [T](0), &c)
                 end
                 test c:rows() == 2
                 test c:cols() == 2

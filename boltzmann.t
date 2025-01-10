@@ -10,6 +10,7 @@ local base = require("base")
 local concepts = require("concepts")
 local svector = require("svector")
 local dvector = require("dvector")
+local matrix = require("matrix")
 local dmatrix = require("dmatrix")
 local tmath = require("mathfuns")
 local dual = require("dual")
@@ -515,13 +516,14 @@ local terraform nonlinear_maxwellian_inflow(
     var nq = normal:rows()
     var nv = xvlhs:cols()
     var qvlhs = [dmatrix.DynamicMatrix(C.eltype)].zeros(alloc, nq, nv)
-    qvlhs:mul(
-            [C.eltype](0),
-            [C.eltype](1),
-            false,
-            &trialb.space,
-            false,
-            xvlhs
+    matrix.scaledaddmul(
+        [C.eltype](1),
+        false,
+        &trialb.space,
+        false,
+        xvlhs,
+        [C.eltype](0),
+        &qvlhs
     )
     -- Qudrature for the computation of the local Maxwellian.
     -- We need to integrate a polynomial times (1, v, |v|^2) exactly.
@@ -612,13 +614,14 @@ local terraform nonlinear_maxwellian_inflow(
                                                         testb:nspacedof(),
                                                         testb:nvelocitydof()
                                                     )
-    halfmom:mul(
-        [C.eltype](0),
+    matrix.scaledaddmul(
         [C.eltype](1),
         false,
         &testb.space,
         false,
-        &halfmomq
+        &halfmomq,
+        [C.eltype](0),
+        &halfmom
     )
     return halfmom
 end

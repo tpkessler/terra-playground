@@ -171,7 +171,6 @@ local concept Matrix(T) where {T}
     Self.methods.scal = {&Self, T} -> {}
     Self.methods.axpy = {&Self, T, Bool, &Self} -> {}
     Self.methods.dot = {&Self, Bool, &Self} -> Number
-    Self.methods.mul = {&Self, T, T, Bool, &Self, Bool, &Self} -> {}
 end
 
 local concept BLASDenseMatrix(T) where {T : BLASNumber}

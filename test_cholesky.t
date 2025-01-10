@@ -11,6 +11,7 @@ local random = require("random")
 local complex = require("complex")
 local nfloat = require("nfloat")
 local dvector = require("dvector")
+local matrix = require("matrix")
 local dmatrix = require("dmatrix")
 local mathfun = require("mathfuns")
 
@@ -65,7 +66,6 @@ for _, Ts in pairs({float, double, float128, float1024}) do
 
         testenv(T) "LU factorization for random matrix" do
             local n = 41
-            local io = terralib.includec("stdio.h")
             terracode
                 var alloc: Alloc
                 var rand = Rand.from(2359586)
@@ -80,7 +80,7 @@ for _, Ts in pairs({float, double, float128, float1024}) do
                         b(i, j) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
                     end
                 end
-                a:mul([T](0), [T](1), false, &b, true, &b)
+                matrix.scaledaddmul([T](1), false, &b, true, &b, [T](0), &a)
                 a:apply(false, [T](1), &x, [T](0), &y)
                 a:apply(true, [T](1), &x, [T](0), &yt)
                 var tol: Ts = [ tol[tostring(Ts)] ]
