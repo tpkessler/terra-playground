@@ -2,6 +2,7 @@
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
+
 local alloc = require("alloc") -- SmartBlock, Allocator
 local base = require("base") -- AbstractBase
 local atomics = require("atomics")

@@ -171,7 +171,6 @@ local concept Matrix(T) where {T}
     Self.methods.scal = {&Self, T} -> {}
     Self.methods.axpy = {&Self, T, Bool, &Self} -> {}
     Self.methods.dot = {&Self, Bool, &Self} -> Number
-    Self.methods.mul = {&Self, T, T, Bool, &Self, Bool, &Self} -> {}
 end
 
 local concept BLASDenseMatrix(T) where {T : BLASNumber}
@@ -184,6 +183,25 @@ local concept Factorization(T) where {T}
     Self.methods.factorize = {&Self} -> {}
     Self.methods.solve = {&Self, Bool, &Vector(T)} -> {}
 end
+
+local concept Packed
+    Self.traits.eltype = traittag
+    Self.traits.Rows = traittag
+    Self.traits.Cols = traittag
+end
+
+local concept SparsePacked(T) where {T}
+    Self:inherit(Packed)
+    Self.traits.eltype = T
+    Self.traits.issparse = traittag
+end
+
+local concept DensePacked(T) where {T}
+    Self:inherit(Packed)
+    Self.traits.eltype = T
+    Self.traits.isdense = traittag
+end
+
 
 return {
     Base = Base,
@@ -220,5 +238,8 @@ return {
     Operator = Operator,
     Matrix = Matrix,
     BLASDenseMatrix = BLASDenseMatrix,
-    Factorization = Factorization
+    Factorization = Factorization,
+    Packed = Packed,
+    SparsePacked = SparsePacked,
+    DensePacked = DensePacked,
 }
