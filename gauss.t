@@ -364,7 +364,7 @@ terra besselJ1(alloc : Allocator, m : size_t)
     return Jk2
 end
 
-local terra legpts_nodes(alloc : Allocator, n : size_t, a : dvec)
+local terra legpts_nodes(alloc : Allocator, n : size_t, a : &dvec)
     --asymptotic expansion for the Gauss-Legendre nodes
     var vn = 1. / (n + 0.5)
     var m = a:size()
@@ -401,7 +401,7 @@ local terra legpts_nodes(alloc : Allocator, n : size_t, a : dvec)
     return nodes
 end
 
-local terra legpts_weights(alloc : Allocator, n : size_t, a : dvec)
+local terra legpts_weights(alloc : Allocator, n : size_t, a : &dvec)
     --asymptotic expansion for the Gauss-Legendre weights
     var m = a:size()
     var vn = 1. / (n + 0.5)
@@ -456,8 +456,8 @@ local terra asy(alloc : Allocator, n : size_t)
     var m = (n + 1) >> 1
     var a = bessel_zero_roots(&alloc, m)
     a:scal(1. / (n + 0.5))
-    var x = legpts_nodes(&alloc, n, a)
-    var w = legpts_weights(&alloc, n, a)
+    var x = legpts_nodes(&alloc, n, &a)
+    var w = legpts_weights(&alloc, n, &a)
     return x, w
 end
 
@@ -529,12 +529,10 @@ terra imp.legendre(alloc : Allocator, n : size_t)
             dvec.from(&alloc, (322. - 13. * tmath.sqrt(70.)) / 900., (322. + 13. * tmath.sqrt(70.)) / 900., 128. / 225., (322. + 13. * tmath.sqrt(70.)) / 900., (322. - 13. * tmath.sqrt(70.)) / 900.)
     elseif n <= 60 then
         --Newton's method with three-term recurrence
-        var x, w = rec(&alloc, n)
-        return x, w
+        return rec(alloc, n)
     else
         --use asymptotic expansions:
-        var x, w = asy(&alloc, n)
-        return x, w
+        return asy(&alloc, n)
     end
 end
 
