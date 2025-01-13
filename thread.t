@@ -642,6 +642,7 @@ end
 -- main()
 return {
     thread = thread,
+    join_threads = join_threads,
     mutex = mutex,
     lock_guard = lock_guard,
     cond = cond,

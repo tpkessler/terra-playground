@@ -246,8 +246,16 @@ testenv "SmartObject" do
         end
         test obj:product() == 12 
 	end
-    
 
+    testset "frombuffer" do
+        terracode
+            var ab = myobj {3, -4}
+            var smartab: smrtobj = &ab
+            var smartnil: smrtobj = nil
+        end
+        test smartab:product() == -12
+        test smartnil.ptr == nil
+    end
 end
 
 

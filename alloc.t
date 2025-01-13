@@ -281,6 +281,20 @@ local SmartObject = terralib.memoize(function(obj, options)
         return `self.ptr:[method](args)
     end)
 
+    smrtobj.methods.__copy = terralib.overloadedfunction("__copy")
+
+    smrtobj.methods.__copy:adddefinition(
+        terra(from: &obj, to: &smrtobj)
+            @to = smrtobj.frombuffer(1, from)
+        end
+    )
+
+    smrtobj.methods.__copy:adddefinition(
+        terra(from: &niltype, to: &smrtobj)
+            @to = smrtobj.frombuffer(1, nil)
+        end
+    )
+
     return smrtobj
 end)
 
