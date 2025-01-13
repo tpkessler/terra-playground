@@ -308,15 +308,11 @@ local ThreadsafeQueue = terralib.memoize(function(T)
     end
 
     terra threadsafe_queue:try_pop(t: &T)
-        -- FIXME Use lock guards. Currently blocked by
-        -- https://github.com/renehiemstra/terra/issues/6
-        self.mutex:lock()
+        var guard: lock_guard = self.mutex
         if self.data:size() == 0 then
-            self.mutex:unlock()
             return false
         else
             @t = self.data:pop()
-            self.mutex:unlock()
             return true
         end
     end
