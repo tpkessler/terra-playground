@@ -71,7 +71,7 @@ terra MonomialBasis:maxpartialdegree()
     return maxdeg
 end
 
-MonomialBasis.staticmethods.new = terra(p: iMat)
+MonomialBasis.staticmethods.new = terra(p: &iMat)
     var basis: MonomialBasis
     basis.p = p
     return basis
@@ -143,7 +143,7 @@ local TensorBasis = terralib.memoize(function(T)
         return self:nspacedof() * self:nvelocitydof()
     end
 
-    tensor_basis.staticmethods.new = terra(b: CSR, transposed: bool, p: iMat)
+    tensor_basis.staticmethods.new = terra(b: CSR, transposed: bool, p: &iMat)
         return tensor_basis {b, transposed, MonomialBasis.new(p)}
     end
 
@@ -176,7 +176,8 @@ local TensorBasis = terralib.memoize(function(T)
         tb.transposed = transposed
         tb.cast = cast
 
-        tb.velocity = MonomialBasis.new(iMat.frombuffer(nv, VDIM, ptr, VDIM))
+        var imat = iMat.frombuffer(nv, VDIM, ptr, VDIM)
+        tb.velocity = MonomialBasis.new(&imat)
 
         return tb
     end
