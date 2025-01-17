@@ -16,7 +16,6 @@ local DefaultAllocator =  Alloc.DefaultAllocator()
 local float128 = Nfloat.FixedFloat(128)
 local float1024 = Nfloat.FixedFloat(1024)
 
-
 for _, is_complex in pairs({false, true}) do
 for _, S in pairs({int, uint, int64, uint64, float, double, float128, float1024}) do
     local T
@@ -118,7 +117,7 @@ for _, S in pairs({int, uint, int64, uint64, float, double, float128, float1024}
                 var s = dstack.new(&alloc, 3)
                 s:push(1.0)
                 s:push(2.0)
-                var v : dvector = s:__move()
+                var v = [dvector](s)
             end
             test s.data:isempty()
             test v.data:owns_resource()
