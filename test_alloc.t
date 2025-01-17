@@ -250,11 +250,9 @@ testenv "SmartObject" do
     testset "frombuffer" do
         terracode
             var ab = myobj {3, -4}
-            var smartab: smrtobj = &ab
-            var smartnil: smrtobj = nil
+            var smartab: smrtobj = smrtobj.frombuffer(1, &ab)
         end
         test smartab:product() == -12
-        test smartnil.ptr == nil
     end
 end
 

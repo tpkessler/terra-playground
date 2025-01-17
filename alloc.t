@@ -248,6 +248,7 @@ local DefaultAllocator = terralib.memoize(function(options)
     return default
 end)
 
+import "terraform"
 
 --abstraction of a memory block with type information.
 local SmartObject = terralib.memoize(function(obj, options)
@@ -256,8 +257,8 @@ local SmartObject = terralib.memoize(function(obj, options)
     local smrtobj = smartmem.SmartBlock(obj, options)
 
     --allocate an empty obj
-    smrtobj.staticmethods.new = terra(A : Allocator) : smrtobj
-        var S : smrtobj = A:new(sizeof(obj), 1)
+    terraform smrtobj.staticmethods.new(A) where {A}
+        var S: smrtobj = A:new(sizeof(obj), 1)
         return S
     end
 
@@ -280,20 +281,6 @@ local SmartObject = terralib.memoize(function(obj, options)
         local args = terralib.newlist{...}
         return `self.ptr:[method](args)
     end)
-
-    smrtobj.methods.__copy = terralib.overloadedfunction("__copy")
-
-    smrtobj.methods.__copy:adddefinition(
-        terra(from: &obj, to: &smrtobj)
-            @to = smrtobj.frombuffer(1, from)
-        end
-    )
-
-    smrtobj.methods.__copy:adddefinition(
-        terra(from: &niltype, to: &smrtobj)
-            @to = smrtobj.frombuffer(1, nil)
-        end
-    )
 
     return smrtobj
 end)
