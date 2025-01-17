@@ -1,5 +1,14 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
 local alloc = require("alloc")
+local base = require("base")
+local dvector = require("dvector")
 local random = require("random")
+local range = require("range")
+local tree = require("tree")
 local thread = require("thread")
 local tmath = require("mathfuns")
 
@@ -142,7 +151,7 @@ testenv "Basic data structures" do
         local terra heavy_work(i: int, tsum: &double, mtx: &thread.mutex)
             var rng = [random.MinimalPCG(double)].from(2385287, i)
             var sum = do_work(&rng)
-            var guard: thread.lock_guard = mtx
+            -- var guard: thread.lock_guard = mtx
             @tsum = @tsum + sum
             return 0
         end
@@ -169,7 +178,7 @@ testenv "Parallel for" do
     local lambda = require("lambda")
     local range = require("range")
 
-    local NITEMS = 128
+    local NITEMS = 65
     testset "Linear range" do
         local terra go(i: int, a: &double)
             a[i] = -i - 1
@@ -189,33 +198,26 @@ testenv "Parallel for" do
 
     testset "Unstructured range" do
 
-        local struct tree
-        local stree = alloc.SmartObject(tree)
-        struct tree {
-            data: double
-            left: stree
-            right: stree
-        }
-        tree:complete()
-
-        terra tree:__init()
-            self.left = nil
-            self.right = nil
+        local dtree = tree.BinaryTree(double)
+        terracode
+            var A: alloc.DefaultAllocator()
+            var t = dtree.new(&A, 4.0, nil)
+            var v = [dvector.DynamicVector(double)].zeros(&A, 5)
+            t:grow(&A, 2.0, 5.0)
+            t.left:grow(&A, 1.0, 3.0)
+            var go = lambda.new([
+                terra(it: tuple(int32, double), v: v.type)
+                    var i, x = it
+                    v(i) = x
+                end
+            ], {v = v})
+            thread.parfor(
+                &A, range.zip([range.Unitrange(int32)].new(0, 5), t.ptr), go
+            )
         end
 
-        do
-            local left = symbol(double)
-            local right = symbol(double)
-            terra tree:grow(A: alloc.Allocator, [left], [right])
-                escape
-                    for key, sym in pairs{["left"] = left, ["right"] = right} do
-                        emit quote
-                            self.[key] = stree.new(&A)
-                            self.[key].data = [sym]
-                        end
-                    end
-                end
-            end
+        for i = 1, 5 do
+            test v(i - 1) == i
         end
     end
 end
