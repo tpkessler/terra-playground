@@ -107,8 +107,7 @@ do
         var func: Func
         return iterator {self, func, 0, self.p:rows()}
     end
-    MonomialBasis.iterator = iterator
-    range.Base(MonomialBasis, iterator, Func)
+    range.Base(MonomialBasis, iterator)
 end
 
 local TensorBasis = terralib.memoize(function(T)
@@ -747,7 +746,7 @@ local GenerateBCWrapper = terralib.memoize(function(Transform)
     local data = symbol(prepare_input.type.returntype)
     local transform = symbol(Transform)
     local refdata = {}
-    for i = 1, 4 do
+    for i = 1, #data.type.entries do
         refdata[i] = `&[data].["_" .. tostring(i - 1)]
     end
 
