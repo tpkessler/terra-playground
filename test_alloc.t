@@ -7,10 +7,7 @@ local io = terralib.includec("stdio.h")
 import "terratest/terratest"
 
 local alloc = require("alloc")
-
-local size_t = uint64
-local block = alloc.block
-local Allocator = alloc.Allocator
+local DefaultAllocator = alloc.DefaultAllocator()
 
 for _, alignment in ipairs{0, 64} do
 
@@ -205,8 +202,6 @@ end
 
 import "terraform"
 
-local DefaultAllocator = alloc.DefaultAllocator()
-
 testenv "SmartObject" do
 
     local struct myobj{
@@ -250,7 +245,6 @@ testenv "SmartObject" do
 
 end
 
-
 testenv "singly linked list - that is a cycle" do
 
 	local Allocator = alloc.Allocator
@@ -269,6 +263,10 @@ testenv "singly linked list - that is a cycle" do
             end
         end
     end)
+
+    local terra get_smrt_s_node_dtor_counter()
+        return smrt_s_node_dtor_counter
+    end
 
     smrt_s_node.metamethods.__entrymissing = macro(function(entryname, self)
         return `self.ptr.[entryname]
@@ -347,7 +345,6 @@ testenv "singly linked list - that is a cycle" do
         test smrt_s_node_dtor_counter==4
     end
 end
-
 
 testenv "doubly linked list - that is a cycle" do
 

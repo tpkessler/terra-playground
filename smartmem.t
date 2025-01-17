@@ -206,7 +206,7 @@ local SmartBlock = terralib.memoize(function(T, options)
             --case when to.eltype is a managed type
             if ismanaged{type=to.traits.eltype, method="__init"} then
                 return quote
-                    var tmp = exp
+                    var tmp = __move__(exp)
                     --debug check if sizes are compatible, that is, is the
                     --remainder zero after integer division
                     err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
@@ -223,7 +223,7 @@ local SmartBlock = terralib.memoize(function(T, options)
             --simple case when to.eltype is not managed
             else
                 return quote
-                    var tmp = exp
+                    var tmp = __move__(exp)
                     --debug check if sizes are compatible, that is, is the
                     --remainder zero after integer division
                     err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
