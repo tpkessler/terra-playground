@@ -308,11 +308,13 @@ local ThreadsafeQueue = terralib.memoize(function(T)
     end
 
     terra threadsafe_queue:try_pop(t: &T)
-        var guard: lock_guard = self.mutex
+        self.mutex:lock()
         if self.data:size() == 0 then
+            self.mutex:unlock()
             return false
         else
             @t = self.data:pop()
+            self.mutex:unlock()
             return true
         end
     end
