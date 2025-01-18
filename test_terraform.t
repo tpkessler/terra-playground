@@ -9,7 +9,6 @@ local io = terralib.includec("stdio.h")
 local base = require("base")
 local concepts = require("concepts")
 local alloc = require('alloc')
-local dvector = require("dvector")
 local size_t = uint64
 
 local Any = concepts.Any
