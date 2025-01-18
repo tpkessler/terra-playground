@@ -9,6 +9,8 @@ local concepts = require("concepts")
 local err = require("assert")
 local base = require("base")
 local matrix = require("matrix")
+local packed = require("packed")
+local simd = require("simd")
 
 import "terraform"
 
@@ -117,12 +119,230 @@ local CSRMatrix = terralib.memoize(function(T, I)
         end
     end
 
+    local Primitive = concepts.Primitive
+    if Primitive(T) then
+        -- Inspired by the GPU implementation
+        -- https://gpuopen.com/learn/amd-lab-notes/amd-lab-notes-spmv-docs-spmv_part1/
+        local VecApply = terralib.memoize(function(N)
+            local SIMD = simd.VectorFactory(T, N)
+            local terraform vecapply(
+                self: &csr,
+                trans: bool,
+                alpha: T,
+                x: &V1,
+                beta: T,
+                y: &V2
+            ) where {V1: Vector, V2: Vector}
+                if beta == 0 then
+                    y:fill(0)
+                else
+                    y:scal(beta)
+                end
+                if not trans then
+                    for i = 0, self.rows do
+                        var first = self.rowptr(i)
+                        var last = self.rowptr(i + 1)
+                        var len = last - first
+                        var veclen = len - len % N
+                        var vecres: SIMD = [T](0)
+                        for idx = first, first + veclen, N do
+                            var avec: SIMD = &self.data(idx)
+                            var xvec: SIMD = (
+                                escape
+                                    local arg = terralib.newlist()
+                                    for j = 0, N - 1 do
+                                        arg:insert(`x:get(self.col(idx + j)))
+                                    end
+                                    emit `vectorof(T, [arg])
+                                end
+                            )
+                            vecres = vecres + avec * xvec
+                        end
+                        var res = vecres:hsum()
+                        for idx = first + veclen, first + len do
+                            res = res + self.data(idx) * x:get(self.col(idx))
+                        end
+                        y:set(i, y:get(i) + alpha * res)
+                    end
+                else
+                    for i = 0, self.rows do
+                        for idx = self.rowptr(i), self.rowptr(i + 1) do
+                            var j = self.col(idx)
+                            var yold = y:get(j)
+                            y:set(j, yold + alpha * self.data(idx) * x:get(i))
+                        end
+                    end
+                end
+            end
+            return vecapply
+        end)
+        local MAX_POWER = 5
+        local MAX_VECLEN = 2 ^ MAX_POWER
+        terraform csr:apply(trans: bool, alpha: T, x: &V1, beta: T, y: &V2)
+            where {V1: Vector, V2: Vector}
+            var nnzrow = self.data:size() / self:rows()
+            var veclen = 1
+            while veclen < nnzrow do
+                veclen = 2 * veclen
+            end
+            veclen = terralib.select(veclen > MAX_VECLEN, MAX_VECLEN, veclen)
+            escape
+                for i = 1, MAX_POWER do
+                    local N = 2 ^ i
+                    emit quote
+                        if veclen <= N then
+                            return (
+                                [VecApply(N)](self, trans, alpha, x, beta, y)
+                            )
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+
+    -- Rosko: Row Skipping Outer Products for Sparse Matrix Multiplication Kernels
+    -- https://arxiv.org/abs/2307.03930
+    local BLASFloat = concepts.BLASFloat
+    local SparsePacked = concepts.SparsePacked
+    local DensePacked = concepts.DensePacked
+    local terraform blocked_outer_product(
+        alpha: T, a: &A, b: &B, c: &C
+    ) where {
+            A: SparsePacked(BLASFloat),
+            B: DensePacked(BLASFloat),
+            C: DensePacked(BLASFloat)
+        }
+        escape
+            assert(A.traits.Rows == C.traits.Rows)
+            assert(A.traits.Cols == B.traits.Rows)
+            assert(B.traits.Cols == C.traits.Cols)
+        end
+        var cv: simd.VectorFactory(T, A.traits.Cols)[A.traits.Rows]
+        for m = 0, [A.traits.Rows] do
+            cv[m] = &c.A[ m * [C.traits.Cols] ]
+        end
+        var Ap = &a.Ap[0]
+        var loc = &a.loc[0]
+        for k = 0, [A.traits.Cols] do
+            if a.nnz[k] == 0 then
+                break
+            end
+            var bv: simd.VectorFactory(T, A.traits.Cols) = (
+                &b.A[ a.col[k] * [B.traits.Cols] ]
+            )
+            for m = 0, a.nnz[k] do
+                var av: simd.VectorFactory(T, A.traits.Cols) = alpha * @Ap
+                Ap = Ap + 1
+                cv[@loc] = cv[@loc] + av * bv
+                loc = loc + 1
+            end
+        end
+        for m = 0, [A.traits.Rows] do
+            cv[m]:store(&c.A[ m * [C.traits.Cols] ])
+        end
+    end
+
+    local Number = concepts.Number
+    local terraform blocked_outer_product(
+        alpha: T, a: &A, b: &B, c: &C
+    ) where {
+            A: SparsePacked(Number),
+            B: DensePacked(Number),
+            C: DensePacked(Number)
+        }
+        escape
+            assert(A.traits.Rows == C.traits.Rows)
+            assert(A.traits.Cols == B.traits.Rows)
+            assert(B.traits.Cols == C.traits.Cols)
+        end
+        var cv: (&T)[C.traits.Rows]
+        for m = 0, [C.traits.Rows] do
+            cv[m] = &c.A[ m * [C.traits.Cols] ]
+        end
+        var Ap = &a.Ap[0]
+        var loc = &a.loc[0]
+        for k = 0, [A.traits.Cols] do
+            if a.nnz[k] == 0 then
+                break
+            end
+            var bv = &b.A[ a.col[k] * [B.traits.Cols] ]
+            for m = 0, a.nnz[k] do
+                var av = alpha * @Ap
+                for n = 0, [C.traits.Cols] do
+                    cv[@loc][n] = cv[@loc][n] + av * bv[n]
+                end
+                Ap = Ap + 1
+                loc = loc + 1
+            end
+        end
+    end
+
+    local ARows = math.floor(128 * sizeof(double) / sizeof(T))
+    local ACols = math.floor(128 * sizeof(double) / sizeof(T))
+    local BCols = math.floor(128 * sizeof(double) / sizeof(T))
+    local Matrix = concepts.Matrix(T)
+    terraform matrix.scaledaddmul(
+        alpha: T,
+        atrans: bool,
+        A: &csr,
+        btrans: bool,
+        B: &M1,
+        beta: T,
+        C: &M2
+    ) where {M1: Matrix, M2: Matrix}
+        var na = A:rows()
+        var ma = A:cols()
+        var nb = B:rows()
+        var mb = B:cols()
+        var nc = C:rows()
+        var mc = C:cols()
+        -- TODO Implement missing cases
+        err.assert(atrans == false and btrans == false)
+        err.assert(na == nc)
+        err.assert(ma == nb)
+        err.assert(mb == mc)
+        var nblocka: I = (na + ARows - 1) / ARows
+        var mblocka: I = (ma + ACols - 1) / ACols
+        var mblockb: I = (mb + BCols - 1) / BCols
+
+        if beta == 0 then
+            C:fill(0)
+        else
+            C:scal(beta)
+        end
+
+        var ap: packed.SparsePackedFactory(T, I, ARows, ACols)
+        var bp: packed.DensePackedFactory(T, ACols, BCols)
+        var cp: packed.DensePackedFactory(T, ARows, BCols)
+        -- CAKE: matrix multiplication using constant-bandwidth blocks
+        -- https://dl.acm.org/doi/abs/10.1145/3458817.3476166
+        for n = 0, mblockb do
+            var jdx = n
+            for m = 0, nblocka do
+                -- var idx = terralib.select(
+                --     n % 2 == 0, m, nblocka - m - 1
+                -- )
+                var idx = m
+                cp:pack(C, idx * ARows, jdx * BCols)
+                for k = 0, mblocka do
+                    var kdx = k
+                    ap:pack(A, idx * ARows, kdx * ACols)
+                    bp:pack(B, kdx * ACols, jdx * BCols)
+                    blocked_outer_product(alpha, &ap, &bp, &cp)
+                end
+                cp:unpack(C, idx * ARows, jdx * BCols)
+            end
+        end
+    end
+
     local Alloc = alloc.Allocator
     csr.staticmethods.new = terra(alloc: Alloc, rows: I, cols: I)
         var a: csr
         a.rows = rows
         a.cols = cols
-        var cap = rows  -- one entry per row
+        var cap = rows -- one entry per row
         a.data = ST.new(alloc, cap)
         a.col = SI.new(alloc, cap)
         a.rowptr = SI.new(alloc, rows + 1)

@@ -21,11 +21,11 @@ local concept Interval(T) where {T: Number}
 end
 
 local Real = concepts.Real
-local Integral = concepts.Integral
+local Integer = concepts.Integer
 local RecDiff = recdiff.RecDiff
 local terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
     where {
-        N: Integral,
+        N: Integer,
         R: RecDiff(Real),
         I: Interval(Real)
     }
@@ -114,9 +114,9 @@ local ExpMom = terralib.memoize(function(T)
     impl.traits.ninit = 2
     impl.traits.eltype = T
 
-    local Integral = concepts.Integral
+    local Integer = concepts.Integer
     local Stack = concepts.Stack 
-    terraform impl:getcoeff(n: I, y: &S) where {I: Integral, S: Stack(T)}
+    terraform impl:getcoeff(n: I, y: &S) where {I: Integer, S: Stack(T)}
         var a = self.a
         y:set(0, -a * (n + 1))
         y:set(1, -2 * a * (n + 1))
@@ -148,9 +148,9 @@ local ConstMom = terralib.memoize(function(T)
     impl.traits.ninit = 1
     impl.traits.eltype = T
 
-    local Integral = concepts.Integral
+    local Integer = concepts.Integer
     local Stack = concepts.Stack 
-    terraform impl:getcoeff(n: I, y: &S) where {I: Integral, S: Stack(T)}
+    terraform impl:getcoeff(n: I, y: &S) where {I: Integer, S: Stack(T)}
         var val: T
         if n == 0 then
             val = 2

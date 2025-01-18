@@ -16,7 +16,7 @@ local DefaultAllocator =  alloc.DefaultAllocator()
 local dvec = darray.DynamicVector(double)
 
 
-testenv(skip) "gauss Legendre quadrature" do
+testenv "gauss Legendre quadrature" do
 
     terracode
         var alloc : DefaultAllocator
@@ -57,7 +57,7 @@ testenv(skip) "gauss Legendre quadrature" do
 
 end
 
-testenv(skip) "gauss Chebyshev quadrature" do
+testenv "gauss Chebyshev quadrature" do
 
     local poly2 = poly.Polynomial(double, 3)
     local poly3 = poly.Polynomial(double, 4)
@@ -129,7 +129,7 @@ testenv(skip) "gauss Chebyshev quadrature" do
     end
 end
 
-testenv(skip) "gauss Jacobi quadrature" do
+testenv "gauss Jacobi quadrature" do
 
     terracode
         var alloc : DefaultAllocator
@@ -309,7 +309,7 @@ interval.metamethods.__entrymissing = macro(function(entryname, self)
     end
 end)
 
-testenv(skip) "API" do
+testenv "API" do
 
     terracode
         var alloc : DefaultAllocator

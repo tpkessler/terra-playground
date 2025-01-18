@@ -10,6 +10,7 @@ local base = require("base")
 local concepts = require("concepts")
 local svector = require("svector")
 local dvector = require("dvector")
+local matrix = require("matrix")
 local dmatrix = require("dmatrix")
 local tmath = require("mathfuns")
 local dual = require("dual")
@@ -18,6 +19,7 @@ local gauss = require("gauss")
 local halfhermite = require("halfrangehermite")
 local lambda = require("lambda")
 local tmath = require("mathfuns")
+local thread = require("thread")
 local momfit = require("momfit")
 local sparse = require("sparse")
 local stack = require("stack")
@@ -26,7 +28,7 @@ local qr = require("qr")
 local VDIM = 3
 
 local pow
-terraform pow(n: I, x: T) where {I: concepts.Integral, T: concepts.Real}
+terraform pow(n: I, x: T) where {I: concepts.Integer, T: concepts.Real}
     escape
         local pow_raw = terralib.memoize(function(I, T)
             local terra impl(n: I, x: T): T
@@ -46,7 +48,7 @@ terraform pow(n: I, x: T) where {I: concepts.Integral, T: concepts.Real}
 end
 
 local monomial
-terraform monomial(v: &T, p: &I) where {I: concepts.Integral, T: concepts.Number}
+terraform monomial(v: &T, p: &I) where {I: concepts.Integer, T: concepts.Number}
     var res = [v.type.type](1)
     for i = 0, VDIM do
         res = res * pow(p[i], v[i])
@@ -61,10 +63,9 @@ local struct MonomialBasis(base.AbstractBase){
 
 terra MonomialBasis:maxpartialdegree()
     var maxdeg = -1
-    var p = self.p
-    for i = 0, p:rows() do
-        for j = 0, p:cols() do
-            maxdeg = tmath.max(maxdeg, p(i, j))
+    for i = 0, self.p:rows() do
+        for j = 0, self.p:cols() do
+            maxdeg = tmath.max(maxdeg, self.p(i, j))
         end
     end
     return maxdeg
@@ -159,10 +160,10 @@ local TensorBasis = terralib.memoize(function(T)
         ptr: &I)
         where {
                 S: concepts.Number,
-                I1: concepts.Integral,
-                I2: concepts.Integral,
-                I3: concepts.Integral,
-                I4: concepts.Integral
+                I1: concepts.Integer,
+                I2: concepts.Integer,
+                I3: concepts.Integer,
+                I4: concepts.Integer
               }
         var cast = Stack.new(alloc, nnz)
         for i = 0, nnz do
@@ -175,7 +176,7 @@ local TensorBasis = terralib.memoize(function(T)
         tb.transposed = transposed
         tb.cast = cast
 
-        tb.velocity = MonomialBasis.new(iMat.frombuffer(nv, VDIM, ptr, VDIM))
+        tb.velocity = MonomialBasis.new(__move__(iMat.frombuffer(nv, VDIM, ptr, VDIM)))
 
         return tb
     end
@@ -316,10 +317,10 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         end
     end
 
-    local Integral = concepts.Integral
+    local Integer = concepts.Integer
     local Stack = concepts.Stack
     terraform impl:maxwellian(alloc, n: N, rho: T, u: &S, theta: T)
-        where {N: Integral, S: Stack(T)}
+        where {N: Integer, S: Stack(T)}
         --[=[
             We compute at quadrature rule for the integration weight
                 [(v, normal) > 0] M[rho, u, theta](v),
@@ -515,13 +516,14 @@ local terraform nonlinear_maxwellian_inflow(
     var nq = normal:rows()
     var nv = xvlhs:cols()
     var qvlhs = [dmatrix.DynamicMatrix(C.eltype)].zeros(alloc, nq, nv)
-    qvlhs:mul(
-            [C.eltype](0),
-            [C.eltype](1),
-            false,
-            &trialb.space,
-            false,
-            xvlhs
+    matrix.scaledaddmul(
+        [C.eltype](1),
+        false,
+        &trialb.space,
+        false,
+        xvlhs,
+        [C.eltype](0),
+        &qvlhs
     )
     -- Qudrature for the computation of the local Maxwellian.
     -- We need to integrate a polynomial times (1, v, |v|^2) exactly.
@@ -535,11 +537,6 @@ local terraform nonlinear_maxwellian_inflow(
                             {origin = 0.0, scaling = tmath.sqrt(2.)}
                       )
     whermite:scal(1 / tmath.sqrt(2 * tmath.pi))
-    var res: double = 0
-    for xw in range.zip(&vhermite, &whermite) do
-        var x, w = xw
-        res = res + w * x * x
-    end
     var qmaxwellian = escape 
         local arg = {}
         for i = 1, VDIM do
@@ -561,31 +558,70 @@ local terraform nonlinear_maxwellian_inflow(
                                                         nq,
                                                         testb:nvelocitydof()
                                                     )
-    var lhs = [dvector.DynamicVector(C.eltype)].new(alloc, qvlhs:cols())
-    for i = 0, nq do
-        for j = 0, nv do
-            lhs(j) = qvlhs(i, j)
-        end
-        var rho, u, theta = local_maxwellian(
-                                &trialb.velocity, &lhs, qmaxwellian
-                            )
-        transform(&rho, &u, &theta)
-        maxwellian_inflow(
-            alloc, testb, rho, u, theta, &normal(i, 0), &halfmomq(i, 0)
+    var qrange = [range.Unitrange(int64)].new(0, nq)
+    thread.parfor(alloc, qrange, lambda.new(
+            [
+                terra(
+                    i: int64,
+                    alloc: alloc.type,
+                    transform: transform.type,
+                    nv: nv.type,
+                    qvlhs: qvlhs.type,
+                    testb: testb.type,
+                    trialb: trialb.type,
+                    qmaxwellian: qmaxwellian.type,
+                    normal: normal.type,
+                    halfmomq: halfmomq.type
+                )
+                    var lhs = (
+                        [
+                            dvector.DynamicVector(C.eltype)
+                        ].new(alloc, qvlhs:cols())
+                    )
+                    for j = 0, nv do
+                        lhs(j) = qvlhs(i, j)
+                    end
+                    var rho, u, theta = local_maxwellian(
+                                            &trialb.velocity, &lhs, qmaxwellian
+                                        )
+                    transform(&rho, &u, &theta)
+                    maxwellian_inflow(
+                        alloc,
+                        testb,
+                        rho,
+                        u,
+                        theta,
+                        &normal(i, 0),
+                        &halfmomq(i, 0)
+                    )
+                end
+            ],
+            {
+                alloc = alloc,
+                transform = transform,
+                nv = nv,
+                qvlhs = qvlhs,
+                testb = testb,
+                trialb = trialb,
+                qmaxwellian = qmaxwellian,
+                normal = normal,
+                halfmomq = halfmomq
+            }
         )
-    end
+    )
     var halfmom = [dmatrix.DynamicMatrix(C.eltype)].zeros(
                                                         alloc,
                                                         testb:nspacedof(),
                                                         testb:nvelocitydof()
                                                     )
-    halfmom:mul(
-        [C.eltype](0),
+    matrix.scaledaddmul(
         [C.eltype](1),
         false,
         &testb.space,
         false,
-        &halfmomq
+        &halfmomq,
+        [C.eltype](0),
+        &halfmom
     )
     return halfmom
 end

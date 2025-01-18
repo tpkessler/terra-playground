@@ -462,9 +462,11 @@ function process_where_clause(lex)
 	}
 	if lex:nextif("where") then
 		lex:expect("{") 
-		repeat      
-			local param = lex:expect(lex.name).value
-			params[param] = process_single_constraint(lex)
+		repeat
+			if lex:matches(lex.name) then
+				local param = lex:expect(lex.name).value
+				params[param] = process_single_constraint(lex)
+			end
 		until not lex:nextif(",")                                
 		lex:expect("}")                                
 	end

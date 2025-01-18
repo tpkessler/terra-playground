@@ -231,7 +231,7 @@ testenv "Full Phasespace Integral" do
                 pressure
         )
 
-        -- Values from previous, so it's regression test.
+        -- Values from previous runs, so it's regression test.
         -- The integral was also computed with a Mathematica implementation.
         var refval = dMat.from(
                             &alloc,

@@ -176,8 +176,8 @@ local terra hermite_initialguess(alloc : Allocator, n : size_t)
     if isodd(n) then
         x:push(0.0)
     end
-    -- return as a darray
-    return [dvec](x:__move())
+    -- return as a dvector
+    return [dvec](x)
 end
 
 local terra hermpoly_rec(x0 : double, n : size_t)
@@ -536,12 +536,10 @@ terra imp.legendre(alloc : Allocator, n : size_t)
             dvec.from(&alloc, {(322. - 13. * tmath.sqrt(70.)) / 900., (322. + 13. * tmath.sqrt(70.)) / 900., 128. / 225., (322. + 13. * tmath.sqrt(70.)) / 900., (322. - 13. * tmath.sqrt(70.)) / 900.})
     elseif n <= 60 then
         --Newton's method with three-term recurrence
-        var x, w = rec(&alloc, n)
-        return x, w
+        return rec(alloc, n)
     else
         --use asymptotic expansions:
-        var x, w = asy(&alloc, n)
-        return x, w
+        return asy(&alloc, n)
     end
 end
 

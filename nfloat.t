@@ -163,7 +163,7 @@ local FixedFloat = terralib.memoize(function(N)
             return {{1ULL, 0ULL}, d}
         elseif value == "eps" then
             d[M] = bitshiftone
-            return {{-N, 0ULL}, d}
+            return {{N*-1ULL, 0ULL}, d}
         end
     end
     

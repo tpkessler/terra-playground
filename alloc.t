@@ -39,10 +39,11 @@ local block = smartmem.block
 --the 'owns' method enables composition of allocators
 --and allows for a sanity check when 'deallocate' is called.
 local Allocator = interface.Interface:new{
-	allocate = {size_t, size_t} -> {block},
+	new        = {size_t, size_t} -> {block},
+    allocate   = {&block, size_t, size_t} -> {},
     reallocate = {&block, size_t, size_t} -> {},
 	deallocate = {&block} -> {},
-	owns = {&block} -> {bool}
+	owns       = {&block} -> {bool}
 }
 
 --an allocator may also use one or more of the following options:
@@ -71,14 +72,41 @@ local function AllocatorBase(A, Imp)
         return false
     end
 
+    terra A:deallocate(blk : &block) : {}
+        err.assert(self:owns(blk))
+        Imp.__deallocate(blk)
+    end
+
+    terra A:reallocate(blk : &block, elsize : size_t, newcounter : size_t) : {}
+        err.assert(self:owns(blk) and (blk:size_in_bytes() % elsize == 0))
+        if not blk:isempty() and (blk:size_in_bytes() < elsize * newcounter)  then
+            Imp.__reallocate(blk, elsize, newcounter)
+            blk.alloc = self
+        end
+    end
+
+    terra A:allocate(blk : &block, elsize : size_t, counter : size_t) : {}
+        err.assert(blk:isempty())
+        Imp.__allocate(blk, elsize, counter)
+        blk.alloc = self
+    end
+
+    terra A:new(elsize : size_t, counter : size_t) : block
+        var blk : block
+        self:allocate(&blk, elsize, counter)
+        return blk
+    end
+
     --single method that can free and reallocate memory
     --this method is similar to the 'lua_Alloc' function,
     --although we don't allow allocation here (yet). 
     --see also 'https://nullprogram.com/blog/2023/12/17/'
     --a pointer to this method is set to block.alloc_f
-    terra A:__allocators_best_friend(blk : &block, elsize : size_t, counter : size_t)
+    terra A:__allocators_best_friend(blk : &block, elsize : size_t, counter : size_t) : {}
         var requested_size_in_bytes = elsize * counter
-        if not blk:isempty() then
+        if blk:isempty() and requested_size_in_bytes > 0 then
+            self:allocate(blk, elsize, counter)
+        else
             if requested_size_in_bytes == 0 then
                 --free memory
                 self:deallocate(blk)
@@ -89,28 +117,10 @@ local function AllocatorBase(A, Imp)
         end
     end
 
-    terra A:deallocate(blk : &block)
-        err.assert(self:owns(blk))
-        Imp.__deallocate(blk)
-    end
-
-    terra A:reallocate(blk : &block, elsize : size_t, newcounter : size_t)
-        err.assert(self:owns(blk) and (blk:size_in_bytes() % elsize == 0))
-        if not blk:isempty() and (blk:size_in_bytes() < elsize * newcounter)  then
-            Imp.__reallocate(blk, elsize, newcounter)
-        end
-    end
-
-    terra A:allocate(elsize : size_t, counter : size_t)
-        var blk = Imp.__allocate(elsize, counter)
-        blk.alloc = self
-        return blk
-    end
-
 end
 
 --implementation of the default allocator using malloc and free.
-local DefaultAllocator = function(options)
+local DefaultAllocator = terralib.memoize(function(options)
 
     --get input options
     local options = options or {}
@@ -132,43 +142,51 @@ local DefaultAllocator = function(options)
 
     --low-level functions that need to be implemented
     local Imp = {}
-    terra Imp.__allocate :: {size_t, size_t} -> {block}
+    terra Imp.__allocate   :: {&block, size_t, size_t} -> {}
     terra Imp.__reallocate :: {&block, size_t, size_t} -> {}
     terra Imp.__deallocate :: {&block} -> {}
     
     if Alignment == 0 then --use natural alignment
         if not Initialize then
-            terra Imp.__allocate(elsize : size_t, counter : size_t)
-                var size = elsize * counter
-                var ptr = C.malloc(size)
-                __abortonerror(ptr, size)
-                return block{ptr, size}
+            terra Imp.__allocate(blk : &block, elsize : size_t, counter : size_t)
+                err.assert(blk:isempty()) --sanity check
+                var size_in_bytes = elsize * counter
+                var ptr = C.malloc(size_in_bytes)
+                __abortonerror(ptr, size_in_bytes)
+                blk.ptr = ptr
+                blk.nbytes = size_in_bytes
             end
         else --initialize to zero using 'calloc'
-            terra Imp.__allocate(elsize : size_t, counter : size_t)
-                var size = elsize * counter
-                var newcounter = round_to_aligned(size, elsize) / elsize
-                var ptr = C.calloc(newcounter, elsize)
-                __abortonerror(ptr, size)
-                return block{ptr, size}
+            terra Imp.__allocate(blk : &block, elsize : size_t, counter : size_t)
+                err.assert(blk:isempty()) --sanity check
+                var size_in_bytes = elsize * counter
+                var ptr = C.calloc(counter, elsize)
+                __abortonerror(ptr, size_in_bytes)
+                blk.ptr = ptr
+                blk.nbytes = size_in_bytes
             end
         end
     else --use user defined alignment (multiple of 8 size_in_bytes)
         if not Initialize then
-            terra Imp.__allocate(elsize : size_t, counter : size_t)
-                var size = elsize * counter
-                var ptr = C.aligned_alloc(Alignment, round_to_aligned(size, Alignment))
-                __abortonerror(ptr, size)
-                return block{ptr, size}
+            terra Imp.__allocate(blk : &block, elsize : size_t, counter : size_t)
+                err.assert(blk:isempty()) --sanity check
+                var newcounter = round_to_aligned(elsize * counter, Alignment) / elsize
+                var size_in_bytes = newcounter * elsize
+                var ptr = C.aligned_alloc(Alignment, size_in_bytes)
+                __abortonerror(ptr, size_in_bytes)
+                blk.ptr = ptr
+                blk.nbytes = size_in_bytes
             end
         else --initialize to zero using 'memset'
-            terra Imp.__allocate(elsize : size_t, counter : size_t)
-                var size = elsize * counter
-                var len = round_to_aligned(size, Alignment)
-                var ptr = C.aligned_alloc(Alignment, len)
+            terra Imp.__allocate(blk : &block, elsize : size_t, counter : size_t)
+                err.assert(blk:isempty()) --sanity check
+                var newcounter = round_to_aligned(elsize * counter, Alignment) / elsize
+                var size_in_bytes = newcounter * elsize
+                var ptr = C.aligned_alloc(Alignment, size_in_bytes)
                 __abortonerror(ptr, size)
-                C.memset(ptr, 0, len)
-                return block{ptr, size}
+                C.memset(ptr, 0, size_in_bytes)
+                blk.ptr = ptr
+                blk.nbytes = size_in_bytes
             end
         end
     end
@@ -178,11 +196,11 @@ local DefaultAllocator = function(options)
         --reallocation is done using realloc
         terra Imp.__reallocate(blk : &block, elsize : size_t, newcounter : size_t)
             err.assert(blk:size_in_bytes() % elsize == 0) --sanity check
-            var newsize = elsize * newcounter
-            if blk:owns_resource() and (blk:size_in_bytes() < newsize)  then
-                blk.ptr = C.realloc(blk.ptr, newsize)
-                blk.nbytes = newsize
-                __abortonerror(blk.ptr, newsize)
+            var newsize_in_bytes = elsize * newcounter
+            if blk:owns_resource() and (blk:size_in_bytes() < newsize_in_bytes)  then
+                blk.ptr = C.realloc(blk.ptr, newsize_in_bytes)
+                blk.nbytes = newsize_in_bytes
+                __abortonerror(blk.ptr, newsize_in_bytes)
             end
         end
     else 
@@ -191,11 +209,12 @@ local DefaultAllocator = function(options)
         --and then memcpy
         terra Imp.__reallocate(blk : &block, elsize : size_t, newcounter : size_t)
             err.assert(blk:size_in_bytes() % elsize == 0) --sanity check
-            var newsize = elsize * newcounter
-            if not blk:isempty() and (blk:size_in_bytes() < newsize)  then
+            var newsize_in_bytes = elsize * newcounter
+            if not blk:isempty() and (blk:size_in_bytes() < newsize_in_bytes)  then
                 --get new resource using '__allocate'
-                var tmpblk = __allocate(elsize, newcounter)
-                __abortonerror(tmpblk.ptr, newsize)
+                var tmpblk : block
+                Imp.__allocate(&tmpblk, elsize, newcounter)
+                __abortonerror(tmpblk.ptr, newsize_in_bytes)
                 --copy size_in_bytes over
                 if not tmpblk:isempty() then
                     C.memcpy(tmpblk.ptr, blk.ptr, blk:size_in_bytes())
@@ -204,7 +223,7 @@ local DefaultAllocator = function(options)
                 blk:__dtor()
                 --move resources
                 blk.ptr = tmpblk.ptr
-                blk.nbytes = newsize
+                blk.nbytes = newsize_in_bytes
                 blk.alloc = tmpblk.alloc
                 tmpblk:__init()
             end
@@ -216,22 +235,59 @@ local DefaultAllocator = function(options)
         blk:__init()
     end
 
-    --local base class
-    local Base = function(A) AllocatorBase(A, Imp) end
-
     --the default allocator
-    local struct default(Base){
+    local struct default{
     }
+
+    --add functionality from base class
+    AllocatorBase(default, Imp)
 
     --sanity check - is the allocator interface implemented
     Allocator:isimplemented(default)
 
     return default
-end
+end)
+
+
+--abstraction of a memory block with type information.
+local SmartObject = terralib.memoize(function(obj, options)
+
+    --SmartObject is a special SmartBlock
+    local smrtobj = smartmem.SmartBlock(obj, options)
+
+    --allocate an empty obj
+    smrtobj.staticmethods.new = terra(A : Allocator) : smrtobj
+        var S : smrtobj = A:new(sizeof(obj), 1)
+        return S
+    end
+
+    smrtobj.metamethods.__getmethod = function(self, methodname)
+        local fnlike = self.methods[methodname] or smrtobj.staticmethods[methodname]
+        --if no implementation is found try __methodmissing
+        if not fnlike and terralib.ismacro(self.metamethods.__methodmissing) then
+            fnlike = terralib.internalmacro(function(ctx, tree, ...)
+                return self.metamethods.__methodmissing:run(ctx, tree, methodname, ...)
+            end)
+        end
+        return fnlike
+    end
+
+    smrtobj.metamethods.__entrymissing = macro(function(entryname, self)
+        return `self.ptr.[entryname]
+    end)
+
+    smrtobj.metamethods.__methodmissing = macro(function(method, self, ...)
+        local args = terralib.newlist{...}
+        return `self.ptr:[method](args)
+    end)
+
+    return smrtobj
+end)
 
 return {
     block = smartmem.block,
     SmartBlock = smartmem.SmartBlock,
+    SmartObject = SmartObject,
     Allocator = Allocator,
     AllocatorBase = AllocatorBase,
     DefaultAllocator = DefaultAllocator
