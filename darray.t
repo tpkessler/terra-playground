@@ -128,7 +128,7 @@ local DArrayStackBase = function(Array)
         var length = cumsize[N-1]           --length is last entry in 'cumsum'
         --return Array{alloc:allocate(sizeof(T), length), @__size, cumsize}
         var v : Array
-        v.data = alloc:allocate(sizeof(T), length)
+        v.data = alloc:new(sizeof(T), length)
         err.assert(v.data:owns_resource())
         v.size = @__size
         v.cumsize = cumsize
@@ -157,16 +157,14 @@ local DArrayStackBase = function(Array)
                 --only allow rvalues to be cast from a dstack to a dvector
                 --a dynamic stack can reallocate, which makes it unsafe to cast
                 --an lvalue since the lvalue may be modified (reallocate) later
-                if not exp:islvalue() then
-                    return quote
-                        var tmp = exp
-                        var v : Array
-                        v.data = tmp.data:__move() --we move the resources over
-                        v.size[0] = tmp.size --as size we provide the whole resource
-                        v.cumsize[0] = v.size[0]
-                    in
-                        v
-                    end
+                return quote
+                    var tmp = __move__(exp)
+                    var v : Array
+                    v.data = __move__(tmp.data) --we move the resources over
+                    v.size[0] = tmp.size --as size we provide the whole resource
+                    v.cumsize[0] = v.size[0]
+                in
+                    __move__(v)
                 end
             else
                 error("ArgumentError: not able to cast " .. tostring(from) .. " to " .. tostring(to) .. ".")

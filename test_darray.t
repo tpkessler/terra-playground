@@ -381,7 +381,7 @@ for _,T in ipairs{int,float,double,float256} do
                 var s = dstack.new(&alloc, 3)
                 s:push(1.0)
                 s:push(2.0)
-                var v : DVector = s:__move()
+                var v = [DVector](s)
             end
             test v.data:owns_resource()
             test s.data:isempty()
