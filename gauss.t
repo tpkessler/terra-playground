@@ -175,7 +175,7 @@ local terra hermite_initialguess(alloc : Allocator, n : size_t)
         x:push(0.0)
     end
     -- return as a dvector
-    return [dvec](x:__move())
+    return [dvec](x)
 end
 
 local terra hermpoly_rec(x0 : double, n : size_t)

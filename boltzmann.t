@@ -175,7 +175,7 @@ local TensorBasis = terralib.memoize(function(T)
         tb.transposed = transposed
         tb.cast = cast
 
-        tb.velocity = MonomialBasis.new(iMat.frombuffer(nv, VDIM, ptr, VDIM))
+        tb.velocity = MonomialBasis.new(__move__(iMat.frombuffer(nv, VDIM, ptr, VDIM)))
 
         return tb
     end
