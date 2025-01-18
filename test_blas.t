@@ -9,7 +9,7 @@ local complex = require("complex")
 local C = terralib.includecstring[[
     #include <stdio.h>
 ]]
-local mathfun = require("mathfuns")
+local tmath = require("tmath")
 local complexFloat = complex.complex(float)
 local complexDouble = complex.complex(double)
 
@@ -229,7 +229,7 @@ for prefix, T in pairs(types) do
                     end --if
                 end --escape
 
-                ref = mathfun.sqrt(ref)
+                ref = tmath.sqrt(ref)
             end
 
             test num == ref

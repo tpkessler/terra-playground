@@ -266,7 +266,6 @@ return {
     Transpose = Transpose,
     BLASMatrix = BLASMatrix,
     Factorization = Factorization,
-    BLASDenseMatrix = BLASDenseMatrix,
     Packed = Packed,
     SparsePacked = SparsePacked,
     DensePacked = DensePacked,

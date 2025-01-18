@@ -5,7 +5,7 @@
 
 import "terratest/terratest"
 
-local tmath = require('mathfuns')
+local tmath = require('tmath')
 local io = terralib.includec("stdio.h")
 local C = terralib.includec("string.h")
 
