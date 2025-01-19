@@ -324,7 +324,11 @@ local ArrayBase = function(Array)
     if N == 1 then
         printarray = function(self, name)
             return quote
-                io.printf("%s = \n", [ name ])
+                escape
+                    if name then
+                        emit quote io.printf("%s = \n", [ name ]) end
+                    end
+                end
                 for i in self:indexrange(0) do
                     var value = self:get(i)
                     io.printf("[%s]\n", tmath.numtostr(value))
@@ -334,8 +338,12 @@ local ArrayBase = function(Array)
         end
     elseif N == 2 then
         printarray = function(self, name)
-            return quote 
-                io.printf("%s = \n", [ name ])
+            return quote
+                escape
+                    if name then
+                        emit quote io.printf("%s = \n", [ name ]) end
+                    end
+                end
                 for i in self:indexrange(0) do
                     io.printf("\t[")
                     for j in self:indexrange(1) do

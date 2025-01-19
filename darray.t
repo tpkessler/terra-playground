@@ -408,6 +408,10 @@ local DynamicMatrix = terralib.memoize(function(T, options)
         return [&DMatrix](self)
     end
 
+    local Matrix = concepts.Matrix(T)
+    assert(Matrix(DMatrix), "Type " .. tostring(DMatrix)
+                              .. " does not implement the matrix interface")
+
     return DMatrix
 end)
 

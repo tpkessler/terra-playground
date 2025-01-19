@@ -163,7 +163,7 @@ local concept BLASVector(T) where {T : BLASNumber}
 end
 
 local concept MatrixStack(T) where {T}
-    Self.methods.size = {&Self, Integer} -> Integer
+    --Self.methods.size = {&Self, Integer} -> Integer
     Self.methods.get = {&Self, Integer, Integer} -> {T}
     Self.methods.set = {&Self, Integer, Integer, T} -> {}
 end
