@@ -7,11 +7,12 @@ local C = terralib.includecstring[[
   #include <stdio.h> // fopen()
   #include <stdlib.h> // random()
   #include <math.h>
-  #include "tinymt/tinymt64.h"
-  #include "pcg/pcg_variants.h"
 ]]
-local interface = require("interface")
+local base = require("base")
+local concepts = require("concepts")
 local err = require("assert")
+
+import "terraform"
 
 -- Compile C libraries with make first before using this module
 local uname = io.popen("uname", "r"):read("*a")
@@ -30,153 +31,98 @@ local sqrt = terralib.overloadedfunction("sqrt", {C.sqrt, C.sqrtf})
 local cos = terralib.overloadedfunction("cos", {C.cos, C.cosf})
 local log = terralib.overloadedfunction("log", {C.log, C.logf})
 
+local Integer = concepts.Integer
+local concept PseudoRNG(I) where {I: Integer}
+	terra Self:random_integer(): I end
+	Self.traits.inttype = I
+	Self.traits.range = concepts.traittag
+end
 
--- Interface for pseudo random number generator.
--- Given an interal state, subsequent calls to rand_int() generate
--- a sequence of uncorrelated integers of type I.
-local PseudoRandomizer = terralib.memoize(function(I)
-	assert(I:isintegral(), "Return value of PRNG must be an integral type")
-	return interface.Interface:new{
-		rand_int = {} -> I
-	}
-end)
+local BLASFloat = concepts.BLASFloat
+local concept RandomDistribution(T) where {T: BLASFloat}
+	terra Self:random_uniform(): T end
+	terra Self:random_normal(mean: T, variance: T): T end
+	terra Self:random_exponential(frequency: T): T end
+	Self.traits.rettype = T
+end
 
--- Interface for the sampling of random numbers according to probability distributions.
--- Currently supported are:
--- the uniform distribution on [0, 1];
--- the normal distribution with given mean and standard deviation;
--- the exponential distribution with given rate.
-local RandomDistributer = terralib.memoize(function(F)
-	assert(F:isfloat(), "Return value must be float or double")
-	return interface.Interface:new{
-		rand_uniform = {} -> F,
-		rand_normal = {F, F} -> F,
-		rand_exp = F -> F
-	}
-end)
+local PseudoRandomDistributionBase = terralib.memoize(function(G, F)
+	local Integer = concepts.Integer
+	local I = G.traits.inttype
+	assert(I ~= nil, "RNG must have a well-defined return type")
+	local PseudoRNG = PseudoRNG(I)
+	assert(
+		PseudoRNG(G),
+		"Generator type does not satisfies the PseudoRNG interface"
+	)
 
--- Implementation of RandomDistributer on top of PseudoRandomizer
--- G is an implementation of RandomDistributer;
--- I is the integral return type of G;
--- F is the return type for the RandomDistributer interface;
--- range is the number of random bytes, typically 32 or 64.
-local PRNGBase = terralib.memoize(function(G, I, F, range)
-  if F ~= double and F ~= float then
-    error("Unsupported floating point type " .. tostring(F))
-  end
-  local PseudoRandomizer = PseudoRandomizer(I)
-  PseudoRandomizer:isimplemented(G)
+	local BLASFloat = concepts.BLASFloat
+	assert(BLASFloat(F), "Return type must be float or double")
 
-  -- Turn random integers into random floating point numbers
-  -- http://mumble.net/~campbell/tmp/random_real.c
-  terra G:rand_uniform(): F
-    var rand_int = self:rand_int()
-    return ldexp([F](rand_int) , -range)
-  end
-
-  terra G:rand_normal(m: F, s: F): F
-    var u1 = self:rand_uniform()
-    var u2 = self:rand_uniform()
-
-    var r = sqrt(2 * log(1 / u1))
-    var theta = [F](2) * [F](C.M_PI) * u2
-    return m + s * r * cos(theta)
-  end
-
-  terra G:rand_exp(lambda: F): F
-    var u = self:rand_uniform()
-    return -log(u) / lambda
-  end
-
-  local RandomDistributer = RandomDistributer(F)
-  RandomDistributer:isimplemented(G)
-end)
-
--- Read a truely random value of type T from /dev/urandom
-local read_urandom = terralib.memoize(function(T)
-    local terra impl()
-        var f = C.fopen("/dev/urandom", "r")
-		err.assert(f ~= nil)
-
-        var x: T
-        var num_read = C.fread(&x, sizeof(T), 1, f)
-		err.assert(num_read == 1)
-        C.fclose(f)
-
-        return x
-    end
-
-    return impl
-end)
-
--- Wrapper around the random number generator of the C standard library
-local LibC = terralib.memoize(function(F)
-  local struct libc {}
-  terra libc:rand_int(): int64
-    return C.random()
-  end
-
-  PRNGBase(libc, int64, F, 31)
-
-
-  local random_seed = read_urandom(uint32)
-  local from = macro(function(seed)
-        seed = seed or random_seed()
-	  	return quote
-		    C.srandom(seed)
-          in
-		    libc {}
-		  end
-	end)
-
-  local static_methods = {
-	from = from
-  }
-  libc.metamethods.__getmethod = function(Self, method)
-	return libc.methods[method] or static_methods[method]
-  end
-
-  return libc
-end)
-
--- The tiny Mersenner twister (64 bit), see
--- http://www.math.sci.hiroshima-u.ac.jp/m-mat/MT/TINYMT/
-local TinyMT = terralib.memoize(function(F)
-    local struct tinymt {
-        state: C.tinymt64_t
-    }
-
-    terra tinymt:rand_int(): uint64
-        return C.tinymt64_generate_uint64_public(&self.state)
-    end
-
-	PRNGBase(tinymt, uint64, F, 64)
-
-	local random_seed = read_urandom(uint64)
-	local from = macro(function(seed)
-		seed = seed or random_seed()
-		return quote
-				var tiny: C.tinymt64_t
-				-- Starting values from readme.
-				tiny.mat1 = 0
-				tiny.mat2 = 0x65980cb3
-				tiny.tmat = 0xeb38facf
-				C.tinymt64_init(&tiny, seed)
-				var rand = tinymt {tiny}
-			in
-				rand
-		end
-
-	end)
-
-	local static_methods = {
-		from = from
-	}
-	tinymt.metamethods.__getmethod = function(Self, method)
-		return tinymt.methods[method] or static_methods[method]
+	terra G:random_uniform(): F
+		var random_integer = self:random_integer()
+		return ldexp([F](random_integer) , -[G.traits.range])
 	end
 
-	return tinymt
+	terra G:random_normal(m: F, s: F): F
+		var u1 = self:random_uniform()
+		var u2 = self:random_uniform()
+
+		var r = sqrt(2 * log(1 / u1))
+		var theta: F = 2 * [F](C.M_PI) * u2
+		return m + s * r * cos(theta)
+	end
+
+	terra G:random_exponential(lambda: F): F
+		var u = self:random_uniform()
+		return -log(u) / lambda
+	end
+
+	G.traits.rettype = F
+
+	local RandomDistribution = RandomDistribution(F)
+	assert(RandomDistribution(G))
+end)
+
+local terraform getrandom(x: &T) where {T}
+	var f = C.fopen("/dev/urandom", "r")
+	defer C.flose(f)
+	err.assert(f ~= nil)
+
+	var num_read = C.fread(x, sizeof(T), 1, f)
+	err.assert(num_read == 1)
+end
+
+-- Wrapper around the random number generator of the C standard library
+-- TODO Port it to concepts and terraform
+local LibC = terralib.memoize(function(F)
+	local struct libc {}
+	local I = int64
+
+	function libc.metamethods.__typename(self)
+		return ("LibC(%s)"):format(tostring(F))
+	end
+	
+	base.AbstractBase(libc)
+	libc.traits.inttype = I
+	libc.traits.range = 31
+	
+	terra libc:random_integer(): I
+		return C.random()
+	end
+
+	local PseudoRNG = PseudoRNG(I)
+	assert(PseudoRNG(libc))
+
+	PseudoRandomDistributionBase(libc, F)
+
+	local Integer = concepts.Integer
+	terraform libc.staticmethods.new(seed: J) where {J: Integer}
+		C.srandom(seed)
+		return libc {}
+	end
+
+	return libc
 end)
 
 -- A simple random number generator,
@@ -184,142 +130,183 @@ end)
 -- https://digitalcommons.wayne.edu/jmasm/vol2/iss1/2/
 -- page 12
 local KISS = terralib.memoize(function(F)
-  local struct kiss {
-	  x: uint32
-	  y: uint32
-	  z: uint32
-	  c: uint32
-  }
- 
-  terra kiss:rand_int(): uint32
-    self.x = 69069 * self.x + 12345
-    self.y = (self.y) ^ (self.y << 13)
-    self.y = (self.y) ^ (self.y >> 17)
-    self.y = (self.y) ^ (self.y << 5)
-  	var t: uint64 = [uint64](698769069) * self.z + self.c
-  	self.c = t >> 32
-  	self.z = [uint32](t)
+	local I = uint32
+	local struct kiss {
+		x: I
+		y: I
+		z: I
+		c: I
+	}
 
-  	return self.x + self.y + self.z
-  end
+	function kiss.metamethods.__typename(self)
+		return ("KISS(%s)"):format(tostring(F))
+	end
 
-  PRNGBase(kiss, uint32, F, 32)
+	base.AbstractBase(kiss)
+	kiss.traits.inttype = I
+	kiss.traits.range = 32
 
-  local random_seed = read_urandom(uint32)
-  local from = macro(function(seed)
-      seed = seed or random_seed()
-	  return `kiss {seed, 362436000, 521288629, 7654321}
-  end)
+	terra kiss:random_integer(): I
+		self.x = 69069 * self.x + 12345
+		self.y = (self.y) ^ (self.y << 13)
+		self.y = (self.y) ^ (self.y >> 17)
+		self.y = (self.y) ^ (self.y << 5)
+		var t: uint64 = [uint64](698769069) * self.z + self.c
+		self.c = t >> 32
+		self.z = [uint32](t)
 
-  local static_methods = {
-	from = from
-  }
-  kiss.metamethods.__getmethod = function(Self, method)
-	return kiss.methods[method] or static_methods[method]
-  end
+		return self.x + self.y + self.z
+	end
 
-  return kiss
+	local PseudoRNG = PseudoRNG(I)
+	assert(PseudoRNG(kiss))
+
+	PseudoRandomDistributionBase(kiss, F)
+
+	local Integer = concepts.Integer
+	terraform kiss.staticmethods.new(seed: J) where {J: Integer}
+		return kiss {seed, 362436000, 521288629, 7654321}
+	end
+
+	return kiss
 end)
 
 -- A minimal, 32 bit implemenation of the PCG generator, see
 -- https://www.pcg-random.org/download.html
 local MinimalPCG = terralib.memoize(function(F)
-  local struct pcg {
-      state: uint64
-      inc: uint64
-    }
+	local I = uint32
+	local struct pcg {
+		state: uint64
+		inc: uint64
+	}
 
-  terra pcg:rand_int(): uint32
-    var oldstate = self.state
-    self.state = oldstate * [uint64](6364136223846793005ull) + (self.inc or 1u)
-    var xorshifted: uint32 = ((oldstate >> 18u) ^ oldstate) >> 27u
-    var rot: uint32 = oldstate >> 59u
-	return (xorshifted >> rot) or (xorshifted << ((-rot) and 31))
-  end
+	function pcg.metamethods.__typename(self)
+		return ("MinimalPCG(%s)"):format(tostring(F))
+	end
 
-  PRNGBase(pcg, uint32, F, 32)
+	base.AbstractBase(pcg)
+	pcg.traits.inttype = I
+	pcg.traits.range = 32
 
-  local random_seed = read_urandom(uint32) 
-  local from = macro(function(seed, stream)
-      seed = seed or random_seed()
-      stream = stream or 1
-      return quote
-	  	  var rand = pcg {0, stream}
-		  rand.inc = (stream << 1u) or 1u
-		  rand:rand_int()
-		  rand.state = rand.state + seed
-		  rand:rand_int()
-		in
-		  rand
-	  end
-    end)
+	local I = uint32
+	terra pcg:random_integer(): I
+		var oldstate = self.state
+		self.state = (
+			oldstate * [uint64](6364136223846793005ull) + (self.inc or 1u)
+		)
+		var xorshifted: uint32 = ((oldstate >> 18u) ^ oldstate) >> 27u
+		var rot: uint32 = oldstate >> 59u
+		return (xorshifted >> rot) or (xorshifted << ((-rot) and 31))
+	end
 
-  local static_methods = {
-	from = from
-  }
-  pcg.metamethods.__getmethod = function(Self, method)
-	return pcg.methods[method] or static_methods[method]
-  end
+	local PseudoRNG = PseudoRNG(I)
+	assert(PseudoRNG(pcg))
 
-  return pcg
+	PseudoRandomDistributionBase(pcg, F)
+
+	local Integer = concepts.Integer
+	terraform pcg.staticmethods.new(
+		seed: J1, stream: J2
+	) where {J1: Integer, J2: Integer}
+		var rng = pcg {0, stream}
+		rng.inc = (stream << 1u) or 1u
+		rng:random_integer()
+		rng.state = rng.state + seed
+		rng:random_integer()
+		return rng
+	end
+
+	terraform pcg.staticmethods.new(seed: J) where {J: Integer}
+		return [pcg.staticmethods.new](seed, 1)
+	end
+
+	print("Size of minimal pcg is", sizeof(pcg))
+
+	return pcg
 end)
 
 -- Wrapper around the full implementation of the PCG generator (64 bit), see
 -- https://www.pcg-random.org/
-local PCG = terralib.memoize(function(F)
-	local struct pcg{
-		state: C.pcg64_random_t
+local pcgvar = setmetatable(
+	terralib.includec("./pcg/pcg_variants.h"),
+	{__index = (
+			function(self, key)
+				return self["pcg_" .. key] or rawget(self, key)
+			end
+		)
 	}
-
-	terra pcg:rand_int(): uint64
-		return C.pcg_setseq_128_xsl_rr_64_random_r(&self.state)
-	end
-
-	PRNGBase(pcg, uint64, F, 64)
+)
+local PCG = terralib.memoize(function(F)
+	local I = uint64
+	-- FIXME Terra doesn't parse the definition of the struct corretly,
+	-- possibly because it's included in an ifdef clause. But we know that
+	-- the type has size 2 * 128 = 4 * 64 bits, so we define a type of
+	-- equivalent size here and cast to the corresponding pointer when
+	-- necessary. 
+	local pcg_ = pcgvar.state_setseq_128
+	assert(sizeof(pcg_) == 0)
+	local struct pcg {
+		a: uint64
+		b: uint64
+		c: uint64
+		d: uint64
+	}
+	assert(sizeof(pcg) == 32)
 
 	local struct uint128 {
-		lo: uint64
 		hi: uint64
+		lo: uint64
 	}
+
 	function uint128.metamethods.__cast(from, to, exp)
 		if to == uint128 then
-			return `uint128 {exp, 0}
+			return `uint128 {0, exp}
 		else
 			error("Invalid integer type for uint128")
 		end
 	end
-	local random_seed = read_urandom(uint128)
-	local from = macro(function(seed, stream)
-		seed = seed
-				and quote var a: uint128 = [seed] in &a end
-				or quote var a = random_seed() in &a end
-		stream = stream
-				and quote var a: uint128 = [stream] in &a end
-				or quote var a: uint128 = 1 in &a end
-		return quote
-				var rand: pcg
-				C.pcg_setseq_128_void_srandom_r(&rand.state, [seed], [stream])
-			in
-				rand
-			end
-	end)
 
-	local static_methods = {
-		from = from
-	}
-	pcg.metamethods.__getmethod = function(Self, method)
-		return pcg.methods[method] or static_methods[method]
+
+	function pcg.metamethods.__typename(self)
+		return ("PCG(%s)"):format(tostring(F))
+	end
+
+	base.AbstractBase(pcg)
+	pcg.traits.inttype = I
+	pcg.traits.range = 64
+
+	terra pcg:random_integer(): uint64
+		return pcgvar.setseq_128_xsl_rr_64_random_r([&pcg_](self))
+	end
+
+	local PseudoRNG = PseudoRNG(I)
+	assert(PseudoRNG(pcg))
+
+	PseudoRandomDistributionBase(pcg, F)
+
+
+	local Integer = concepts.Integer
+	terraform pcg.staticmethods.new(
+		seed: J1, stream: J2
+	) where {J1: Integer, J2: Integer}
+		var rng: pcg
+		var seed128 = [uint128](seed)
+		var stream128 = [uint128](stream)
+		pcgvar.setseq_128_void_srandom_r([&pcg_](&rng), &seed128, &stream128)
+		return rng
+	end
+
+	terraform pcg.staticmethods.new(seed: J) where {J: Integer}
+		return [pcg.staticmethods.new](seed, 1)
 	end
 
 	return pcg
 end)
 
 return {
-	PseudoRandomizer = PseudoRandomizer,
-	RandomDistributer = RandomDistributer,
-	Default = LibC,
-	PCG = PCG,
-	MinimalPCG = MinimalPCG,
+	LibC = LibC,
 	KISS = KISS,
-	TinyMT = TinyMT,
+	MinimalPCG = MinimalPCG,
+	PCG = PCG,
+	getrandom = getrandom,
 }

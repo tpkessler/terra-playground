@@ -31,7 +31,7 @@ for _, Ts in pairs({float, double, float128, float1024}) do
         local DMat = dmatrix.DynamicMatrix(T)
         local DVec = dvector.DynamicVector(T)
         local Alloc = alloc.DefaultAllocator(Ts)
-        local Rand = random.Default(float)
+        local Rand = random.LibC(float)
         local CholeskyDense = cho.CholeskyFactory(DMat)
 
         testenv(T) "Cholesky factorization for small matrix" do
@@ -68,16 +68,16 @@ for _, Ts in pairs({float, double, float128, float1024}) do
             local n = 41
             terracode
                 var alloc: Alloc
-                var rand = Rand.from(2359586)
+                var rand = Rand.new(2359586)
                 var a = DMat.zeros(&alloc, n, n)
                 var b = DMat.like(&alloc, &a)
                 var x = DVec.new(&alloc, n)
                 var y = DVec.zeros_like(&alloc, &x)
                 var yt = DVec.zeros_like(&alloc, &x)
                 for i = 0, n do
-                    x(i) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
+                    x(i) = rand:random_normal(0, 1) + [unit] * rand:random_normal(0, 1)
                     for j = 0, n do
-                        b(i, j) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
+                        b(i, j) = rand:random_normal(0, 1) + [unit] * rand:random_normal(0, 1)
                     end
                 end
                 matrix.scaledaddmul([T](1), false, &b, true, &b, [T](0), &a)

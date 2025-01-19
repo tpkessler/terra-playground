@@ -94,12 +94,13 @@ testenv "Basic data structures" do
 
     testset "Lock guard" do
         local gmutex = global(alloc.SmartObject(thread.mutex))
+        local PCG = random.MinimalPCG
 
-        local terra do_work(rng: random.RandomDistributer(double))
+        local terra do_work(rng: &PCG(double))
             var max: uint64 = 10000000ull
             var sum: double = 0
             for i = 0, max do
-                sum = i * sum + rng:rand_normal(2.235, 0.64)
+                sum = i * sum + rng:random_normal(2.235, 0.64)
                 sum = sum / (i + 1)
             end
             return sum
@@ -107,7 +108,7 @@ testenv "Basic data structures" do
 
 
         local terra sum(i: int, total: &double)
-            var rng = [random.MinimalPCG(double)].from(2385287, i)
+            var rng = [PCG(double)].new(2385287, i)
             var res = do_work(&rng)
             do
                 var guard: thread.lock_guard = gmutex.ptr
@@ -138,18 +139,19 @@ testenv "Basic data structures" do
     end
 
     testset "Thread pool" do
-        local terra do_work(rng: random.RandomDistributer(double))
+        local PCG = random.MinimalPCG
+        local terra do_work(rng: &PCG(double))
             var max: uint64 = 10000000ull
             var sum: double = 0
             for i = 0, max do
-                sum = i * sum + rng:rand_normal(2.235, 0.64)
+                sum = i * sum + rng:random_normal(2.235, 0.64)
                 sum = sum / (i + 1)
             end
             return sum
         end
 
         local terra heavy_work(i: int, tsum: &double, mtx: &thread.mutex)
-            var rng = [random.MinimalPCG(double)].from(2385287, i)
+            var rng = [PCG(double)].new(2385287, i)
             var sum = do_work(&rng)
             -- var guard: thread.lock_guard = mtx
             @tsum = @tsum + sum
