@@ -6,10 +6,10 @@
 local alloc = require("alloc")
 local base = require("base")
 local dual = require("dual")
-local dvector = require("darray")
+local darray = require("darray")
 local concepts = require("concepts")
 local recdiff = require("recdiff")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 import "terraform"
 import "terratest/terratest"
