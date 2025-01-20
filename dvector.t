@@ -109,7 +109,7 @@ local DynamicVector = terralib.memoize(function(T)
                 var [vec] = V.new(allocator, size)
                 [set_values]     
             in
-                [vec]
+                __move__([vec])
             end
         end)
 
@@ -120,16 +120,13 @@ local DynamicVector = terralib.memoize(function(T)
             --only allow rvalues to be cast from a dstack to a dvector
             --a dynamic stack can reallocate, which makes it unsafe to cast
             --an lvalue since the lvalue may be modified (reallocate) later
-            if not exp:islvalue() then
-                return quote
-                    var tmp = exp
-                    var v : V
-                    v.data = tmp.data:__move() --we move the resources over
-                    v.size = tmp.size --as size we provide the whole resource
-                    v.inc = 1
-                in
-                    v
-                end
+            return quote
+                var v : V
+                v.data = __move__(exp.data) --we move the resource over
+                v.size = exp.size --as size we provide the whole resource
+                v.inc = 1
+            in
+                __move__(v)
             end
         else
             error("ArgumentError: not able to cast " .. tostring(from) .. " to " .. tostring(to) .. ".")

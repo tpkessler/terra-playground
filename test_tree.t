@@ -8,24 +8,55 @@ local alloc = require("alloc")
 local io = terralib.includec("stdio.h")
 
 local DefaultAllocator = alloc.DefaultAllocator()
-local TreeDouble = tree.Tree(double)
 
 import "terratest/terratest"
 
-
-if not __silent__ then
-
-    terra main()
-        var alloc: DefaultAllocator
-        var t = TreeDouble.new(&alloc, 0.0, 4)
-        for i = 0, 4 do
-            t.son(i) = TreeDouble.new(&alloc, i + 1, 0)
+for _, T in pairs{float, double, int32, int64, uint64} do
+    local btree = tree.BinaryTree(T)
+    testenv(T) "Tree construction" do
+        terracode
+            var A: alloc.DefaultAllocator()
         end
 
-        for x in t do
-            io.printf("%g\n", x)
+        testset "Grow left" do
+            terracode
+                var t = btree.new(&A, 1, nil)
+                t:grow_left(&A, 2)
+            end
+
+            test t.data == 1
+            test t.left.data == 2
+            test t.left.right.ptr == nil
+            test t.left.left.ptr == nil
+            test t.right.ptr == nil
+        end
+
+        testset "Grow right" do
+            terracode
+                var t = btree.new(&A, 1, nil)
+                t:grow_right(&A, 2)
+            end
+
+            test t.data == 1
+            test t.right.data == 2
+            test t.right.left.ptr == nil
+            test t.right.right.ptr == nil
+            test t.left.ptr == nil
+        end
+
+        testset "Grow" do
+            terracode
+                var t = btree.new(&A, 1, nil)
+                t:grow(&A, 2, 3)
+            end
+
+            test t.data == 1
+            test t.left.data == 2
+            test t.left.right.ptr == nil
+            test t.left.left.ptr == nil
+            test t.right.data == 3
+            test t.right.left.ptr == nil
+            test t.right.right.ptr == nil
         end
     end
-    main()
-
 end

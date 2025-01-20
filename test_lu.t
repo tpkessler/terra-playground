@@ -31,7 +31,7 @@ for _, Ts in pairs({float, double, float128, float1024}) do
         local DVec = dvector.DynamicVector(T)
         local PVec = dvector.DynamicVector(int32)
         local Alloc = alloc.DefaultAllocator(Ts)
-        local Rand = random.Default(float)
+        local Rand = random.LibC(float)
         local LUDense = lu.LUFactory(DMat, PVec)
 
         testenv(T) "LU factorization for small matrix" do
@@ -75,15 +75,15 @@ for _, Ts in pairs({float, double, float128, float1024}) do
             local n = 41
             terracode
                 var alloc: Alloc
-                var rand = Rand.from(2359586)
+                var rand = Rand.new(2359586)
                 var a = DMat.new(&alloc, n, n)
                 var x = DVec.new(&alloc, n)
                 var y = DVec.zeros_like(&alloc, &x)
                 var yt = DVec.zeros_like(&alloc, &x)
                 for i = 0, n do
-                    x(i) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
+                    x(i) = rand:random_normal(0, 1) + [unit] * rand:random_normal(0, 1)
                     for j = 0, n do
-                        a(i, j) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
+                        a(i, j) = rand:random_normal(0, 1) + [unit] * rand:random_normal(0, 1)
                     end
                 end
                 a:apply(false, [T](1), &x, [T](0), &y)
