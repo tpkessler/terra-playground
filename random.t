@@ -220,8 +220,6 @@ local MinimalPCG = terralib.memoize(function(F)
 		return [pcg.staticmethods.new](seed, 1)
 	end
 
-	print("Size of minimal pcg is", sizeof(pcg))
-
 	return pcg
 end)
 
