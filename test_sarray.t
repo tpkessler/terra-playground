@@ -359,6 +359,7 @@ for _,T in ipairs{float, double, float128, int, cint, cfloat, cdouble, cfloat128
                     A:fill(2)                
                 end
                 test A:size(0) == M and A:size(1) == N and A:length() == M * N
+                test A:rows() == M and A:cols() == N
                 test tmath.isapprox(&A, T(2), 0)
             end
             

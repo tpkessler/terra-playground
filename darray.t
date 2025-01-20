@@ -239,6 +239,16 @@ local DArrayMatrixBase = function(DMatrix)
     assert(DMatrix.traits.ndims == 2) --these methods are only for matrices
     local T = DMatrix.traits.eltype
 
+    terra DMatrix:rows()
+        return self:size(0)
+    end
+    DMatrix.methods.rows:setinlined(true)
+
+    terra DMatrix:cols()
+        return self:size(1)
+    end
+    DMatrix.methods.cols:setinlined(true)
+
     if concepts.BLASNumber(T) then
         terra DMatrix:getblasdenseinfo()
             return self:size(0), self:size(1), self:getdataptr(), self.cumsize[0]

@@ -7,10 +7,9 @@ local alloc = require("alloc")
 local sparse = require("sparse")
 local nfloat = require("nfloat")
 local complex = require("complex")
-local dvector = require("dvector")
+local darray = require("darray")
 local matrix = require("matrix")
-local dmatrix = require("dmatrix")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 local complexDouble = complex.complex(double)
 local float256 = nfloat.FixedFloat(256)
@@ -28,19 +27,19 @@ local DefaultAlloc = alloc.DefaultAllocator()
 for T, tol in pairs(tols) do
     for _, I in pairs({int32, int64, uint32, uint64}) do
         local CSR = sparse.CSRMatrix(T, I)
-        local Vec = dvector.DynamicVector(T)
-        local Mat = dmatrix.DynamicMatrix(T)
+        local Vec = darray.DynamicVector(T)
+        local Mat = darray.DynamicMatrix(T)
         testenv(T, I) "Sparse CSR Matrix" do
             terracode
                 var alloc: DefaultAlloc
                 var n = 3
                 var m = 4
-                var a = CSR.new(&alloc, n, m)
+                var a = CSR.new(&alloc, {n, m})
             end
 
             testset "Dimensions" do
-                test a:rows() == n
-                test a:cols() == m
+                test a:size(0) == n
+                test a:size(1) == m
             end
 
             testset "Set and Get" do

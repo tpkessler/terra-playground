@@ -137,14 +137,16 @@ local SArrayStackBase = function(Array)
 
     --method size calls static data __size
     local __size = terralib.constant(terralib.new(size_t[N], Array.traits.size))
-    Array.methods.size = terralib.overloadedfunction("size", {
-        terra(self : &Array, i : size_t)
-            return __size[i]
-        end,
-        terra(self : &Array)
-            return __size
-        end
-    })
+    if not Array.methods.size then
+        Array.methods.size = terralib.overloadedfunction("size", {
+            terra(self : &Array, i : size_t)
+                return __size[i]
+            end,
+            terra(self : &Array)
+                return __size
+            end
+        })
+    end
 
     --get lowlevel base functionality for nd arrays
     array.ArrayBase(Array)
@@ -231,6 +233,16 @@ local SArrayMatrixBase = function(SMatrix)
     
     assert(SMatrix.traits.ndims == 2) --these methods are only for matrices
     local T = SMatrix.traits.eltype
+
+    terra SMatrix:rows()
+        return self:size(0)
+    end
+    SMatrix.methods.rows:setinlined(true)
+
+    terra SMatrix:cols()
+        return self:size(1)
+    end
+    SMatrix.methods.cols:setinlined(true)
 
     if concepts.BLASNumber(T) then
         terra SMatrix:getblasdenseinfo()
