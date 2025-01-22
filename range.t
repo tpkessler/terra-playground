@@ -761,11 +761,7 @@ local combiner_factory = function(Combiner)
         --construct the combirange type and instantiate 
         --terra obj
         local combirange = Combiner(range_types, options)
-        return quote
-            var range = combirange{[ranges]}
-        in
-            range
-        end
+        return `combirange {[ranges]}
     end)
     return combiner
 end
