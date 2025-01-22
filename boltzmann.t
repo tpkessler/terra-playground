@@ -380,8 +380,8 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         castvector(&whalf, &qhalf._1)
         whalf:scal(rho)
 
-        var xnormal = range.join(xfinite, xhalf)
-        var wnormal = range.join(wfinite, whalf)
+        var xnormal = range.join(__move__(xfinite), __move__(xhalf))
+        var wnormal = range.join(__move__(wfinite), __move__(whalf))
 
         var qhermite = gauss.hermite(
             alloc,

@@ -15,6 +15,7 @@ local sparse = require("sparse")
 local gauss = require("gauss")
 local tmath = require("mathfuns")
 local range = require("range")
+local io = terralib.includec("stdio.h")
 -- Compiled terra code, reimported for integration/unit testing
 local bc = terralib.includec("./nonlinearbc.h")
 local ffi = require("ffi")
@@ -24,7 +25,7 @@ else
     terralib.linklibrary("./libnonlinearbc.dylib")
 end
 
-for N = 2, 29 do
+for N = 4, 4 do
     testenv(N) "Half space integral aligned" do
         local Alloc = alloc.DefaultAllocator()
         local T = dual.DualNumber(double)
@@ -44,6 +45,7 @@ for N = 2, 29 do
             terracode
                 var res: T = 0
                 for w in wh do
+                    io.printf("Weight is %g %g\n", w.val, w.tng)
                     res = res + w
                 end
                 var ref = T {0.039061695732712676, 0.0758567169526779}

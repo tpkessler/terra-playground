@@ -54,6 +54,8 @@ unsigned hardware_concurrency()
 -- Terralib extension for RAII
 require("terralibext")
 
+import "terraform"
+
 -- For a full documentation of threads in C11, see
 -- https://en.cppreference.com/w/c/thread
 local thrd = (
@@ -178,11 +180,11 @@ local submit = macro(function(allocator, func, ...)
     -- the provided allocator. The allocated block has to outlive the thread.
     -- This means we cannot use a pointer to stack memory inside the quote.
     return quote
-        var a : alloc.SmartBlock(arg_t, {copyby = "view"}) = allocator:new(sizeof(arg_t), 1)
-        a(0)._0 = func
+        var a = [alloc.SmartObject(arg_t)].new(allocator)
+        a._0 = func
         escape
             for i = 1, #arg do
-                emit quote a(0).["_" .. i] = [ arg[i] ] end
+                emit quote a.["_" .. i] = [ arg[i] ] end
             end
         end
         var t: thread
@@ -436,15 +438,10 @@ end
 -- is available and, secondly, need to add to the work queue. Note that this
 -- access is protected by a mutex as other threads may request new work from it
 -- at the same time.
-threadpool.methods.submit = macro(function(self, allocator, func, ...)
-    local arg = {...}
-    return quote
-        var t = submit(allocator, func, [arg])
-        self.work_signal:signal()
-    in
-        self.work_queue:push(t)
-    end
-end)
+terraform threadpool:submit(allocator, func, arg...)
+    self.work_queue:push(__move__(submit(allocator, func, unpacktuple(arg))))
+    self.work_signal:signal()
+end
 
 -- The heart of the thread pool, the virtual thread, aka worker thread.
 -- It constantly waits for new work from the work queue. It is very important

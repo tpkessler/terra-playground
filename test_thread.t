@@ -186,7 +186,6 @@ end
 
 
 
---[[
 testenv "Parallel for" do
     local lambda = require("lambda")
     local range = require("range")
@@ -234,4 +233,3 @@ testenv "Parallel for" do
         end
     end
 end
---]]
