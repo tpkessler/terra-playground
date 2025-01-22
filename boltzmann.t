@@ -73,7 +73,7 @@ end
 
 MonomialBasis.staticmethods.new = terra(p: iMat)
     var basis: MonomialBasis
-    basis.p = p
+    basis.p = __move__(p)
     return basis
 end
 
@@ -143,7 +143,11 @@ local TensorBasis = terralib.memoize(function(T)
     end
 
     tensor_basis.staticmethods.new = terra(b: CSR, transposed: bool, p: iMat)
-        return tensor_basis {b, transposed, MonomialBasis.new(p)}
+        var tb : tensor_basis
+        tb.space = __move__(b)
+        tb.transposed = transposed
+        tb.velocity = MonomialBasis.new(__move__(p))
+        return tb
     end
 
     terraform tensor_basis.staticmethods.frombuffer(
@@ -169,15 +173,11 @@ local TensorBasis = terralib.memoize(function(T)
             -- Explicit cast as possibly S ~= T
             cast:push(data[i])
         end
-        var space = CSR.frombuffer(nq, nx, nnz, &cast(0), col, rowptr)
         var tb: tensor_basis
-        tb.space = space
+        tb.space = CSR.frombuffer(nq, nx, nnz, &cast(0), col, rowptr)
         tb.transposed = transposed
-        tb.cast = cast
-
-        tb.velocity = MonomialBasis.new(
-                        __move__(iMat.frombuffer(nv, VDIM, ptr, VDIM))
-                      )
+        tb.velocity = MonomialBasis.new(__move__(iMat.frombuffer(nv, VDIM, ptr, VDIM)))
+        tb.cast = __move__(cast)
 
         return tb
     end

@@ -25,7 +25,8 @@ else
     terralib.linklibrary("./libnonlinearbc.dylib")
 end
 
-for N = 4, 4 do
+for N = 2, 4 do
+
     testenv(N) "Half space integral aligned" do
         local Alloc = alloc.DefaultAllocator()
         local T = dual.DualNumber(double)
@@ -38,14 +39,12 @@ for N = 4, 4 do
             var theta = T {(9 + 1.0 / 6.0) / 10.0, 6.75}
             var hs = HalfSpace.new(1, 0, 0)
             var xh, wh = hs:maxwellian(&alloc, N, rho, &u, theta)
-
         end
 
         testset "Integral with constant function" do
             terracode
                 var res: T = 0
                 for w in wh do
-                    io.printf("Weight is %g %g\n", w.val, w.tng)
                     res = res + w
                 end
                 var ref = T {0.039061695732712676, 0.0758567169526779}
@@ -69,6 +68,7 @@ for N = 4, 4 do
             test tmath.isapprox(res.val, ref.val, 1e-12 * ref.val)
             test tmath.isapprox(res.tng, ref.tng, 1e-12 * ref.tng)
         end
+
     end
 
     testenv(N) "Half space integral rotated" do
@@ -123,7 +123,9 @@ for N = 4, 4 do
             test tmath.isapprox(res.tng, ref.tng, 1e-12 * ref.tng)
         end
     end
+
 end
+
 
 testenv "Full Phasespace Integral" do
     local T = double
