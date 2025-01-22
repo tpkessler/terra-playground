@@ -178,9 +178,7 @@ local submit = macro(function(allocator, func, ...)
     -- the provided allocator. The allocated block has to outlive the thread.
     -- This means we cannot use a pointer to stack memory inside the quote.
     return quote
-        var a: alloc.SmartBlock(arg_t, {copyby = "view"}) = (
-            allocator:new(1, sizeof(arg_t))
-        )
+        var a : alloc.SmartBlock(arg_t, {copyby = "view"}) = allocator:new(sizeof(arg_t), 1)
         a(0)._0 = func
         escape
             for i = 1, #arg do
@@ -188,7 +186,7 @@ local submit = macro(function(allocator, func, ...)
             end
         end
         var t: thread
-        t.arg = a
+        t.arg = __move__(a)
         t.func = pfunc
     in
         t
