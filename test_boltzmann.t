@@ -25,7 +25,7 @@ else
     terralib.linklibrary("./libnonlinearbc.dylib")
 end
 
-for N = 2, 4 do
+for N = 2, 29 do
 
     testenv(N) "Half space integral aligned" do
         local Alloc = alloc.DefaultAllocator()
