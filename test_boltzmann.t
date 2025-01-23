@@ -15,6 +15,7 @@ local sparse = require("sparse")
 local gauss = require("gauss")
 local tmath = require("mathfuns")
 local range = require("range")
+local io = terralib.includec("stdio.h")
 -- Compiled terra code, reimported for integration/unit testing
 local bc = terralib.includec("./nonlinearbc.h")
 local ffi = require("ffi")
@@ -25,6 +26,7 @@ else
 end
 
 for N = 2, 29 do
+
     testenv(N) "Half space integral aligned" do
         local Alloc = alloc.DefaultAllocator()
         local T = dual.DualNumber(double)
@@ -37,7 +39,6 @@ for N = 2, 29 do
             var theta = T {(9 + 1.0 / 6.0) / 10.0, 6.75}
             var hs = HalfSpace.new(1, 0, 0)
             var xh, wh = hs:maxwellian(&alloc, N, rho, &u, theta)
-
         end
 
         testset "Integral with constant function" do
@@ -67,6 +68,7 @@ for N = 2, 29 do
             test tmath.isapprox(res.val, ref.val, 1e-12 * ref.val)
             test tmath.isapprox(res.tng, ref.tng, 1e-12 * ref.tng)
         end
+
     end
 
     testenv(N) "Half space integral rotated" do
@@ -121,7 +123,9 @@ for N = 2, 29 do
             test tmath.isapprox(res.tng, ref.tng, 1e-12 * ref.tng)
         end
     end
+
 end
+
 
 testenv "Full Phasespace Integral" do
     local T = double

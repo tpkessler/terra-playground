@@ -761,7 +761,21 @@ local combiner_factory = function(Combiner)
         --construct the combirange type and instantiate 
         --terra obj
         local combirange = Combiner(range_types, options)
-        return `combirange {[ranges]}
+        return quote
+            --var range = combirange{[ranges]}
+            var range : combirange
+            --HACK: needed for now because initializers don't work correctly
+            --with raii
+            escape
+                for i,e in ipairs(combirange:getentries()) do
+                    emit quote
+                        range.[e.field] = [ ranges[i] ]
+                    end
+                end
+            end
+        in
+            range
+        end
     end)
     return combiner
 end
