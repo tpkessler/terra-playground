@@ -48,19 +48,21 @@ testenv "Basic data structures" do
         terracode
             var a: int[NTHREADS]
             var t: thread.thread[NTHREADS]
+            
             for i = 0, NTHREADS do
                 t[i] = thread.thread.new(&A, go, i, &a[0])
             end
+
             for i = 0, NTHREADS do
                 t[i]:join()
             end
         end
 
-
         for i = 0, NTHREADS - 1 do
             test a[i] == 2 * i + 1
         end
     end
+
 
     testset "Join threads" do
         local terra go(i: int, a: &int)
@@ -91,6 +93,7 @@ testenv "Basic data structures" do
             test a[i] == 2 * i + 1
         end
     end
+
 
     testset "Lock guard" do
         local gmutex = global(alloc.SmartObject(thread.mutex))
@@ -138,6 +141,8 @@ testenv "Basic data structures" do
         gmutex:get():__dtor()
     end
 
+
+
     testset "Thread pool" do
         local PCG = random.MinimalPCG
         local terra do_work(rng: &PCG(double))
@@ -174,7 +179,12 @@ testenv "Basic data structures" do
         end
         test tmath.isapprox(sum, ref, 1e-15)
     end
+
 end
+
+
+
+
 
 testenv "Parallel for" do
     local lambda = require("lambda")
