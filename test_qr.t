@@ -43,13 +43,8 @@ for _, Ts in pairs({float, double, float128, float1024}) do
             local n = 41
             terracode
                 var alloc: Alloc
-<<<<<<< HEAD
-                var rand = Rand.from(384905)
-                var a = DMat.new(&alloc, {n, n})
-=======
                 var rand = Rand.new(384905)
-                var a = DMat.new(&alloc, n, n)
->>>>>>> upstream/master
+                var a = DMat.new(&alloc, {n, n})
                 var x = DVec.new(&alloc, n)
                 var y = DVec.zeros(&alloc, n)
                 var yt = DVec.zeros(&alloc, n)
