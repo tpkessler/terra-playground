@@ -36,22 +36,27 @@ for _, Ts in pairs({float, double, float128, float1024}) do
         local DMat = darray.DynamicMatrix(T)
         local DVec = darray.DynamicVector(T)
         local Alloc = alloc.DefaultAllocator()
-        local Rand = random.Default(float)
+        local Rand = random.LibC(float)
         local QRDense = qr.QRFactory(DMat, DVec)
 
         testenv(T) "QR factorization of random matrix" do
             local n = 41
             terracode
                 var alloc: Alloc
+<<<<<<< HEAD
                 var rand = Rand.from(384905)
                 var a = DMat.new(&alloc, {n, n})
+=======
+                var rand = Rand.new(384905)
+                var a = DMat.new(&alloc, n, n)
+>>>>>>> upstream/master
                 var x = DVec.new(&alloc, n)
                 var y = DVec.zeros(&alloc, n)
                 var yt = DVec.zeros(&alloc, n)
                 for i = 0, n do
-                    x(i) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
+                    x(i) = rand:random_normal(0, 1) + [unit] * rand:random_normal(0, 1)
                     for j = 0, n do
-                        a(i, j) = rand:rand_normal(0, 1) + [unit] * rand:rand_normal(0, 1)
+                        a(i, j) = rand:random_normal(0, 1) + [unit] * rand:random_normal(0, 1)
                     end
                 end
                 matrix.gemv([T](1), &a, &x, [T](0), &y)

@@ -16,6 +16,18 @@ local DefaultAllocator =  alloc.DefaultAllocator()
 local dvec = darray.DynamicVector(double)
 
 
+tmath.isapprox:adddefinition(terra(v : &dvec, w : &dvec, atol : double)
+    if v:size() == w:size() then
+        var s = 0.0
+        for i = 0, v:size() do
+            var e = v(i) - w(i)
+            s = s + e * e
+        end
+        return tmath.sqrt(s) < atol
+    end
+    return false
+end)
+
 testenv "gauss Legendre quadrature" do
 
     terracode

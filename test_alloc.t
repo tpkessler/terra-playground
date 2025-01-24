@@ -241,8 +241,14 @@ testenv "SmartObject" do
         end
         test obj:product() == 12 
 	end
-    
 
+    testset "frombuffer" do
+        terracode
+            var ab = myobj {3, -4}
+            var smartab: smrtobj = smrtobj.frombuffer(1, &ab)
+        end
+        test smartab:product() == -12
+    end
 end
 
 testenv "singly linked list - that is a cycle" do

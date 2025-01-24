@@ -54,6 +54,8 @@ unsigned hardware_concurrency()
 -- Terralib extension for RAII
 require("terralibext")
 
+import "terraform"
+
 -- For a full documentation of threads in C11, see
 -- https://en.cppreference.com/w/c/thread
 local thrd = (
@@ -178,17 +180,15 @@ local submit = macro(function(allocator, func, ...)
     -- the provided allocator. The allocated block has to outlive the thread.
     -- This means we cannot use a pointer to stack memory inside the quote.
     return quote
-        var a: alloc.SmartBlock(arg_t, {copyby = "view"}) = (
-            allocator:new(1, sizeof(arg_t))
-        )
-        a(0)._0 = func
+        var a = [alloc.SmartObject(arg_t)].new(allocator)
+        a._0 = func
         escape
             for i = 1, #arg do
-                emit quote a(0).["_" .. i] = [ arg[i] ] end
+                emit quote a.["_" .. i] = [ arg[i] ] end
             end
         end
         var t: thread
-        t.arg = a
+        t.arg = __move__(a)
         t.func = pfunc
     in
         t
@@ -308,11 +308,13 @@ local ThreadsafeQueue = terralib.memoize(function(T)
     end
 
     terra threadsafe_queue:try_pop(t: &T)
-        var guard: lock_guard = self.mutex
+        self.mutex:lock()
         if self.data:size() == 0 then
+            self.mutex:unlock()
             return false
         else
             @t = self.data:pop()
+            self.mutex:unlock()
             return true
         end
     end
@@ -436,15 +438,10 @@ end
 -- is available and, secondly, need to add to the work queue. Note that this
 -- access is protected by a mutex as other threads may request new work from it
 -- at the same time.
-threadpool.methods.submit = macro(function(self, allocator, func, ...)
-    local arg = {...}
-    return quote
-        var t = submit(allocator, func, [arg])
-        self.work_signal:signal()
-    in
-        self.work_queue:push(t)
-    end
-end)
+terraform threadpool:submit(allocator, func, arg...)
+    self.work_queue:push(__move__(submit(allocator, func, unpacktuple(arg))))
+    self.work_signal:signal()
+end
 
 -- The heart of the thread pool, the virtual thread, aka worker thread.
 -- It constantly waits for new work from the work queue. It is very important
@@ -580,68 +577,9 @@ local parfor = macro(function(alloc, rn, go)
     )
 end)
 
---
--- Mockup Monte Carlo simulation with parallel random number generation
---
-local lambda = require("lambda")
-local random = require("random")
-local range = require("range")
-local io = terralib.includec("stdio.h")
-
--- RandomDistributor is a (dynamic) interface. It contains a reference to the
--- actual data of a concrete type and a vtable for method lookup on this type.
--- Passing an instance of a type by reference to this function will trigger
--- a cast where the compile will compile the vtable and pass it to the function.
-local terra do_work(rng: random.RandomDistributer(double))
-    var max: uint64 = 20000000ull
-    var sum: double = 0
-    for i = 0, max do
-        sum = i * sum + rng:rand_normal(2.235, 0.64)
-        sum = sum / (i + 1)
-    end
-    return sum
-end
-
--- Forward declaration of the main function to contain the definition of the
--- mutex to a local scope and to not pollute the module's namespace.
-local terra heavy_work :: {int, &double} -> int
-do
-    -- global means global to the terra scope but because it is bound to a
-    -- local lua variable, it is only available in terra scopes inside the
-    -- current lua scope.
-    local gmutex = global(mutex)
-    gmutex:get():__init()
-    terra heavy_work(i: int, tsum: &double)
-        -- The second argument to any PCG RNG is the stream id.
-        -- When two streams are initialized with the same seed but with
-        -- different stream ids, they generated numbers are designed to be
-        -- stochastically independently.
-        var rng = [random.MinimalPCG(double)].from(2385287, i)
-        io.printf("Start some work\n")
-        var sum = do_work(&rng)
-        io.printf("End work %.7e\n", sum)
-        -- Reduction clause. The mutex ensures that tsum is modified by only
-        -- one thread at a time.
-        var guard: lock_guard = gmutex
-        @tsum = @tsum + sum
-        return 0
-    end
-end
-
-terra main()
-    -- Types in a variable declaration can also be a call to a lua function
-    -- that returns a terra type. This is useful for one-shot declarations
-    -- like in this small example.
-    var alloc: alloc.DefaultAllocator() -- libc's malloc() and free()
-    var nwork = 100
-    var rn = [range.Unitrange(int)].new(0, nwork)
-    var sum = 0.0
-    parfor(&alloc, &rn, lambda.new(heavy_work, {tsum = &sum}))
-    io.printf("Parallel mean is %.7e\n", sum / nwork)
-end
--- main()
 return {
     thread = thread,
+    join_threads = join_threads,
     mutex = mutex,
     lock_guard = lock_guard,
     cond = cond,
