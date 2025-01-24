@@ -160,16 +160,8 @@ local DynamicStack = terralib.memoize(function(T)
         self.size = 0
     end
 
-    --behavior w.r.t memory allocation, etc
     terralib.ext.addmissing.__move(stack)
-    terralib.ext.addmissing.__forward(stack)
-
-    --specialized copy-assignment - the resource is always moved from
-    stack.methods.__copy = terra(from : &stack, to : &stack)
-        to.data = from.data:__move()
-        to.size = from.size
-        from:__init()
-    end
+    stack.methods.__copy = stack.methods.__move
 
     --sanity check
     assert(concepts.DStack(stack), "Stack type does not satisfy the DStack concepts.")

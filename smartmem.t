@@ -206,10 +206,10 @@ local SmartBlock = terralib.memoize(function(T, options)
             --case when to.eltype is a managed type
             if ismanaged{type=to.traits.eltype, method="__init"} then
                 return quote
-                    var tmp = exp
+                    var tmp = __handle__(exp)
                     --debug check if sizes are compatible, that is, is the
                     --remainder zero after integer division
-                    err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
+                    --err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
                     --loop over all elements of blk and initialize their entries 
                     var size = tmp:size_in_bytes() / [to.elsize]
                     var ptr = [&to.traits.eltype](tmp.ptr)
@@ -223,10 +223,10 @@ local SmartBlock = terralib.memoize(function(T, options)
             --simple case when to.eltype is not managed
             else
                 return quote
-                    var tmp = exp
+                    var tmp = __handle__(exp)
                     --debug check if sizes are compatible, that is, is the
                     --remainder zero after integer division
-                    err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
+                    --err.assert(tmp:size_in_bytes() % [to.elsize]  == 0)
                 in
                     [to.type]{[&to.traits.eltype](tmp.ptr), tmp.nbytes, tmp.alloc}
                 end
@@ -238,7 +238,7 @@ local SmartBlock = terralib.memoize(function(T, options)
                 --var blk = exp invokes __copy, so we turn exp into an rvalue such
                 --that __copy is not called
                 var blk = exp:__forward()
-                err.assert(blk:size_in_bytes() % [to.elsize]  == 0)
+                --err.assert(blk:size_in_bytes() % [to.elsize]  == 0)
             in
                 [&to.type](blk)
             end
@@ -252,18 +252,18 @@ local SmartBlock = terralib.memoize(function(T, options)
 
         --setters and getters
         block.methods.get = terra(self : &block, i : size_t)
-            err.assert(i < self:size())
+            --err.assert(i < self:size())
             return self.ptr[i]
         end
 
         block.methods.set = terra(self : &block, i : size_t, v : T)
-            err.assert(i < self:size())
+            --err.assert(i < self:size())
             self.ptr[i] = v
         end
 
         block.metamethods.__apply = macro(function(self, i)
             return quote
-                err.assert(i < self:size())
+--                err.assert(i < self:size())
             in
                 self.ptr[i]
             end

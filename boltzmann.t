@@ -73,7 +73,7 @@ end
 
 MonomialBasis.staticmethods.new = terra(p: iMat)
     var basis: MonomialBasis
-    basis.p = p
+    basis.p = __move__(p)
     return basis
 end
 
@@ -107,8 +107,7 @@ do
         var func: Func
         return iterator {self, func, 0, self.p:rows()}
     end
-    MonomialBasis.iterator = iterator
-    range.Base(MonomialBasis, iterator, Func)
+    range.Base(MonomialBasis, iterator)
 end
 
 local TensorBasis = terralib.memoize(function(T)
@@ -144,7 +143,11 @@ local TensorBasis = terralib.memoize(function(T)
     end
 
     tensor_basis.staticmethods.new = terra(b: CSR, transposed: bool, p: iMat)
-        return tensor_basis {b, transposed, MonomialBasis.new(p)}
+        var tb : tensor_basis
+        tb.space = __move__(b)
+        tb.transposed = transposed
+        tb.velocity = MonomialBasis.new(__move__(p))
+        return tb
     end
 
     terraform tensor_basis.staticmethods.frombuffer(
@@ -170,13 +173,11 @@ local TensorBasis = terralib.memoize(function(T)
             -- Explicit cast as possibly S ~= T
             cast:push(data[i])
         end
-        var space = CSR.frombuffer(nq, nx, nnz, &cast(0), col, rowptr)
         var tb: tensor_basis
-        tb.space = space
+        tb.space = CSR.frombuffer(nq, nx, nnz, &cast(0), col, rowptr)
         tb.transposed = transposed
-        tb.cast = cast
-
-        tb.velocity = MonomialBasis.new(iMat.frombuffer(nv, VDIM, ptr, VDIM))
+        tb.velocity = MonomialBasis.new(__move__(iMat.frombuffer(nv, VDIM, ptr, VDIM)))
+        tb.cast = __move__(cast)
 
         return tb
     end
@@ -184,7 +185,7 @@ local TensorBasis = terralib.memoize(function(T)
     return tensor_basis
 end)
 
-local terraform l2inner(f, g, q)
+local terraform l2inner(f, g, q: &Q) where {Q}
     var it = q:getiterator()
     var xw = it:getvalue()
     var x, w = xw
@@ -199,8 +200,8 @@ end
 
 local Vector = concepts.Vector
 local Number = concepts.Number
-local terraform local_maxwellian(basis, coeff: &V, quad)
-    where {V: Vector(Number)}
+local terraform local_maxwellian(basis, coeff: &V, quad: &Q)
+    where {V: Vector(Number), Q}
     var m1: V.traits.eltype = 0
     var m2 = [svector.StaticVector(V.traits.eltype, VDIM)].zeros()
     var m3: V.traits.eltype = 0
@@ -379,8 +380,8 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         castvector(&whalf, &qhalf._1)
         whalf:scal(rho)
 
-        var xnormal = range.join(xfinite, xhalf)
-        var wnormal = range.join(wfinite, whalf)
+        var xnormal = range.join(__move__(xfinite), __move__(xhalf))
+        var wnormal = range.join(__move__(wfinite), __move__(whalf))
 
         var qhermite = gauss.hermite(
             alloc,
@@ -409,7 +410,13 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
             end
         end
         normalize(&diff)
-        var points = range.product(xnormal, xhermite, xhermite)
+        var yhermite = VecT.like(alloc, &xhermite)
+        yhermite:copy(&xhermite)
+        var points = range.product(
+                        __move__(xnormal),
+                        __move__(xhermite),
+                        __move__(yhermite)
+                     )
                      >> range.transform([
                         terra(
                             x1: T,
@@ -428,17 +435,25 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
                             -- ... and then shift and scale with the velocity
                             -- and the temperature of the local Maxwellian.
                             escape
+                                local ret = {}
                                 for i = 0, VDIM - 1 do
                                     emit quote
                                         y(i) = tmath.sqrt(theta) * x(i) + u(i)
                                     end
+                                    ret[i + 1] = `y(i)
                                 end
+                                emit quote return [ret] end
                             end
-                            return y(0), y(1), y(2)
                         end
                     ], {u = u, theta = theta, diff = diff})
 
-        var weights = range.product(wnormal, whermite, whermite)
+        var wyhermite = VecT.like(alloc, &whermite)
+        wyhermite:copy(&whermite)
+        var weights = range.product(
+                        __move__(wnormal),
+                        __move__(whermite),
+                        __move__(wyhermite)
+                      )
                       >> range.reduce(range.op.mul)
 
         return points, weights
@@ -533,7 +548,7 @@ local terraform nonlinear_maxwellian_inflow(
     var maxtrialdegree = trialb.velocity:maxpartialdegree()
     var vhermite, whermite = gauss.hermite(
                             alloc,
-                            maxtrialdegree / 2 + 1 + 2 + 10,
+                            maxtrialdegree / 2 + 1 + 2,
                             {origin = 0.0, scaling = tmath.sqrt(2.)}
                       )
     whermite:scal(1 / tmath.sqrt(2 * tmath.pi))
@@ -547,9 +562,10 @@ local terraform nonlinear_maxwellian_inflow(
                      end
         end
         emit quote
-                 var p = gauss.productrule([arg])
+                var p = gauss.productrule([arg])
+                var rn = range.zip(&p.x, &p.w)
              in
-                 range.zip(&p.x, &p.w)
+                 &rn
              end
     end
 
@@ -747,7 +763,7 @@ local GenerateBCWrapper = terralib.memoize(function(Transform)
     local data = symbol(prepare_input.type.returntype)
     local transform = symbol(Transform)
     local refdata = {}
-    for i = 1, 4 do
+    for i = 1, #data.type.entries do
         refdata[i] = `&[data].["_" .. tostring(i - 1)]
     end
 

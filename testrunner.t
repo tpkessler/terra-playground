@@ -114,7 +114,7 @@ terra main()
                     &alloc,
                     lambda.new(
                         [
-                            terra(cmd: rawstring)
+                            terra(i: int, cmd: rawstring)
                                 var stream = C.popen(cmd, "r")
                                 do
                                     -- var grd: thread.lock_guard = gmutex
@@ -153,7 +153,8 @@ terra main()
                             end
                         ],
                         {cmd = [execstring]}
-                    )
+                    ),
+                    1
                 )
             end
         end

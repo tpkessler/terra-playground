@@ -9,6 +9,7 @@ local stack = require("stack")
 
 import "terratest/terratest"
 
+
 testenv "DynamicStack" do
 
     local T = double
@@ -120,7 +121,6 @@ testenv "DynamicStack" do
             var p : &smrtblock
             do
                 var v = stack.new(&alloc, 4)
-                --the following raises an issue in terralib
                 p = &v.data
             end --v:__dtor() is called here by the compiler
         end
