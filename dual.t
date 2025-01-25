@@ -6,6 +6,8 @@
 local base = require("base")
 local concepts = require("concepts")
 local tmath = require("tmath")
+local io = terralib.includec("stdio.h")
+
 
 local DualNumber = terralib.memoize(function(T)
 
@@ -31,6 +33,29 @@ local DualNumber = terralib.memoize(function(T)
     -- struct declaration already defines it.
     -- Hence we can only call it _after_ __typename is defined.  
     base.AbstractBase(dual)
+
+    --maxlen is twice the size of T and twice one char for the sign
+    --+1 for /0 terminating character
+    local maxlen = 2 * tmath.ndigits(sizeof(T)) + 2 + 1
+    terra dual:tostr()
+        var buffer : int8[maxlen]
+        var v, t =  self.val, self.tng
+        if t < 0 then
+            t = -t
+            var s1, s2 = tmath.numtostr(v), tmath.numtostr(t)
+            io.snprintf(buffer, maxlen, "%s-%se", s1, s2)
+        else
+            var s1, s2 = tmath.numtostr(v), tmath.numtostr(t)
+            io.snprintf(buffer, maxlen, "%s+%se", s1, s2)
+        end
+        return buffer
+    end
+
+    tmath.numtostr:adddefinition(
+        terra(x : dual) 
+            return x:tostr() 
+        end
+    )
 
     terra dual.metamethods.__add(self: dual, other: dual)
         return dual {self.val + other.val, self.tng + other.tng}
