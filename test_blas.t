@@ -231,9 +231,9 @@ for prefix, T in pairs(types) do
 
                 ref = mathfun.sqrt(ref)
             end
-
-            test num == ref
-
+                
+            test mathfun.isapprox(num, ref, 100 * [Ts:eps()])
+            
         end
 
         testset "L1 norm" do

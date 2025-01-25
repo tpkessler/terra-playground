@@ -7,46 +7,35 @@ SPDX-License-Identifier: CC0-1.0
 
 # Here are some installation notes
 The required libraries are
-1. Blas
-2. Lapack
+1. OpenBlas (ships with Lapack)
 3. Flint
 The notes below are for macos arm64.
 
-## Blas / Lapack installation
-Here follow some notes on installation of 'lapack' and 'blas' on macos with apple arm architecture. I expect this to work also on x86.
+## OpenBlas installation
+Here follow some notes on installation of [openblas](https://github.com/OpenMathLib/OpenBLAS) on macos with apple arm architecture. I expect this to work also on x86 and on linux machines. Apple ships with their own blas and lapack implementation as part of the accelerate framework, However, it's difficult to get these working correctly. [homebrew](https://formulae.brew.sh/formula/lapack) has precompiled binaries but I got a segfault on my system when calling lapack functions from terra.
 
-Apple ships with their own blas and lapack implementation as part of the accelerate framework. Although I could successfully link and test these from C, I could not get it working with terra and got the following error
+Instead, I recommend installing [openblas](https://github.com/OpenMathLib/OpenBLAS) from source, following these instructions
+
+1. First clone the official [openblas](https://github.com/OpenMathLib/OpenBLAS) repo.
 ```
-    #error "neon support not enabled"
-```
-which has to do with vector instructions.
-
-I also tried the precompiled binaries from [homebrew](https://formulae.brew.sh/formula/lapack) but got a segfault when calling lapack functions from terra.
-
-Instead I compiled lapack directly from source. I used the reference Lapack, but you can also try the implementation from [openblas](https://github.com/OpenMathLib/OpenBLAS).
-
-Here I describe the steps:
-
-1. First clone the official [Lapack](https://github.com/Reference-LAPACK/lapack) repo.
-```
-    git clone https://github.com/Reference-LAPACK/lapack.git
+    git clone https://github.com/OpenMathLib/OpenBLAS.git
 ```
 2. Build and install with cmake:
 ```
-    cd lapack
+    cd OpenBlas
     mkdir build
     cd build
 ```
-The build options are important here. We require the C-wrappers provided by LAPACKE. The `64_EXT_API` implementation needs to be turned off and we build using shared libraries. Also, we directly build the provided blas implementation. Clearly, you can use your own. Check the cmake files in the lapack source to check how to do that.
+The build options are important here. We require a build with shared libraries
 ```
-cmake -DCMAKE_INSTALL_PREFIX=/usr/local/lib/lapack .. -DLAPACKE=on -DBUILD_TESTING=on -DBUILD_INDEX64_EXT_API=off -DCBLAS=on -DBUILD_SHARED_LIBS=on
+cmake -DCMAKE_INSTALL_PREFIX=/usr/local/lib/openblas .. -DBUILD_TESTING=on -DBUILD_SHARED_LIBS=on
 cmake --build . -j8 --target install
 ctest .
 ```
-3. As installation folder I used `/usr/local/lib/lapack`. In order for macos to find the include and shared libraries contained therein, add the following lines to your zprofile:
+3. As installation folder I used `/usr/local/lib/openblas`. In order for macos to find the include and shared libraries contained therein, add the following lines to your zprofile:
 ```
-export DYLD_FALLBACK_LIBRARY_PATH="/usr/local/lib/lapack/lib:${DYLD_FALLBACK_LIBRARY_PATH}"
-export INCLUDE_PATH="/usr/local/lib/lapack/include;${INCLUDE_PATH}"
+export DYLD_FALLBACK_LIBRARY_PATH="/usr/local/lib/openblas/lib:${DYLD_FALLBACK_LIBRARY_PATH}"
+export INCLUDE_PATH="/usr/local/lib/openblas/include;${INCLUDE_PATH}"
 ```
 
 ## Flint
