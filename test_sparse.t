@@ -34,12 +34,12 @@ for T, tol in pairs(tols) do
                 var alloc: DefaultAlloc
                 var n = 3
                 var m = 4
-                var a = CSR.new(&alloc, {n, m})
+                var a = CSR.new(&alloc, n, m)
             end
 
             testset "Dimensions" do
-                test a:size(0) == n
-                test a:size(1) == m
+                test a:rows() == n
+                test a:cols() == m
             end
 
             testset "Set and Get" do
@@ -90,12 +90,12 @@ for T, tol in pairs(tols) do
                     for i = 1, rows do
                         c:set(i, i - 1, -1)
                     end
-                    var xv = Vec.from(&alloc, 1, 2, 3, 4, 5)
-                    var yv = Vec.ones_like(&alloc, &xv)
-                    var yvref = Vec.from(&alloc, -1, -3, -5, -7, -9)
+                    var xv = Vec.from(&alloc, {1, 2, 3, 4, 5})
+                    var yv = Vec.ones(&alloc, 5)
+                    var yvref = Vec.from(&alloc, {-1, -3, -5, -7, -9})
                     var alpha: T = -2
                     var beta: T = 3
-                    c:apply(false, alpha, &xv, beta, &yv)
+                    matrix.gemv(alpha, &c, &xv, beta, &yv)
                 end
 
                 test c:rows() == 5
@@ -119,9 +119,9 @@ for T, tol in pairs(tols) do
                     for i = 0, rows - 1 do
                         a:set(i, i + 1, -1)
                     end
-                    var b = Mat.new(&alloc, rows, cols)
+                    var b = Mat.new(&alloc, {rows, cols})
                     b:fill([T](2))
-                    var c = Mat.new(&alloc, rows, cols)
+                    var c = Mat.new(&alloc, {rows, cols})
                     c:fill([T](3))
                     matrix.scaledaddmul([T](1), false, &a, false, &b, [T](-1),&c)
                 end

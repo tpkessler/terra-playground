@@ -232,6 +232,17 @@ local ArrayBase = function(Array)
     if not Array.metamethods.__apply then
         Array.metamethods.__apply = macro(function(self, ...)
             local indices = terralib.newlist{...}
+            print(self)
+            --[[
+            if tostring(self.tree.type)=="DynamicMatrix(int32)" then
+                print("he this is a DynamicMatrix(int32)")
+                for k,v in pairs(self) do
+                    print(k)
+                    print(v)
+                    print()
+                end
+            end
+            --]]
             return `self:get([indices])
         end)
     end

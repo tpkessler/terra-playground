@@ -14,6 +14,7 @@ local VectorBase = function(Vector)
 
 	local T = Vector.traits.eltype
 	local Concept = {
+        Real = concepts.Real,
 		Stack = concepts.Stack(T),
 		Vector = concepts.Vector(T)
 	}
@@ -47,7 +48,7 @@ local VectorBase = function(Vector)
 
     if concepts.Number(T) then
 
-        terraform Vector:scal(a : T)
+        terraform Vector:scal(a : S) where {S : Concept.Real}
             for i = 0, self:length() do
                 self:set(i, a * self:get(i))
             end

@@ -142,7 +142,7 @@ end
 
 concept Vector(T) where {T : Number}
     local S = Stack(T)
-    Self.methods.scal = {&Self, T} -> {}
+    Self.methods.scal = {&Self, Number} -> {}
     Self.methods.axpy = {&Self, T, &S} -> {}
     Self.methods.dot  = {&Self, &S} -> {T}
     Self.methods.sum  = {&Self} -> T

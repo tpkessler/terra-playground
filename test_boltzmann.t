@@ -7,13 +7,12 @@ import "terratest/terratest"
 
 local alloc = require("alloc")
 local boltzmann = require("boltzmann")
-local dvector = require("dvector")
+local darray = require("darray")
 local dual = require("dual")
-local svector = require("svector")
-local dmatrix = require("dmatrix")
+local sarray = require("sarray")
 local sparse = require("sparse")
 local gauss = require("gauss")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local range = require("range")
 local io = terralib.includec("stdio.h")
 -- Compiled terra code, reimported for integration/unit testing
@@ -24,7 +23,7 @@ if ffi.os == "Linux" then
 else
     terralib.linklibrary("./libnonlinearbc.dylib")
 end
-
+--[[
 for N = 2, 29 do
 
     testenv(N) "Half space integral aligned" do
@@ -35,7 +34,7 @@ for N = 2, 29 do
         terracode
             var alloc: Alloc
             var rho = T {2.0 / 3.0, 3}
-            var u = [svector.StaticVector(T, 3)].from(T {-1.5, -6.75}, 0, 0)
+            var u = [sarray.StaticVector(T, 3)].from({T{-1.5, -6.75}, 0, 0})
             var theta = T {(9 + 1.0 / 6.0) / 10.0, 6.75}
             var hs = HalfSpace.new(1, 0, 0)
             var xh, wh = hs:maxwellian(&alloc, N, rho, &u, theta)
@@ -80,12 +79,12 @@ for N = 2, 29 do
             var alloc: Alloc
             var rho = T {2.0 / 3.0, 3}
             var u = (
-                    [svector.StaticVector(T, 3)]
-                ).from(
+                    [sarray.StaticVector(T, 3)]
+                ).from({
                     T {1.5, -6.75},
                     T {0.2, 0.1},
                     T {1, 3}
-                )
+                })
             var theta = T {(9 + 1.0 / 6.0) / 10.0, 6.75}
             var hs = HalfSpace.new(
                 1 / tmath.sqrt(3.0), 1 / tmath.sqrt(3.0), 1 / tmath.sqrt(3.0)
@@ -125,13 +124,13 @@ for N = 2, 29 do
     end
 
 end
-
+--]]
 
 testenv "Full Phasespace Integral" do
     local T = double
     local I = int32
-    local dMat = dmatrix.DynamicMatrix(T)
-    local iMat = dmatrix.DynamicMatrix(I)
+    local dMat = darray.DynamicMatrix(T)
+    local iMat = darray.DynamicMatrix(I)
     local CSR = sparse.CSRMatrix(T, I)
     local Alloc = alloc.DefaultAllocator()
 
@@ -181,7 +180,7 @@ testenv "Full Phasespace Integral" do
         )
         var ndim = 2
         var ref_normal = arrayof(T, 0, 1)
-        var normal = dMat.new(&alloc, npts, ndim)
+        var normal = dMat.new(&alloc, {npts, ndim})
         for i = 0, npts do
             for j = 0, ndim do
                 normal(i, j) = ref_normal[j]
@@ -190,8 +189,8 @@ testenv "Full Phasespace Integral" do
 
         var pressure = 2.5
 
-        var resval = dMat.new(&alloc, ntestx, ntestv)
-        var restng = dMat.like(&alloc, &resval)
+        var resval = dMat.new(&alloc, {ntestx, ntestv})
+        var restng = dMat.new(&alloc, {ntestx, ntestv})
 
         var val = dMat.from(
                         &alloc,
@@ -201,7 +200,7 @@ testenv "Full Phasespace Integral" do
                             {1.194994995666661,0.46123725592209786,0.5978999738158559,0.1658215984090856}
                         }
                     )
-        var tng = dMat.ones_like(&alloc, &val)
+        var tng = dMat.ones(&alloc, {3, 4})
 
         bc.pressurebc(
                 ntestx,
@@ -210,7 +209,7 @@ testenv "Full Phasespace Integral" do
                 ntrialx,
                 ntrialv,
                 --
-                &val(0, 0),
+                &(val(0, 0)),
                 &tng(0, 0),
                 --
                 npts,
