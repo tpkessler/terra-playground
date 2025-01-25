@@ -148,6 +148,22 @@ local DArrayStackBase = function(Array)
         Array.staticmethods.new = new
     end
 
+    local S = alloc.SmartBlock(T)
+
+    Array.staticmethods.frombuffer = (
+        terra(size : tup.ntuple(size_t, N), data : &T)
+            var __size = [ &size_t[N] ](&size)  --we need the size as an array
+            var cumsize = getcumsize(@__size)   --compute cumulative sizes
+            var length = cumsize[N-1]           --length is last entry in 'cumsum'
+            --construct array from buffer
+            var v : Array
+            v.data = S.frombuffer(length, data)
+            v.size = @__size
+            v.cumsize = cumsize
+            return v
+        end
+    )
+
     --for N==1 we allow casting from a dynamic stack
     if N==1 then
         local dstack = stack.DynamicStack(T)

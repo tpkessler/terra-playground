@@ -176,7 +176,7 @@ local TensorBasis = terralib.memoize(function(T)
         var tb: tensor_basis
         tb.space = CSR.frombuffer(nq, nx, nnz, &cast(0), col, rowptr)
         tb.transposed = transposed
-        tb.velocity = MonomialBasis.new(__move__(iMat.frombuffer(nv, VDIM, ptr, VDIM)))
+        tb.velocity = MonomialBasis.new(__move__(iMat.frombuffer({nv, VDIM}, ptr)))
         tb.cast = __move__(cast)
 
         return tb
@@ -530,14 +530,12 @@ local terraform nonlinear_maxwellian_inflow(
     -- we can compute the velocity integrals.
     var nq = normal:rows()
     var nv = xvlhs:cols()
-    var qvlhs = [darray.DynamicMatrix(C.eltype)].zeros(alloc, nq, nv)
-    matrix.scaledaddmul(
-        [C.eltype](1),
-        false,
+    var qvlhs = [darray.DynamicMatrix(C.traits.eltype)].zeros(alloc, {nq, nv})
+    matrix.gemm(
+        [C.traits.eltype](1),
         &trialb.space,
-        false,
         xvlhs,
-        [C.eltype](0),
+        [C.traits.eltype](0),
         &qvlhs
     )
     -- Qudrature for the computation of the local Maxwellian.
@@ -569,10 +567,10 @@ local terraform nonlinear_maxwellian_inflow(
              end
     end
 
-    var halfmomq = [darray.DynamicMatrix(C.eltype)].new(
+    var halfmomq = [darray.DynamicMatrix(C.traits.eltype)].new(
                                                         alloc,
-                                                        nq,
-                                                        testb:nvelocitydof()
+                                                        {nq,
+                                                        testb:nvelocitydof()}
                                                     )
     var qrange = [range.Unitrange(int64)].new(0, nq)
     thread.parfor(alloc, qrange, lambda.new(
@@ -591,7 +589,7 @@ local terraform nonlinear_maxwellian_inflow(
                 )
                     var lhs = (
                         [
-                            darray.DynamicVector(C.eltype)
+                            darray.DynamicVector(C.traits.eltype)
                         ].new(alloc, qvlhs:cols())
                     )
                     for j = 0, nv do
@@ -625,13 +623,13 @@ local terraform nonlinear_maxwellian_inflow(
             }
         )
     )
-    var halfmom = [darray.DynamicMatrix(C.eltype)].zeros(
+    var halfmom = [darray.DynamicMatrix(C.traits.eltype)].zeros(
                                                         alloc,
-                                                        testb:nspacedof(),
-                                                        testb:nvelocitydof()
+                                                        {testb:nspacedof(),
+                                                        testb:nvelocitydof()}
                                                     )
     
-    matrix.gemm([C.eltype](1), &testb.space, &halfmomq, [C.eltype](0), &halfmom)
+    matrix.gemm([C.traits.eltype](1), &testb.space, &halfmomq, [C.traits.eltype](0), &halfmom)
 
     return halfmom
 end
@@ -697,8 +695,8 @@ local PrepareInput = terralib.memoize(function(T, I)
 
         var normal = [darray.DynamicMatrix(dual.DualNumber(T))].zeros(
                                                                     alloc,
-                                                                    nqx,
-                                                                    VDIM
+                                                                    {nqx,
+                                                                     VDIM}
                                                                 )
         for i = 0, nqx do
             for j = 0, ndim do
@@ -725,8 +723,8 @@ local PrepareInput = terralib.memoize(function(T, I)
         -- velocity dof as column indices.
         var xvlhs = [darray.DynamicMatrix(dual.DualNumber(T))].new(
                                                                     alloc,
-                                                                    ntrialx,
-                                                                    ntrialv
+                                                                    {ntrialx,
+                                                                     ntrialv}
                                                                 )
         for i = 0, ntrialx do
             for j = 0, ntrialv do
@@ -771,7 +769,7 @@ local GenerateBCWrapper = terralib.memoize(function(Transform)
         var [res] = (
             nonlinear_maxwellian_inflow(&[alloc], [refdata], &[transform])
         )
-        var ld = [res].ld
+        var ld = [res].cumsize[0]
         for i = 0, [res]:rows() do
             for j = 0, [res]:cols() do
                 var idx = j + ld * i

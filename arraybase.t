@@ -232,27 +232,23 @@ local ArrayBase = function(Array)
     if not Array.metamethods.__apply then
         Array.metamethods.__apply = macro(function(self, ...)
             local indices = terralib.newlist{...}
-            print(self)
-            --[[
-            if tostring(self.tree.type)=="DynamicMatrix(int32)" then
-                print("he this is a DynamicMatrix(int32)")
-                for k,v in pairs(self) do
-                    print(k)
-                    print(v)
-                    print()
-                end
+            assert(#indices == 1 or #indices == N, "ArgumentError: invalid argument dimensions.")
+            if #indices==1 then
+                return `self:getdata([ indices[1] ])
+            else
+                return `self:getdata(self:getlinearindex([indices]))
             end
-            --]]
-            return `self:get([indices])
         end)
     end
 
+    --[[
     if not Array.metamethods.__update then
         Array.metamethods.__update = macro(function(self, ...)
             local args = terralib.newlist{...}
             return `self:set([args])
         end)
     end
+    --]]
 
     local function fillarray(A, arraysize, args)
         return quote

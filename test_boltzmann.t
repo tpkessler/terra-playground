@@ -23,6 +23,7 @@ if ffi.os == "Linux" then
 else
     terralib.linklibrary("./libnonlinearbc.dylib")
 end
+
 --[[
 for N = 2, 29 do
 
@@ -125,6 +126,7 @@ for N = 2, 29 do
 
 end
 --]]
+
 
 testenv "Full Phasespace Integral" do
     local T = double

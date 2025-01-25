@@ -217,12 +217,12 @@ end
 --C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
 local terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
         where {T : Number, M1 : Matrix(Number), M2 : Matrix(Number), M3 : Matrix(Number)}
-    err.assert(A:size(1) == B:size(0), "ArgumentError: matrix dimensions in C = alpha*C + beta * A * B are not consistent.")
-    err.assert(C:size(0) == A:size(0) and C:size(1) == B:size(1), "ArgumentError: matrix dimensions in C = alpha*C + beta * A * B are not consistent.")
-    for i = 0, C:size(0) do
-        for j = 0, C:size(1) do
+    err.assert(A:cols() == B:rows(), "ArgumentError: matrix dimensions in C = alpha*C + beta * A * B are not consistent.")
+    err.assert(C:rows() == A:rows() and C:cols() == B:cols(), "ArgumentError: matrix dimensions in C = alpha*C + beta * A * B are not consistent.")
+    for i = 0, C:rows() do
+        for j = 0, C:cols() do
             var sum = beta * C:get(i, j)
-            for k = 0, A:size(1) do
+            for k = 0, A:cols() do
                 sum = sum + alpha * A:get(i, k) * B:get(k, j)
             end
             C:set(i, j, sum)
