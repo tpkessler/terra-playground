@@ -3,29 +3,8 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local uname = io.popen("uname", "r"):read("*a")
-
 -- The complex data type is not understood by terra. Hence we provide our own type.
-local C
-if uname == "Darwin\n" then
-    C = terralib.includecstring([[
-        typedef struct{
-            double re;
-            double im;
-        } terra_complex_double;
-
-        typedef struct{
-            float re;
-            float im;
-        } terra_complex_float;
-        
-        #include <lapacke.h>
-    ]], {"-Dlapack_complex_float=terra_complex_float",
-        "-Dlapack_complex_double=terra_complex_double"})
-    terralib.linklibrary("libcblas.dylib")
-    terralib.linklibrary("liblapacke.dylib")
-elseif uname == "Linux\n" then
-    C = terralib.includecstring([[
+local C = terralib.includecstring([[
         typedef struct{
             double re;
             double im;
@@ -39,8 +18,11 @@ elseif uname == "Linux\n" then
         #include <openblas/lapacke.h>
     ]], {"-Dlapack_complex_float=terra_complex_float",
         "-Dlapack_complex_double=terra_complex_double"})
-    -- terralib.linklibrary("liblapack.so")
-    -- terralib.linklibrary("libcblas.so")
+
+local uname = io.popen("uname", "r"):read("*a")
+if uname == "Darwin\n" then
+    terralib.linklibrary("libopenblas.dylib")
+elseif uname == "Linux\n" then
     terralib.linklibrary("libopenblas.so")
 else
     error("Not implemented for this OS.")
