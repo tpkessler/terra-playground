@@ -30,7 +30,7 @@ for _, Ts in pairs({float, double, float128, float1024}) do
         local DMat = dmatrix.DynamicMatrix(T)
         local DVec = dvector.DynamicVector(T)
         local PVec = dvector.DynamicVector(int32)
-        local Alloc = alloc.DefaultAllocator(Ts)
+        local Alloc = alloc.DefaultAllocator()
         local Rand = random.LibC(float)
         local LUDense = lu.LUFactory(DMat, PVec)
 

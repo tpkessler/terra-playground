@@ -3,14 +3,27 @@
 --
 -- SPDX-License-Identifier: MIT
 
+local concepts = require("concepts")
 local time = terralib.includec("time.h")
 local omp = terralib.includec("omp.h")
-local interface = require("interface")
+local ffi = require("ffi")
+local OS = ffi.os
 
-local Timer = interface.Interface:new{
-	start = {} -> {},
-	stop = {} -> double
-}
+if OS == "Linux" then
+	terralib.linklibrary("libgomp.so")
+elseif OS == "Darwin" then
+	terralib.linklibrary("libgomp.dylib")
+else
+	error("Unsupported OS " .. OS)
+end
+
+import "terraform"
+
+local Float = concepts.Float
+local concept Timer
+	terra Self:start() end
+	terra Self:stop(): Float end
+end
 
 local struct default {
 	old: double
@@ -33,7 +46,7 @@ do
 		return cur - self.old
 	end
 end
-assert(Timer:isimplemented(default))
+assert(Timer(default))
 
 local struct omp_timer {
 	old: double
@@ -50,7 +63,7 @@ do
 		return cur - self.old
 	end
 end
-assert(Timer:isimplemented(omp_timer))
+assert(Timer(omp_timer))
 
 return {
 	default_timer = default,
