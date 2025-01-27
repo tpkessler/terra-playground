@@ -8,6 +8,7 @@ local C = terralib.includecstring[[
     #include <openblas/cblas.h>
 ]]
 
+
 local uname = io.popen("uname", "r"):read("*a")
 if uname == "Darwin\n" then
     terralib.linklibrary("libopenblas.dylib")

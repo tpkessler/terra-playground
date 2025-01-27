@@ -232,7 +232,7 @@ for prefix, T in pairs(types) do
                 ref = tmath.sqrt(ref)
             end
                 
-            test mathfun.isapprox(num, ref, 100 * [Ts:eps()])
+            test tmath.isapprox(num, ref, 100 * [Ts:eps()])
             
         end
 

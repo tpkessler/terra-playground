@@ -23,6 +23,8 @@ local sparse = require("sparse")
 local stack = require("stack")
 local qr = require("qr")
 
+local io = terralib.includec("stdio.h")
+
 local VDIM = 3
 
 local pow
@@ -530,6 +532,7 @@ local terraform nonlinear_maxwellian_inflow(
     -- we can compute the velocity integrals.
     var nq = normal:rows()
     var nv = xvlhs:cols()
+
     var qvlhs = [darray.DynamicMatrix(C.traits.eltype)].zeros(alloc, {nq, nv})
     matrix.gemm(
         [C.traits.eltype](1),
@@ -549,7 +552,8 @@ local terraform nonlinear_maxwellian_inflow(
                             maxtrialdegree / 2 + 1 + 2,
                             {origin = 0.0, scaling = tmath.sqrt(2.)}
                       )
-    whermite:scal(1 / tmath.sqrt(2 * tmath.pi))
+    whermite:scal(1. / tmath.sqrt(2 * tmath.pi))
+
     var qmaxwellian = escape 
         local arg = {}
         for i = 1, VDIM do
@@ -560,11 +564,11 @@ local terraform nonlinear_maxwellian_inflow(
                      end
         end
         emit quote
-                var p = gauss.productrule([arg])
-                var rn = range.zip(&p.x, &p.w)
-             in
-                 &rn
-             end
+            var p = gauss.productrule([arg])
+            var rn = range.zip(&p.x, &p.w)
+        in
+            &rn
+        end
     end
 
     var halfmomq = [darray.DynamicMatrix(C.traits.eltype)].new(
@@ -758,7 +762,7 @@ local GenerateBCWrapper = terralib.memoize(function(Transform)
     for i = 1, #data.type.entries do
         refdata[i] = `&[data].["_" .. tostring(i - 1)]
     end
-
+    print("compiling GenerateBCWrapper")
     local resval = symbol(&T)
     local restng = symbol(&T)
     local res = symbol(darray.DynamicMatrix(dual.DualNumber(T)))
@@ -769,12 +773,16 @@ local GenerateBCWrapper = terralib.memoize(function(Transform)
         var [res] = (
             nonlinear_maxwellian_inflow(&[alloc], [refdata], &[transform])
         )
+        io.printf("leading dimensions are: \n")
+        io.printf("ld = %d\n", [res].cumsize[0])
         var ld = [res].cumsize[0]
         for i = 0, [res]:rows() do
             for j = 0, [res]:cols() do
                 var idx = j + ld * i
                 [resval][idx] = [res](i, j).val
                 [restng][idx] = [res](i, j).tng
+                io.printf("v = %0.5f\n", [res](i, j).val)
+                io.printf("t = %0.5f\n", [res](i, j).tng)
             end
         end
     end

@@ -241,14 +241,12 @@ local ArrayBase = function(Array)
         end)
     end
 
-    --[[
     if not Array.metamethods.__update then
         Array.metamethods.__update = macro(function(self, ...)
             local args = terralib.newlist{...}
             return `self:set([args])
         end)
     end
-    --]]
 
     local function fillarray(A, arraysize, args)
         return quote

@@ -5,6 +5,7 @@
 
 import "terratest/terratest"
 
+local io = terralib.includec("stdio.h")
 local alloc = require("alloc")
 local boltzmann = require("boltzmann")
 local darray = require("darray")
@@ -16,13 +17,22 @@ local tmath = require("tmath")
 local range = require("range")
 local io = terralib.includec("stdio.h")
 -- Compiled terra code, reimported for integration/unit testing
-local bc = terralib.includec("./nonlinearbc.h")
+--local bc = terralib.includec("./nonlinearbc.h")
+local GenerateBCWrapper = boltzmann.GenerateBCWrapper
+local FixedPressure = boltzmann.FixedPressure
+
+local pressurebc = GenerateBCWrapper(FixedPressure(double))
+
 local ffi = require("ffi")
+
+--[[
 if ffi.os == "Linux" then
     terralib.linklibrary("./libnonlinearbc.so")
 else
     terralib.linklibrary("./libnonlinearbc.dylib")
 end
+--]]
+--]]
 
 --[[
 for N = 2, 29 do
@@ -127,7 +137,6 @@ for N = 2, 29 do
 end
 --]]
 
-
 testenv "Full Phasespace Integral" do
     local T = double
     local I = int32
@@ -136,12 +145,16 @@ testenv "Full Phasespace Integral" do
     local CSR = sparse.CSRMatrix(T, I)
     local Alloc = alloc.DefaultAllocator()
 
+
     terracode
+        io.printf("all good here")
+        
         var alloc: Alloc
         var npts = 10
         var ntrialx = 3
         var xg, wg = gauss.legendre(&alloc, npts)
         var trialx = CSR.new(&alloc, npts, ntrialx)
+        
         for i = 0, npts do
             var x = xg(i)
             trialx:set(i, 0, x)
@@ -169,6 +182,7 @@ testenv "Full Phasespace Integral" do
                     }
             )
         )
+        
         var ntestv = 3
         var test_powers = (
             iMat.from(
@@ -204,14 +218,14 @@ testenv "Full Phasespace Integral" do
                     )
         var tng = dMat.ones(&alloc, {3, 4})
 
-        bc.pressurebc(
+        pressurebc(
                 ntestx,
                 ntestv,
                 --
                 ntrialx,
                 ntrialv,
                 --
-                &(val(0, 0)),
+                &val(0, 0),
                 &tng(0, 0),
                 --
                 npts,
@@ -245,7 +259,14 @@ testenv "Full Phasespace Integral" do
                                 {-1.75616, -1.10924, 2.5}
                             }
         )
+        for i = 0, 2 do
+            for j = 0, 3 do
+                io.printf("res = %0.5f\n", resval(i, j))
+                io.printf("ref = %0.5f\n", refval(i, j))
+            end
+        end
     end
+
     for i = 0, 1 do
         for j = 0, 2 do
             test tmath.isapprox(resval(i, j), refval(i, j), 1e-5)
