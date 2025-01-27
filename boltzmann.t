@@ -91,9 +91,7 @@ do
         len: int64
     }
     terra iterator:getvalue()
-        var p = self.basis.p(self.idx, 0)
-        --var p = &(self.basis.p(self.idx, 0))
-        self.func.p = &p
+        self.func.p = &(self.basis.p(self.idx, 0))
         return self.func
     end
 
@@ -202,8 +200,8 @@ end
 
 local Vector = concepts.Vector
 local Number = concepts.Number
-local terraform local_maxwellian(basis, coeff: &V, quad: &Q)
-    where {V: Vector(Number), Q}
+local terraform local_maxwellian(basis : &B, coeff: &V, quad: &Q)
+    where {B, V: Vector(Number), Q}
     var m1: V.traits.eltype = 0
     var m2 = [sarray.StaticVector(V.traits.eltype, VDIM)].zeros()
     var m3: V.traits.eltype = 0
@@ -571,19 +569,18 @@ local terraform nonlinear_maxwellian_inflow(
         end
     end
 
-    var halfmomq = [darray.DynamicMatrix(C.traits.eltype)].new(
+    var halfmomq = [darray.DynamicMatrix(C.traits.eltype)].zeros(
                                                         alloc,
                                                         {nq,
                                                         testb:nvelocitydof()}
                                                     )
     var qrange = [range.Unitrange(int64)].new(0, nq)
-    thread.parfor(alloc, qrange, lambda.new(
+    var lambda = lambda.new(
             [
                 terra(
                     i: int64,
                     alloc: alloc.type,
                     transform: transform.type,
-                    nv: nv.type,
                     qvlhs: qvlhs.type,
                     testb: testb.type,
                     trialb: trialb.type,
@@ -596,7 +593,7 @@ local terraform nonlinear_maxwellian_inflow(
                             darray.DynamicVector(C.traits.eltype)
                         ].new(alloc, qvlhs:cols())
                     )
-                    for j = 0, nv do
+                    for j = 0, qvlhs:cols() do
                         lhs(j) = qvlhs(i, j)
                     end
                     var rho, u, theta = local_maxwellian(
@@ -617,8 +614,7 @@ local terraform nonlinear_maxwellian_inflow(
             {
                 alloc = alloc,
                 transform = transform,
-                nv = nv,
-                qvlhs = qvlhs,
+                qvlhs = qvlhs, 
                 testb = testb,
                 trialb = trialb,
                 qmaxwellian = qmaxwellian,
@@ -626,13 +622,15 @@ local terraform nonlinear_maxwellian_inflow(
                 halfmomq = halfmomq
             }
         )
-    )
+
+    thread.parfor(alloc, qrange, lambda)    
+
     var halfmom = [darray.DynamicMatrix(C.traits.eltype)].zeros(
                                                         alloc,
                                                         {testb:nspacedof(),
                                                         testb:nvelocitydof()}
                                                     )
-    
+
     matrix.gemm([C.traits.eltype](1), &testb.space, &halfmomq, [C.traits.eltype](0), &halfmom)
 
     return halfmom
@@ -762,27 +760,19 @@ local GenerateBCWrapper = terralib.memoize(function(Transform)
     for i = 1, #data.type.entries do
         refdata[i] = `&[data].["_" .. tostring(i - 1)]
     end
-    print("compiling GenerateBCWrapper")
     local resval = symbol(&T)
     local restng = symbol(&T)
-    local res = symbol(darray.DynamicMatrix(dual.DualNumber(T)))
     local terra impl([sym], [resval], [restng], [cap])
         var [alloc]
         var [data] = prepare_input(&[alloc], [sym])
         var [transform] = [Transform] {[cap]}
-        var [res] = (
-            nonlinear_maxwellian_inflow(&[alloc], [refdata], &[transform])
-        )
-        io.printf("leading dimensions are: \n")
-        io.printf("ld = %d\n", [res].cumsize[0])
-        var ld = [res].cumsize[0]
+        var res = nonlinear_maxwellian_inflow(&[alloc], [refdata], &[transform])
+        var count = 0
         for i = 0, [res]:rows() do
             for j = 0, [res]:cols() do
-                var idx = j + ld * i
-                [resval][idx] = [res](i, j).val
-                [restng][idx] = [res](i, j).tng
-                io.printf("v = %0.5f\n", [res](i, j).val)
-                io.printf("t = %0.5f\n", [res](i, j).tng)
+                [ resval ][ count ] = res(i, j).val
+                [ restng ][ count ] = res(i, j).tng
+                count = count + 1
             end
         end
     end

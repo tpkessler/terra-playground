@@ -17,24 +17,21 @@ local tmath = require("tmath")
 local range = require("range")
 local io = terralib.includec("stdio.h")
 -- Compiled terra code, reimported for integration/unit testing
---local bc = terralib.includec("./nonlinearbc.h")
-local GenerateBCWrapper = boltzmann.GenerateBCWrapper
-local FixedPressure = boltzmann.FixedPressure
+local bc = terralib.includec("./nonlinearbc.h")
+--local GenerateBCWrapper = boltzmann.GenerateBCWrapper
+--local FixedPressure = boltzmann.FixedPressure
 
-local pressurebc = GenerateBCWrapper(FixedPressure(double))
+--local pressurebc = GenerateBCWrapper(FixedPressure(double))
 
 local ffi = require("ffi")
 
---[[
 if ffi.os == "Linux" then
     terralib.linklibrary("./libnonlinearbc.so")
 else
     terralib.linklibrary("./libnonlinearbc.dylib")
 end
---]]
---]]
 
---[[
+
 for N = 2, 29 do
 
     testenv(N) "Half space integral aligned" do
@@ -135,7 +132,7 @@ for N = 2, 29 do
     end
 
 end
---]]
+
 
 testenv "Full Phasespace Integral" do
     local T = double
@@ -147,8 +144,6 @@ testenv "Full Phasespace Integral" do
 
 
     terracode
-        io.printf("all good here")
-        
         var alloc: Alloc
         var npts = 10
         var ntrialx = 3
@@ -218,7 +213,7 @@ testenv "Full Phasespace Integral" do
                     )
         var tng = dMat.ones(&alloc, {3, 4})
 
-        pressurebc(
+        bc.pressurebc(
                 ntestx,
                 ntestv,
                 --
@@ -259,12 +254,6 @@ testenv "Full Phasespace Integral" do
                                 {-1.75616, -1.10924, 2.5}
                             }
         )
-        for i = 0, 2 do
-            for j = 0, 3 do
-                io.printf("res = %0.5f\n", resval(i, j))
-                io.printf("ref = %0.5f\n", refval(i, j))
-            end
-        end
     end
 
     for i = 0, 1 do
