@@ -4,8 +4,11 @@
 -- SPDX-License-Identifier: MIT
 
 import "terratest/terratest"
+import "terraform"
 
+local base = require("base")
 local interface = require("interface")
+local concepts = require("concepts")
 
 testenv "Simple interface" do
 	local A = interface.newinterface("A")
@@ -75,7 +78,7 @@ testenv "Multiple methods" do
 	terra S:inc(y: int) self.y = self.y + y; return 1.0 end
 
 	testset "Implemented" do
-		local ok, ret = pcall(function(T) B(T) end, S)
+		local ok, ret = pcall(function(T) return B:isimplemented(T) end, S)
 		test ok == true
 	end
 
@@ -91,5 +94,33 @@ testenv "Multiple methods" do
 		test rs == 1.0
 		test xs == 3.0
 		test ys == 5
+	end
+end
+
+testenv "Template methods" do
+	local C = interface.newinterface("C")
+	terra C:inc(x: int): double end
+	C:complete()
+
+	local struct foo {}
+	base.AbstractBase(foo)
+
+	local Integer = concepts.Integer
+	terraform foo:inc(x: I) where {I: Integer}
+		return x + 2.71
+	end
+
+	testset "Implemented" do
+		local ok, ret = pcall(function(T) return C:isimplemented(T) end, foo)
+		test ok == true
+	end
+
+	testset "Cast" do
+		terracode
+			var s: foo
+			var c: C = &s
+			var r = c:inc(2)
+		end
+		test r == 4.71
 	end
 end
