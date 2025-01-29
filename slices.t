@@ -59,22 +59,22 @@ end)
 
 local SlicedSMatrix = function(ParentMatrix, ...)
 
-    assert(ParentMatrix.ndims == 2)
+    assert(ParentMatrix.traits.ndims == 2)
     local Ranges = terralib.newlist{...}
     assert(#Ranges == 2)
-    if Ranges[1].b == -1 then Ranges[1].b = ParentMatrix.size[1] end
-    if Ranges[2].b == -1 then Ranges[2].b = ParentMatrix.size[2] end
+    if Ranges[1].b == -1 then Ranges[1].b = ParentMatrix.traits.size[1] end
+    if Ranges[2].b == -1 then Ranges[2].b = ParentMatrix.traits.size[2] end
     
-    local T = ParentMatrix.eltype
+    local T = ParentMatrix.traits.eltype
     local Size = Ranges:map(function(v) return v:length() end)
-    local Perm = ParentMatrix.perm
+    local Perm = ParentMatrix.traits.perm
 
     local __ranges = { terralib.constant(terralib.new(Ranges[1], {})), terralib.constant(terralib.new(Ranges[2], {})) }
 
-    local SMatrix = sarray.SArrayRawType(T, Size, {perm=Perm, cumulative_size=ParentMatrix.cumsize} )
+    local SMatrix = sarray.SArrayRawType(T, Size, {perm=Perm, cumulative_size=ParentMatrix.traits.cumsize} )
 
     function SMatrix.metamethods.__typename(self)
-        return ("View{SMatrix(%s, {%d, %d})}"):format(tostring(T), ParentMatrix.size[1], ParentMatrix.size[2])
+        return ("View{SMatrix(%s, {%d, %d})}"):format(tostring(T), ParentMatrix.traits.size[1], ParentMatrix.traits.size[2])
     end
 
     --add base functionality
@@ -83,7 +83,7 @@ local SlicedSMatrix = function(ParentMatrix, ...)
     SMatrix.methods.slice = macro(function(self, k, ...)
         local indices = terralib.newlist{...}
         local K = k:asvalue()+1
-        local index = indices[ SMatrix.perm[K] ]
+        local index = indices[ SMatrix.traits.perm[K] ]
         local range = __ranges[K]
         return `range([index])
     end)
@@ -140,7 +140,8 @@ SMatrix.metamethods.__apply = macro(function(self, ...)
         end
     elseif #indices == 2 then
         local I, J = slice(indices[1]), slice(indices[2])
-
+        print(I)
+        print(J)
         if I and J then
             local MatrixView = SlicedSMatrix(SMatrix, I, J)
             return `[&MatrixView](&self)
@@ -161,7 +162,7 @@ terra main()
     A:print()
 
     var B = A(2, {1,4,-1})
-    B:print()
+    --B:print()
 
 end
 main()
