@@ -6,7 +6,7 @@
 -- Regularized Incomplete Beta Function
 -- according to the C - implementaiton at https://github.com/codeplea/incbeta
 
-local math = require("mathfuns")
+local tmath = require("tmath")
 
 local STOP = 1.0e-8
 local TINY = 1.0e-30
@@ -19,8 +19,8 @@ local terra incbeta(a : double, b : double, x : double) : double
         return 1.0-incbeta(b,a,1.0-x) 
     end
     --Find the first part before the continued fraction.
-    var lbeta_ab : double = math.loggamma(a) + math.loggamma(b) - math.loggamma(a+b)
-    var front : double = math.exp( math.log(x)*a + math.log(1.0-x)*b - lbeta_ab) / a
+    var lbeta_ab : double = tmath.loggamma(a) + tmath.loggamma(b) - tmath.loggamma(a+b)
+    var front : double = tmath.exp( tmath.log(x)*a + tmath.log(1.0-x)*b - lbeta_ab) / a
     --Use Lentz's algorithm to evaluate the continued fraction.
     var f, c, d = 1.0, 1.0, 0.0
     var m : int
@@ -37,17 +37,17 @@ local terra incbeta(a : double, b : double, x : double) : double
         end
         --do an iteration of Lentz's algorithm
         d = 1.0 + numerator * d
-        if (math.abs(d) < TINY) then d = TINY end
+        if (tmath.abs(d) < TINY) then d = TINY end
         d = 1.0 / d
 
         c = 1.0 + numerator / c
-        if (math.abs(c) < TINY) then c = TINY end
+        if (tmath.abs(c) < TINY) then c = TINY end
 
         var cd = c * d
         f = f * cd;
 
         --check for stop
-        if (math.abs(1.0-cd) < STOP) then
+        if (tmath.abs(1.0-cd) < STOP) then
             return front * (f-1.0);
         end
     end

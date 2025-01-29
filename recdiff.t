@@ -4,11 +4,10 @@
 -- SPDX-License-Identifier: MIT
 
 local concepts = require("concepts")
-local dvector = require("dvector")
-local dmatrix = require("dmatrix")
+local sarray = require("sarray")
+local darray = require("darray")
 local qr = require("qr")
 local range = require("range")
-local svector = require("svector")
 
 import "terraform"
 
@@ -26,14 +25,14 @@ local Real = concepts.Real
 local Vector = concepts.Vector
 local terraform olver(alloc, rec: &R, yn: &V)
     where {R: RecDiff(Real), V: Vector(Real)}
-    var y0 = [svector.StaticVector(R.traits.eltype, R.traits.ninit)].zeros()
-    var nmax = yn:size()
-    var n0 = y0:size()
+    var y0 = [sarray.StaticVector(R.traits.eltype, R.traits.ninit)].zeros()
+    var nmax = yn:length()
+    var n0 = y0:length()
     var dim: int64 = nmax - n0
-    var sys = [dmatrix.DynamicMatrix(R.traits.eltype)].zeros(alloc, dim, dim)
-    var rhs = [dvector.DynamicVector(R.traits.eltype)].zeros(alloc, dim)
-    var hrf = [dvector.DynamicVector(R.traits.eltype)].zeros(alloc, dim)
-    var y = [svector.StaticVector(R.traits.eltype, R.traits.depth + 1)].zeros()
+    var sys = [darray.DynamicMatrix(R.traits.eltype)].zeros(alloc, {dim, dim})
+    var rhs = [darray.DynamicVector(R.traits.eltype)].zeros(alloc, dim)
+    var hrf = [darray.DynamicVector(R.traits.eltype)].zeros(alloc, dim)
+    var y = [sarray.StaticVector(R.traits.eltype, R.traits.depth + 1)].zeros()
     for i = 0, dim do
         var n = n0 + i
         rec:getcoeff(n, &y)

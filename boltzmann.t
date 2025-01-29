@@ -8,22 +8,22 @@ import "terraform"
 local alloc = require("alloc")
 local base = require("base")
 local concepts = require("concepts")
-local svector = require("svector")
-local dvector = require("dvector")
+local sarray = require("sarray")
+local darray = require("darray")
 local matrix = require("matrix")
-local dmatrix = require("dmatrix")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local dual = require("dual")
 local range = require("range")
 local gauss = require("gauss")
 local halfhermite = require("halfrangehermite")
 local lambda = require("lambda")
-local tmath = require("mathfuns")
 local thread = require("thread")
 local momfit = require("momfit")
 local sparse = require("sparse")
 local stack = require("stack")
 local qr = require("qr")
+
+local io = terralib.includec("stdio.h")
 
 local VDIM = 3
 
@@ -56,7 +56,7 @@ terraform monomial(v: &T, p: &I) where {I: concepts.Integer, T: concepts.Number}
     return res
 end
 
-local iMat = dmatrix.DynamicMatrix(int32)
+local iMat = darray.DynamicMatrix(int32)
 local struct MonomialBasis(base.AbstractBase){
     p: iMat
 }
@@ -83,6 +83,7 @@ do
     Func.metamethods.__apply = macro(function(self, x)
         return `monomial(x, self.p)
     end)
+    
     local struct iterator {
         basis: &MonomialBasis
         func: Func
@@ -90,8 +91,7 @@ do
         len: int64
     }
     terra iterator:getvalue()
-        var p = &self.basis.p(self.idx, 0)
-        self.func.p = p
+        self.func.p = &(self.basis.p(self.idx, 0))
         return self.func
     end
 
@@ -112,7 +112,7 @@ end
 
 local TensorBasis = terralib.memoize(function(T)
     local I = int32
-    local iMat = dmatrix.DynamicMatrix(I)
+    local iMat = darray.DynamicMatrix(I)
     local CSR = sparse.CSRMatrix(T, I)
     local Stack = stack.DynamicStack(T)
     local struct tensor_basis {
@@ -151,7 +151,7 @@ local TensorBasis = terralib.memoize(function(T)
     end
 
     terraform tensor_basis.staticmethods.frombuffer(
-        alloc,
+        A,
         transposed: bool,
         nq: I1,
         nx: I2,
@@ -168,7 +168,7 @@ local TensorBasis = terralib.memoize(function(T)
                 I3: concepts.Integer,
                 I4: concepts.Integer
               }
-        var cast = Stack.new(alloc, nnz)
+        var cast = Stack.new(A, nnz)
         for i = 0, nnz do
             -- Explicit cast as possibly S ~= T
             cast:push(data[i])
@@ -176,7 +176,7 @@ local TensorBasis = terralib.memoize(function(T)
         var tb: tensor_basis
         tb.space = CSR.frombuffer(nq, nx, nnz, &cast(0), col, rowptr)
         tb.transposed = transposed
-        tb.velocity = MonomialBasis.new(__move__(iMat.frombuffer(nv, VDIM, ptr, VDIM)))
+        tb.velocity = MonomialBasis.new(__move__(iMat.frombuffer({nv, VDIM}, ptr)))
         tb.cast = __move__(cast)
 
         return tb
@@ -200,10 +200,10 @@ end
 
 local Vector = concepts.Vector
 local Number = concepts.Number
-local terraform local_maxwellian(basis, coeff: &V, quad: &Q)
-    where {V: Vector(Number), Q}
+local terraform local_maxwellian(basis : &B, coeff: &V, quad: &Q)
+    where {B, V: Vector(Number), Q}
     var m1: V.traits.eltype = 0
-    var m2 = [svector.StaticVector(V.traits.eltype, VDIM)].zeros()
+    var m2 = [sarray.StaticVector(V.traits.eltype, VDIM)].zeros()
     var m3: V.traits.eltype = 0
 
     var it = quad:getiterator()
@@ -247,7 +247,7 @@ local terraform local_maxwellian(basis, coeff: &V, quad: &Q)
 end
 
 local HalfSpaceQuadrature = terralib.memoize(function(T)
-    local SVec = svector.StaticVector(T, VDIM)
+    local SVec = sarray.StaticVector(T, VDIM)
     local struct impl {
         normal: SVec
     }
@@ -282,8 +282,8 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
 
     local reverse
     terraform reverse(w: &V) where {V: Vector(concepts.Any)}
-        for i = 0, w:size() / 2 do
-            var j = w:size() - 1 - i
+        for i = 0, w:length() / 2 do
+            var j = w:length() - 1 - i
             var tmp = w(i)
             w(i) = w(j)
             w(j) = tmp
@@ -292,7 +292,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
 
     local ExpMomT = momfit.ExpMom(T)
     local IntT = momfit.IntervalFactory(T)
-    local VecT = dvector.DynamicVector(T)
+    local VecT = darray.DynamicVector(T)
 
     local terraform castvector(dest: &V1, src: &V2)
         where {V1: Vector(concepts.Any), V2: Vector(concepts.Any)}
@@ -313,7 +313,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
     local terraform householder(v: &V1, h: &V2)
         where {V1: Vector(Number), V2: Vector(Number)}
         var dot = v:dot(h)
-        for i = 0, v:size() do
+        for i = 0, v:length() do
             v(i) = v(i) - 2 * dot * h(i)
         end
     end
@@ -415,7 +415,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
             end
         end
         normalize(&diff)
-        var yhermite = VecT.like(A, &xhermite)
+        var yhermite = VecT.new(A, nhalf)
         yhermite:copy(&xhermite)
         var points = range.product(
                         __move__(xnormal),
@@ -432,7 +432,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
                                 -- First rotate the quadrature points from the
                                 -- reference half space to the half space defined
                                 -- by the given normal ...
-                                var x = SVec.from([xarg])
+                                var x = SVec.from({[xarg]})
                                 householder(&x, &diff)
                                 var y: x.type
                                 -- ... and then shift and scale with the velocity
@@ -454,7 +454,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
                         {u = u, theta = theta, diff = diff}
                     )
 
-        var wyhermite = VecT.like(A, &whermite)
+        var wyhermite = VecT.new(A, nhalf)
         wyhermite:copy(&whermite)
         var weights = range.product(
                         __move__(wnormal),
@@ -531,14 +531,12 @@ local terraform nonlinear_maxwellian_inflow(
     -- we can compute the velocity integrals.
     var nq = normal:rows()
     var nv = xvlhs:cols()
-    var qvlhs = [dmatrix.DynamicMatrix(C.eltype)].zeros(A, nq, nv)
-    matrix.scaledaddmul(
-        [C.eltype](1),
-        false,
+    var qvlhs = [darray.DynamicMatrix(C.traits.eltype)].zeros(A, {nq, nv})
+    matrix.gemm(
+        [C.traits.eltype](1),
         &trialb.space,
-        false,
         xvlhs,
-        [C.eltype](0),
+        [C.traits.eltype](0),
         &qvlhs
     )
     -- Qudrature for the computation of the local Maxwellian.
@@ -570,10 +568,10 @@ local terraform nonlinear_maxwellian_inflow(
             &p
         end
     end
-    var halfmomq = [dmatrix.DynamicMatrix(C.eltype)].new(
+    var halfmomq = [darray.DynamicMatrix(C.traits.eltype)].zeros(
                                                         A,
-                                                        nq,
-                                                        testb:nvelocitydof()
+                                                        {nq,
+                                                        testb:nvelocitydof()}
                                                     )
     var qrange = [range.Unitrange(int64)].new(0, nq)
     var half = lambda.new(
@@ -582,7 +580,6 @@ local terraform nonlinear_maxwellian_inflow(
                     i: int64,
                     A: A.type,
                     transform: transform.type,
-                    nv: nv.type,
                     qvlhs: qvlhs.type,
                     testb: testb.type,
                     trialb: trialb.type,
@@ -592,10 +589,10 @@ local terraform nonlinear_maxwellian_inflow(
                 )
                     var lhs = (
                         [
-                            dvector.DynamicVector(C.eltype)
+                            darray.DynamicVector(C.traits.eltype)
                         ].new(A, qvlhs:cols())
                     )
-                    for j = 0, nv do
+                    for j = 0, qvlhs:cols() do
                         lhs(j) = qvlhs(i, j)
                     end
                     var rho, u, theta = local_maxwellian(
@@ -616,8 +613,7 @@ local terraform nonlinear_maxwellian_inflow(
             {
                 A = A,
                 transform = transform,
-                nv = nv,
-                qvlhs = qvlhs,
+                qvlhs = qvlhs, 
                 testb = testb,
                 trialb = trialb,
                 qmaxwellian = qmaxwellian,
@@ -625,30 +621,25 @@ local terraform nonlinear_maxwellian_inflow(
                 halfmomq = halfmomq
             }
         )
+
     for i in qrange do
         half(i)
     end
-    var halfmom = [dmatrix.DynamicMatrix(C.eltype)].zeros(
+    var halfmom = [darray.DynamicMatrix(C.traits.eltype)].zeros(
                                                         A,
-                                                        testb:nspacedof(),
-                                                        testb:nvelocitydof()
+                                                        {testb:nspacedof(),
+                                                        testb:nvelocitydof()}
                                                     )
-    matrix.scaledaddmul(
-        [C.eltype](1),
-        false,
-        &testb.space,
-        false,
-        &halfmomq,
-        [C.eltype](0),
-        &halfmom
-    )
+
+    matrix.gemm([C.traits.eltype](1), &testb.space, &halfmomq, [C.traits.eltype](0), &halfmom)
+
     return halfmom
 end
 
 local PrepareInput = terralib.memoize(function(T, I)
     local Alloc = alloc.Allocator
     local terra prepare_input(
-        alloc: Alloc,
+        A: Alloc,
         -- Dimension of test space and the result arrays
         ntestx: int32,
         ntestv: int32,
@@ -680,7 +671,7 @@ local PrepareInput = terralib.memoize(function(T, I)
         trial_powers: &I
     )
         var testbasis = [TensorBasis(dual.DualNumber(T))].frombuffer(
-                                                            alloc,
+                                                            A,
                                                             true,
                                                             ntestx,
                                                             nqx,
@@ -692,7 +683,7 @@ local PrepareInput = terralib.memoize(function(T, I)
                                                             test_powers
                                                         )
         var trialbasis = [TensorBasis(dual.DualNumber(T))].frombuffer(
-                                                            alloc,
+                                                            A,
                                                             false,
                                                             nqx,
                                                             ntrialx,
@@ -704,10 +695,10 @@ local PrepareInput = terralib.memoize(function(T, I)
                                                             trial_powers
                                                         )
 
-        var normal = [dmatrix.DynamicMatrix(dual.DualNumber(T))].zeros(
-                                                                    alloc,
-                                                                    nqx,
-                                                                    VDIM
+        var normal = [darray.DynamicMatrix(dual.DualNumber(T))].zeros(
+                                                                    A,
+                                                                    {nqx,
+                                                                     VDIM}
                                                                 )
         for i = 0, nqx do
             for j = 0, ndim do
@@ -732,10 +723,10 @@ local PrepareInput = terralib.memoize(function(T, I)
         -- way to represent the unknown coefficients and their dual number
         -- representation is in matrix form with the spatial dof as row and the
         -- velocity dof as column indices.
-        var xvlhs = [dmatrix.DynamicMatrix(dual.DualNumber(T))].new(
-                                                                    alloc,
-                                                                    ntrialx,
-                                                                    ntrialv
+        var xvlhs = [darray.DynamicMatrix(dual.DualNumber(T))].new(
+                                                                    A,
+                                                                    {ntrialx,
+                                                                     ntrialv}
                                                                 )
         for i = 0, ntrialx do
             for j = 0, ntrialv do

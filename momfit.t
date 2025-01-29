@@ -5,11 +5,10 @@
 
 local base = require("base")
 local concepts = require("concepts")
-local dvector = require("dvector")
-local dmatrix = require("dmatrix")
+local darray = require("darray")
 local range = require("range")
 local recdiff = require("recdiff")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 import "terraform"
 
@@ -29,7 +28,8 @@ local terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
         R: RecDiff(Real),
         I: Interval(Real)
     }
-    var x = [dvector.DynamicVector(I.traits.eltype)].new(alloc, n)
+    var x = [darray
+.DynamicVector(I.traits.eltype)].new(alloc, n)
     ([range.Unitrange(int)].new(0, n)
         >> range.transform(
             [terra(i: int, n: int): I.traits.eltype
@@ -42,13 +42,15 @@ local terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
     if n > 10 then
         nmax = 2 * n
     end
-    var mom = [dvector.DynamicVector(R.traits.eltype)].zeros(alloc, nmax)
+    var mom = [darray
+.DynamicVector(R.traits.eltype)].zeros(alloc, nmax)
     recdiff.olver(alloc, rec, &mom)
 
     -- The quadrature weights on the reference domain (-1, 1) are given by
     -- the inverse DCT-III transform, that is a scaled DCT-II transform of
     -- the moments of the weight function in the Chebyshev basis.
-    var w = [dvector.DynamicVector(R.traits.eltype)].zeros(alloc, n)
+    var w = [darray
+.DynamicVector(R.traits.eltype)].zeros(alloc, n)
     for i = 0, n do
         var res = mom(0) / 2
         for j = 1, n do
@@ -59,7 +61,8 @@ local terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
     end
     w:scal([I.traits.eltype](2) / n)
 
-    var xq = [dvector.DynamicVector(I.traits.eltype)].new(alloc, n)
+    var xq = [darray
+.DynamicVector(I.traits.eltype)].new(alloc, n)
     (x >> range.transform([
             terra(
                 x: I.traits.eltype,
@@ -71,7 +74,8 @@ local terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
             {a = dom.left, b = dom.right})
     ):collect(&xq)
 
-    var wq = [dvector.DynamicVector(I.traits.eltype)].new(alloc, n)
+    var wq = [darray
+.DynamicVector(I.traits.eltype)].new(alloc, n)
     (w >> range.transform([
             terra(
                 w: I.traits.eltype,

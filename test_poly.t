@@ -16,7 +16,7 @@ testenv "Static polynomial" do
     
     testset "eval" do
         terracode
-            var p = polynomial.from(-1,2,-6,2)
+            var p = polynomial.from({-1,2,-6,2})
         end
         test p(3)==5
     end

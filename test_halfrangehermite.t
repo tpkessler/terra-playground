@@ -5,7 +5,7 @@
 
 local alloc = require("alloc")
 local quad = require("halfrangehermite")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local lambda = require("lambda")
 local range = require("range")
 

@@ -165,7 +165,8 @@ terra threadpool:__dtor()
     -- main thread.
     self.joiner:__dtor()
     self.threads:__dtor()
-    self.work_queue:__dtor()
+    -- FIXME Segfaults!
+    -- self.work_queue:__dtor()
     self.done_signal:__dtor()
     self.done_mutex:__dtor()
     self.work_signal:__dtor()

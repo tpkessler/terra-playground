@@ -8,10 +8,7 @@ import "terraform"
 local base = require("base")
 local err = require("assert")
 local concepts = require("concepts")
-local matbase = require("matrix")
-local vecbase = require("vector")
-local matblas = require("matrix_blas_dense")
-local mathfun = require("mathfuns")
+local tmath = require("tmath")
 local lapack = require("lapack")
 
 local Bool   = concepts.Bool
@@ -21,20 +18,20 @@ local Matrix = concepts.Matrix(Number)
 
 local BLASNumber = concepts.BLASNumber
 local BLASVector = concepts.BLASVector(BLASNumber)
-local BLASMatrix = concepts.BLASDenseMatrix(BLASNumber)
+local BLASMatrix = concepts.BLASMatrix(BLASNumber)
 
 terraform factorize(a: &M, tol: T) where {M: Matrix, T: Number}
-    var n = a:rows()
+    var n = a:size(0)
     for i = 0, n do
         for j = 0, i + 1 do
             var sum = a:get(i, j)
             for k = 0, j do
-                sum = sum - a:get(i, k) * mathfun.conj(a:get(j, k))
+                sum = sum - a:get(i, k) * tmath.conj(a:get(j, k))
             end
             if i == j then
-                var sumabs = mathfun.abs(sum)
-                err.assert(mathfun.abs(sum - sumabs) < tol * sumabs + tol)
-                a:set(i, i, mathfun.sqrt(sumabs))
+                var sumabs = tmath.abs(sum)
+                err.assert(tmath.abs(sum - sumabs) < tol * sumabs + tol)
+                a:set(i, i, tmath.sqrt(sumabs))
             else
                 a:set(i, j, sum / a:get(j, j))
             end
@@ -48,9 +45,9 @@ terraform factorize(a: &M, tol: T) where {M: BLASMatrix, T: BLASNumber}
     lapack.potrf(lapack.ROW_MAJOR, @"L", n, adata, lda)
 end
 
-local conj = mathfun.conj
+local conj = tmath.conj
 terraform solve(trans: B, a: &M, x: &V) where {B: Bool, M: Matrix, V: Vector}
-    var n = a:rows()
+    var n = a:size(0)
     for i = 0, n do
         for k = 0, i do
             x:set(i, x:get(i) - a:get(i, k) * x:get(k))
@@ -61,7 +58,7 @@ terraform solve(trans: B, a: &M, x: &V) where {B: Bool, M: Matrix, V: Vector}
     for ii = 0, n do
         var i = n - 1 - ii
         for k = i + 1, n do
-            x:set(i, x:get(i) - mathfun.conj(a:get(k, i)) * x:get(k))
+            x:set(i, x:get(i) - tmath.conj(a:get(k, i)) * x:get(k))
         end
         x:set(i, x:get(i) / a:get(i, i))
     end
@@ -77,7 +74,7 @@ end
 
 local CholeskyFactory = terralib.memoize(function(M)
 
-    local T = M.eltype
+    local T = M.traits.eltype
     local Vector = concepts.Vector(T)
     local Matrix = concepts.Matrix(T)
     local Factorization = concepts.Factorization(T)
@@ -96,11 +93,11 @@ local CholeskyFactory = terralib.memoize(function(M)
     base.AbstractBase(cho)
 
     terra cho:rows()
-        return self.a:rows()
+        return self.a:size(0)
     end
 
     terra cho:cols()
-        return self.a:cols()
+        return self.a:size(1)
     end
 
     terra cho:factorize()
@@ -124,7 +121,7 @@ local CholeskyFactory = terralib.memoize(function(M)
     assert(Factorization(cho))
 
     cho.staticmethods.new = terra(a: &M, tol: Ts)
-        err.assert(a:rows() == a:cols())
+        err.assert(a:size(0) == a:size(1))
         return cho {a, tol}
     end
 

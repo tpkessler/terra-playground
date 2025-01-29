@@ -4,10 +4,10 @@
 -- SPDX-License-Identifier: MIT
 
 local alloc = require("alloc")
-local dvector = require("dvector")
+local darray = require("darray")
 local err = require("assert")
 local gauss = require("gauss")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 local function staticarray(tab)
     return terralib.constant(terralib.new(double[#tab], tab))
@@ -133,7 +133,7 @@ local terra select(n: int64)
 end
                        
 
-local dvecDouble = dvector.DynamicVector(double)
+local dvecDouble = darray.DynamicVector(double)
 local Alloc = alloc.Allocator
 local struct halfrangehermite_t {}
 gauss.QuadruleBase(halfrangehermite_t, dvecDouble, dvecDouble)

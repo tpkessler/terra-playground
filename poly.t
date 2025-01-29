@@ -3,28 +3,25 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local vec = require("svector")
-local mathfuns = require("mathfuns")
+local sarray = require("sarray")
+local tmath = require("tmath")
+local base = require("base")
 
 local Polynomial = terralib.memoize(function(T, N)
     
-    local svector = vec.StaticVector(T,N)
+    local svector = sarray.StaticVector(T,N)
 
-    local struct poly(Base){
+    local struct poly{
         coeffs : svector
     }
 
-    poly.staticmethods = {}
-
-    poly.metamethods.__getmethod = function(self, methodname)
-        return self.methods[methodname] or poly.staticmethods[methodname]
-    end
+    base.AbstractBase(poly)
 
     local _evalpoly = macro(function(self, x)
         local eval = terralib.newlist()
         local y = symbol(T)
         for i=N-2,0,-1 do
-            eval:insert(quote [y] = mathfuns.fusedmuladd(x, [y], self.coeffs(i)) end)
+            eval:insert(quote [y] = tmath.fusedmuladd(x, [y], self.coeffs(i)) end)
         end
         local M = N-1
         return quote
@@ -39,14 +36,12 @@ local Polynomial = terralib.memoize(function(T, N)
         return _evalpoly(self, x)
     end
 
-
     poly.metamethods.__apply = macro(function(self, x)
         return `self:eval(x)
     end)
 
-    poly.staticmethods.from = macro(function(...)
-        local args = {...}
-        return `poly{svector.from(args)}
+    poly.staticmethods.from = macro(function(args)
+        return `poly{svector.from([args])}
     end)
 
     return poly

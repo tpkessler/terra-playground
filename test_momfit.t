@@ -7,7 +7,7 @@ local alloc = require("alloc")
 local base = require("base")
 local range = require("range")
 local momfit = require("momfit")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 import "terratest/terratest"
 

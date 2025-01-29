@@ -5,12 +5,12 @@
 
 local alloc = require("alloc")
 local base = require("base")
-local dvector = require("dvector")
+local darray = require("darray")
 local random = require("random")
 local range = require("range")
 local tree = require("tree")
 local thread = require("thread")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 import "terratest/terratest"
 
@@ -214,7 +214,7 @@ testenv "Parallel for" do
         terracode
             var A: alloc.DefaultAllocator()
             var t = dtree.new(&A, 4.0, nil)
-            var v = [dvector.DynamicVector(double)].zeros(&A, 5)
+            var v = [darray.DynamicVector(double)].zeros(&A, 5)
             t:grow(&A, 2.0, 5.0)
             t.left:grow(&A, 1.0, 3.0)
             var go = lambda.new([

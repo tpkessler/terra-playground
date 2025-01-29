@@ -6,10 +6,10 @@
 local alloc = require("alloc")
 local base = require("base")
 local dual = require("dual")
-local dvector = require("dvector")
+local darray = require("darray")
 local concepts = require("concepts")
 local recdiff = require("recdiff")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 import "terraform"
 import "terratest/terratest"
@@ -54,9 +54,10 @@ for S, tol in pairs(tols) do
             assert(RecDiff(besselj))
 
             local N0 = 15
+            local dvec = darray.DynamicVector(T)
             terracode
                 var alloc: DefaultAlloc
-                var y = [dvector.DynamicVector(T)].new(&alloc, N0)
+                var y = dvec.new(&alloc, N0)
                 var x = escape
                     local val = 1.3
                     if isdual then

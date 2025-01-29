@@ -70,6 +70,18 @@ local AbstractBase = Base:new("AbstractBase",
 			local method = T.templates[name]
 			if method then
 				local sig, func = method(unpack(types))
+				if not func then
+					print(types)
+					for k,v in pairs(method.methods) do
+						print(k)
+						print(v)
+						print()
+					end
+					print(name)
+					print(sig)
+					print(func)
+					print()
+				end
 				if func then
 					if not sig:isvararg() then
 						--regular template dispatch

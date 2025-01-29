@@ -35,9 +35,8 @@ local CSRMatrix = terralib.memoize(function(T, I)
         return ("CSRMatrix(%s, %s)"):format(tostring(T), tostring(I))
     end
 
-    csr.eltype = T
-
     base.AbstractBase(csr)
+    csr.traits.eltype = T
 
     terra csr:rows()
         return self.rows

@@ -9,7 +9,7 @@ local base = require("base")
 local concepts = require("concepts")
 local template = require("template")
 local lambda = require("lambda")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local nfloat = require("nfloat")
 local err = require("assert")
 
@@ -178,12 +178,12 @@ local unitrange = terralib.memoize(function(T)
         terra(a : T, b : T) return new(a, b, false) end
     })
 
-    terra range:size()
+    terra range:length()
         return self.b - self.a
     end
 
     range.metamethods.__apply = terra(self : &range, i : size_t)
-        err.assert(i < self:size())
+        err.assert(i < self:length())
         return self.a + i
     end
 
@@ -237,12 +237,12 @@ local steprange = terralib.memoize(function(T)
         terra(a : T, b : T, step : T) return new(a, b, step, false) end
     })
     
-    terra range:size() : size_t
+    terra range:length() : size_t
         return truncate((self.b-self.a) / self.step)
     end
 
     range.metamethods.__apply = terra(self : &range, i : size_t)
-        err.assert(i < self:size())
+        err.assert(i < self:length())
         return self.a + i * self.step
     end
 
@@ -1196,6 +1196,32 @@ local reverse = macro(function()
     --call transform to apply the above macro
     return `transform(rev)
 end)
+
+--math functions
+
+terraform tmath.isapprox(A : &V, v : T, atol : S) where {V : concepts.Range, T : concepts.Number, S : concepts.Real}
+    for a in A do
+        if not tmath.isapprox(a, v, atol) then
+            return false
+        end
+    end
+    return true
+end
+
+terraform tmath.isapprox(A : &V, rn : &R, atol : S) where {V : concepts.Range, R : concepts.Range, S : concepts.Real}
+    for t in zip(A, rn) do
+        var a, v = t
+        if not tmath.isapprox(a, v, atol) then
+            return false
+        end
+    end
+    return true
+end
+
+terraform tmath.isapprox(A : &V, rn : R, atol : S) where {V : concepts.Range, R : concepts.Range, S : concepts.Real}
+    return tmath.isapprox(A, &rn, atol)
+end
+
 
 --export functionality for developing new ranges
 local develop = {
