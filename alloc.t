@@ -66,6 +66,9 @@ local terra abort_on_error(ptr : &opaque, size : size_t)
     end
 end
 
+local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
+    return  ((size + alignment - 1) / alignment) * alignment
+end
 
 local concept RawAllocator
     terra Self:__allocate(blk: &block, elsize: size_t, counter: size_t) end
@@ -167,7 +170,10 @@ local DefaultAllocator = function(options)
             var ptr: &opaque
             escape
                 if Alignment ~= 0 then
-                    emit quote ptr = C.aligned_alloc([Alignment], sz) end
+                    emit quote 
+                        var newsz = round_to_aligned(sz, Alignment) / elsize
+                        ptr = C.aligned_alloc(Alignment, newsz * elsize) 
+                    end
                 else
                     emit quote ptr = C.malloc(sz) end
                 end
@@ -192,9 +198,11 @@ local DefaultAllocator = function(options)
             escape
                 if Alignment ~= 0 then
                     emit quote
-                        ptr = C.aligned_alloc([Alignment], sz)
+                        var newsz = round_to_aligned(sz, Alignment) / elsize
+                        ptr = C.aligned_alloc(Alignment, newsz * elsize)
+                        C.memcpy(ptr, blk.ptr, blk.nbytes)
+                        C.free(blk.ptr)
                     end
-                    emit `C.memcpy(ptr, blk.ptr, blk.nbytes)
                 else
                     emit quote ptr = C.realloc(blk.ptr, sz) end
                 end
