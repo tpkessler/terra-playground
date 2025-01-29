@@ -23,7 +23,7 @@ import "terraform"
 local C = terralib.includec("stdio.h")
 
 local base = require("base")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local concepts = require("concepts")
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
@@ -79,7 +79,7 @@ local significant_part_mantissa = macro(function(value)
     return `value.data.d[M-1]
 end)
 
---shift significat 64-bit part of mantissa
+--shift significant 64-bit part of mantissa
 local terra shiftandscale(n : uint64, e : int)
     var res = n
     var k = 0
@@ -92,7 +92,6 @@ end
 
 
 local FixedFloat = terralib.memoize(function(N)
-
     --float_type[N] stores the high-precision number using the following layout
     --local M = N / 64
     --struct float_type
@@ -125,6 +124,7 @@ local FixedFloat = terralib.memoize(function(N)
     --get the context corresponding to precision N
     local ctx = context[N]:get()
 
+    --arbitrary precision float is a wrapper around 'ctype'
     local struct nfloat {
         data: ctype
     }
@@ -274,7 +274,7 @@ local FixedFloat = terralib.memoize(function(N)
     local boolean = {
         __eq = cmp(0),
         __lt = cmp(-1),
-        __gt = cmp(1),
+        __gt = cmp(1)
     }
 
     for key, method in pairs(boolean) do

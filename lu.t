@@ -8,7 +8,7 @@ import "terraform"
 local base = require("base")
 local err = require("assert")
 local concepts = require("concepts")
-local mathfun = require("mathfuns")
+local tmath = require("tmath")
 local lapack = require("lapack")
 
 local Matrix = concepts.Matrix
@@ -18,7 +18,7 @@ local Integer = concepts.Integer
 
 terraform factorize(a : &M, p : &P, tol : T)
     where {M : Matrix(Number), P : Vector(Integer), T : Number}
-    var n = a:rows()
+    var n = a:size(0)
     for i = 0, n do
         p:set(i, i)
     end
@@ -26,7 +26,7 @@ terraform factorize(a : &M, p : &P, tol : T)
         var maxA = [tol.type](0)
         var imax = i
         for k = i, n do
-            var absA = mathfun.abs(a:get(k, i))
+            var absA = tmath.abs(a:get(k, i))
             if absA > maxA then
                 maxA = absA
                 imax = k
@@ -58,7 +58,7 @@ terraform factorize(a : &M, p : &P, tol : T)
     end
 end
 
-local BLASMatrix = concepts.BLASDenseMatrix
+local BLASMatrix = concepts.BLASMatrix
 local ContiguousVector = concepts.ContiguousVector
 local BLASNumber = concepts.BLASNumber
 
@@ -73,10 +73,10 @@ terraform factorize(a: &M, p: &P, tol: T)
 end
 
 local Bool = concepts.Bool
-local conj = mathfun.conj
+local conj = tmath.conj
 terraform solve(trans: B, a: &M, p: &P, x: &V)
     where {B: Bool, M: Matrix(Number), P: Vector(Integer), V: Vector(Number)}
-    var n = a:rows()
+    var n = a:size(0)
     if not trans then
         for i = 0, n do
             var idx = p:get(i)
@@ -147,7 +147,7 @@ terraform solve(trans: B, a: &M, p: &P, x: &V)
     var nx, xdata, incx = x:getblasinfo()
     var lapack_trans: rawstring
     if trans then
-        lapack_trans = [get_trans(a.type.type.eltype)]
+        lapack_trans = [get_trans(M.traits.eltype)]
     else
         lapack_trans = "N"
     end
@@ -166,7 +166,7 @@ end
 
 local LUFactory = terralib.memoize(function(M, P)
 
-    local T = M.eltype
+    local T = M.traits.eltype
     local Vector = concepts.Vector(T)
     local VectorInteger = concepts.Vector(Integer)
     local Matrix = concepts.Matrix(T)
@@ -189,11 +189,11 @@ local LUFactory = terralib.memoize(function(M, P)
     base.AbstractBase(lu)
 
     terra lu:rows()
-        return self.a:rows()
+        return self.a:size(0)
     end
 
     terra lu:cols()
-        return self.a:cols()
+        return self.a:size(1)
     end
 
     terra lu:factorize()
@@ -217,8 +217,8 @@ local LUFactory = terralib.memoize(function(M, P)
     assert(Factorization(lu))
 
     lu.staticmethods.new = terra(a: &M, p: &P, tol: Ts)
-        err.assert(a:rows() == a:cols())
-        err.assert(p:size() == a:rows())
+        err.assert(a:size(0) == a:size(1))
+        err.assert(p:length() == a:size(0))
         return lu {a, p, tol}
     end
 

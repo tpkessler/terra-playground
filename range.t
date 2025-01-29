@@ -9,7 +9,7 @@ local base = require("base")
 local concepts = require("concepts")
 local template = require("template")
 local lambda = require("lambda")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local nfloat = require("nfloat")
 local err = require("assert")
 
@@ -72,11 +72,30 @@ local RangeBase = function(Range, iterator_t)
         then
             local Adapter = adapter_type.generator
             local A = Adapter(self_type, adapter_type)
-            return quote
-                var newrange = A{self, adapter}
-            in
-                newrange
-            end
+            -- HACK Trigger init() manually
+            -- Normally, we would do return `A {self, adapter}
+            -- However, the current RAII implementation does not cover all
+            -- possible cases for an init() call yet.
+            -- Below code first declares an element of type A and then
+            -- fills the entries of A by the corresponding value. The situation
+            -- is complicated by the fact that each adaptor has different
+            -- entries names. Hence, we need to do a little bit of meta
+            -- programming to extract the name of the struct field.
+            assert(#A.entries == 2)
+            local newrange = symbol(A)
+            return (
+                quote 
+                    escape
+                        emit quote var [newrange] end
+                        for i, v in ipairs{self, adapter} do
+                            local name = A.entries[i].field
+                            emit quote [newrange].[name] = v end
+                        end
+                    end
+                in
+                    [newrange]
+                end
+            )
         end
     end)
 
@@ -159,12 +178,12 @@ local unitrange = terralib.memoize(function(T)
         terra(a : T, b : T) return new(a, b, false) end
     })
 
-    terra range:size()
+    terra range:length()
         return self.b - self.a
     end
 
     range.metamethods.__apply = terra(self : &range, i : size_t)
-        err.assert(i < self:size())
+        err.assert(i < self:length())
         return self.a + i
     end
 
@@ -218,12 +237,12 @@ local steprange = terralib.memoize(function(T)
         terra(a : T, b : T, step : T) return new(a, b, step, false) end
     })
     
-    terra range:size() : size_t
+    terra range:length() : size_t
         return truncate((self.b-self.a) / self.step)
     end
 
     range.metamethods.__apply = terra(self : &range, i : size_t)
-        err.assert(i < self:size())
+        err.assert(i < self:length())
         return self.a + i * self.step
     end
 
@@ -707,11 +726,7 @@ local adapter_view_factory = function(Adapter)
                 end
             end
             --create and return wrapper object by value
-            return quote
-                var v = view{n}
-            in
-                v
-            end
+            return `view {n}
         end)
     return factory
 end
@@ -724,11 +739,7 @@ local adapter_simple_factory = function(Adapter)
         }
         simple.generator = Adapter
         --create and return simple object by value
-        return quote
-            var v = simple{}
-        in
-            v
-        end
+        return `simple {}
     end)
     return factory
 end
@@ -1185,6 +1196,32 @@ local reverse = macro(function()
     --call transform to apply the above macro
     return `transform(rev)
 end)
+
+--math functions
+
+terraform tmath.isapprox(A : &V, v : T, atol : S) where {V : concepts.Range, T : concepts.Number, S : concepts.Real}
+    for a in A do
+        if not tmath.isapprox(a, v, atol) then
+            return false
+        end
+    end
+    return true
+end
+
+terraform tmath.isapprox(A : &V, rn : &R, atol : S) where {V : concepts.Range, R : concepts.Range, S : concepts.Real}
+    for t in zip(A, rn) do
+        var a, v = t
+        if not tmath.isapprox(a, v, atol) then
+            return false
+        end
+    end
+    return true
+end
+
+terraform tmath.isapprox(A : &V, rn : R, atol : S) where {V : concepts.Range, R : concepts.Range, S : concepts.Real}
+    return tmath.isapprox(A, &rn, atol)
+end
+
 
 --export functionality for developing new ranges
 local develop = {

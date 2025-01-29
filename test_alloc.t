@@ -3,11 +3,11 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local io = terralib.includec("stdio.h")
 import "terratest/terratest"
 
 local alloc = require("alloc")
 local DefaultAllocator = alloc.DefaultAllocator()
+local TracingAllocator = alloc.TracingAllocator()
 
 for _, alignment in ipairs{0, 64} do
 
@@ -202,7 +202,71 @@ for _, alignment in ipairs{0, 64} do
                 test x:get(i)==i
             end
         end
+    end
 
+    testenv "Tracing allocator" do
+        local std = {}
+        std.io = terralib.includec("stdio.h")
+        std.lib = terralib.includec("stdlib.h")
+        local ffi = require("ffi")
+
+        local function lua_reachable_bytes(tmpname)
+            local input = assert(io.open(tmpname, "r"))
+            local output = input:read("*all")
+            input:close()
+            local _, _, bytes = string.find(output, "(%d+)")
+            return tonumber(bytes)
+        end
+
+        local get_reachable_bytes = (
+            terralib.cast(
+                {int, rawstring} -> int,
+                function(len, tmpname)
+                    return lua_reachable_bytes(ffi.string(tmpname, len))
+                end
+            )
+        )
+
+        terracode
+            var libc: DefaultAllocator
+        end
+
+        testset "RAII clean up" do
+            local tmpname = os.tmpname()
+            terracode
+                var stream = std.io.fopen([tmpname], "w")
+                do
+                    var tralloc = TracingAllocator.from(&libc)
+                    TracingAllocator.setstream(stream)
+                    do
+                        var blk = tralloc:new(sizeof(double), 2)
+                    end
+                end
+                std.io.fclose(stream)
+                var all_cleaned = get_reachable_bytes([#tmpname], [tmpname])
+            end
+
+            test all_cleaned == 0
+        end
+
+        testset "Leaking memory" do
+            local tmpname = os.tmpname()
+            terracode
+                var stream = std.io.fopen([tmpname], "w")
+                do
+                    var tralloc = TracingAllocator.from(&libc)
+                    TracingAllocator.setstream(stream)
+                    do
+                        var blk = tralloc:new(sizeof(double), 3)
+                        blk.alloc.data = nil
+                        blk.alloc.ftab = nil
+                    end
+                end
+                std.io.fclose(stream)
+                var leaking_alloc = get_reachable_bytes([#tmpname], [tmpname])
+            end
+            test leaking_alloc == [sizeof(double) * 3]
+        end
     end
 end
 

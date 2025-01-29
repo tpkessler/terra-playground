@@ -6,7 +6,7 @@
 import "terratest/terratest"
 
 local C = terralib.includec("string.h")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 local concepts = require("concepts")
 local complex = require("complex")
 local nfloat = require("nfloat")

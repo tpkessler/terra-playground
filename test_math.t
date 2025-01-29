@@ -5,7 +5,7 @@
 
 import "terratest/terratest"
 
-local tmath = require('mathfuns')
+local tmath = require('tmath')
 local io = terralib.includec("stdio.h")
 local C = terralib.includec("string.h")
 
@@ -35,7 +35,8 @@ local funs_single_var = {
     "abs"
 }
 
-testenv "All single variable math functions" do
+
+testenv "All single variable tmath functions" do
     --test correctness of output type
     for k,f in ipairs(funs_single_var) do
         local mathfun = tmath[f]

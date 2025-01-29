@@ -108,6 +108,16 @@ local BLASNumber = newconcept("BLASNumber")
 BLASNumber:addfriend(BLASFloat)
 BLASNumber:addfriend(BLASComplexFloat)
 
+local concept Iterator
+    Self.methods.getvalue = methodtag
+    Self.methods.next = methodtag
+    Self.methods.isvalid = methodtag
+end
+
+local concept Range
+    Self.methods.getiterator = {&Self} -> {Iterator}
+end
+
 local concept Stack(T) where {T}
     Self.traits.eltype = traittag
     Self.methods.get  = {&Self, Integer} -> T
@@ -123,19 +133,19 @@ local concept DStack(T) where {T}
 end
 
 local concept Vector(T) where {T}
-    Self:inherit(Stack(T))
+    local S = Stack(T)
+    Self:inherit(S)
     Self.methods.fill  = {&Self, T} -> {}
-    Self.methods.clear = {&Self} -> {}
-    Self.methods.sum   = {&Self} -> T
+    Self.methods.copy = {&Self, &S} -> {}
+    Self.methods.swap = {&Self, &S} -> {}
 end
 
 concept Vector(T) where {T : Number}
     local S = Stack(T)
-    Self.methods.copy = {&Self, &S} -> {}
-    Self.methods.swap = {&Self, &S} -> {}
-    Self.methods.scal = {&Self, T} -> {}
+    Self.methods.scal = {&Self, Number} -> {}
     Self.methods.axpy = {&Self, T, &S} -> {}
     Self.methods.dot  = {&Self, &S} -> {T}
+    Self.methods.sum  = {&Self} -> T
 end
 
 concept Vector(T) where {T : Float}
@@ -152,30 +162,43 @@ local concept BLASVector(T) where {T : BLASNumber}
     Self.methods.getblasinfo = {&Self} -> {Integer, BLASNumber, Integer}
 end
 
+local concept MatrixStack(T) where {T}
+    --Self.methods.size = {&Self, Integer} -> Integer
+    Self.methods.get = {&Self, Integer, Integer} -> {T}
+    Self.methods.set = {&Self, Integer, Integer, T} -> {}
+end
+
 local concept Operator(T) where {T}
-    Self.methods.rows = {&Self} -> Integer
-    Self.methods.cols = {&Self} -> Integer
+    --Self.methods.rows = {&Self} -> Integer
+    --Self.methods.cols = {&Self} -> Integer
     Self.methods.apply = {&Self, Bool, T, &Vector(T), T, &Vector(T)} -> {}
 end
 
 local concept Matrix(T) where {T}
-    Self:inherit(Operator(T))
-    Self.methods.set = {&Self, Integer, Integer, T} -> {}
-    Self.methods.get = {&Self, Integer, Integer} -> {T}
+    local S = MatrixStack(T)
+    Self:inherit(S)
 
-    Self.methods.fill = {&Self, T} -> {}
-    Self.methods.clear = {&Self} -> {}
-    Self.methods.copy = {&Self, Bool, &Self} -> {}
-    Self.methods.swap = {&Self, Bool, &Self} -> {}
+    --Self.methods.set = {&Self, Integer, Integer, T} -> {}
+    --Self.methods.get = {&Self, Integer, Integer} -> {T}
 
-    Self.methods.scal = {&Self, T} -> {}
-    Self.methods.axpy = {&Self, T, Bool, &Self} -> {}
-    Self.methods.dot = {&Self, Bool, &Self} -> Number
+    --Self.methods.fill = {&Self, T} -> {}
+    --Self.methods.clear = {&Self} -> {}
+    --Self.methods.copy = {&Self, Bool, &Self} -> {}
+    --Self.methods.swap = {&Self, Bool, &Self} -> {}
+
+    --Self.methods.scal = {&Self, T} -> {}
+    --Self.methods.axpy = {&Self, T, Bool, &Self} -> {}
+    --Self.methods.dot = {&Self, Bool, &Self} -> Number
 end
 
-local concept BLASDenseMatrix(T) where {T : BLASNumber}
+local concept BLASMatrix(T) where {T : BLASNumber}
     Self:inherit(Matrix(T))
-    Self.methods.getblasdenseinfo = {&Self} -> {Integer, Integer, &BLASNumber, Integer}
+    Self.methods.getblasdenseinfo = {&Self} -> {Integer, Integer, &T, Integer}
+end
+
+local concept Transpose(M) where {M : Matrix(Any)}
+    Self:inherit(M)
+    Self.traits.istransposed = true
 end
 
 local concept Factorization(T) where {T}
@@ -230,14 +253,18 @@ return {
     Number = Number,
     BLASFloat = BLASFloat,
     BLASNumber = BLASNumber,
+    Iterator = Iterator,
+    Range = Range,
     Stack = Stack,
     DStack = DStack,
     Vector = Vector,
     ContiguousVector = ContiguousVector,
     BLASVector = BLASVector,
+    MatrixStack = MatrixStack,
     Operator = Operator,
     Matrix = Matrix,
-    BLASDenseMatrix = BLASDenseMatrix,
+    Transpose = Transpose,
+    BLASMatrix = BLASMatrix,
     Factorization = Factorization,
     Packed = Packed,
     SparsePacked = SparsePacked,

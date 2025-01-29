@@ -4,134 +4,50 @@
 -- SPDX-License-Identifier: MIT
 
 import "terraform"
+
 local concepts = require("concepts")
-local template = require("template")
-local tmath = require("mathfuns")
+local blas = require("blas")
 local err = require("assert")
+local vecblas = require("vector_blas")
 
-local Bool = concepts.Bool
 local Integer = concepts.Integer
-local Number = concepts.Number
 local Real = concepts.Real
-local Complex = concepts.Complex
+local Number = concepts.Number
+local Stack = concepts.Stack
 local Matrix = concepts.Matrix
+local Transpose = concepts.Transpose
 
-local function get(A, atrans, i, j)
-    if atrans then
-        return quote var x = [A]:get([j], [i]) in tmath.conj(x) end
-    else
-        return `[A]:get([i], [j])
-    end
-end
+local BLASFloat = concepts.BLASFloat
+local BLASComplexFloat = concepts.ComplexOverField(BLASFloat)
+local BLASNumber = concepts.BLASNumber
+local BLASVector = concepts.BLASVector
+local BLASMatrix = concepts.BLASMatrix
 
-local function kernel(C, beta, alpha, atrans, A, btrans, B)
-    local dim = quote
-        var d: uint64
-        if atrans then
-            d = [A]:rows()
-        else
-            d = [A]:cols()
-        end
-    in
-        d
-    end
-    return quote
-        for i = 0, [C]:rows() do
-            for j = 0, [C]:cols() do
-                var sum = beta * [C]:get(i, j)
-                for k = 0, [dim] do
-                    sum = sum + alpha * [get(A, atrans, i, k)]
-                                      * [get(B, btrans, k, j)]
-                end
-                [C]:set(i, j, sum)
-            end
-        end
-    end
-end
+local BLASMatrixReal = BLASMatrix(BLASFloat)
+local BLASMatrixComplex = BLASMatrix(BLASComplexFloat)
 
-local terraform scaledaddmul(
-    alpha: T,
-    atrans: bool,
-    a: &M1,
-    btrans: bool,
-    b: &M2,
-    beta: T,
-    c: &M3
-) where {T: Number, M1: Matrix(Number), M2: Matrix(Number), M3: Matrix(Number)}
-    if atrans and btrans then
-        err.assert(c:rows() == a:cols() and c:cols() == b:rows())
-        err.assert(a:rows() == b:cols())
-        [kernel(`c, `beta, `alpha, true, `a, true, `b)]
-    elseif atrans and not btrans then
-        err.assert(c:rows() == a:cols() and c:cols() == b:cols())
-        err.assert(a:rows() == b:rows())
-        [kernel(`c, `beta, `alpha, true, `a, false, `b)]
-    elseif not atrans and btrans then
-        err.assert(c:rows() == a:rows() and c:cols() == b:rows())
-        err.assert(a:cols() == b:cols())
-        [kernel(`c, `beta, `alpha, false, `a, true, `b)]
-    else
-        err.assert(c:rows() == a:rows() and c:cols() == b:cols())
-        err.assert(a:cols() == b:rows())
-        [kernel(`c, `beta, `alpha, false, `a, false, `b)]
-    end
-end
+local MatrixBase = function(matrix)
 
-local function MatrixBase(M)
-    local T = M.eltype
+	local T = matrix.traits.eltype
+    local Concept = {
+		Stack = concepts.Stack(T),
+		Vector = concepts.Vector(T),
+        Matrix = concepts.Matrix(T)
+	}
 
-    local Vector = concepts.Vector(T)
-    local Operator = concepts.Operator(T)
-    local Matrix = concepts.Matrix(T)
-
-    terraform M:apply(trans : bool, alpha : T, x : &V1, beta : T, y : &V2)
-        where {V1: Vector, V2: Vector}
-        if trans then
-            var ns = self:rows()
-            var ms = self:cols()
-            var nx = x:size()
-            var ny = y:size()
-            err.assert(ms == ny and ns == nx)
-            for i = 0, ms do
-                var res = [M.eltype](0)
-                for j = 0, ns do
-                    res = res + [get(self, true, i, j)] * x:get(j)
-                end
-                y:set(i, beta * y:get(i) + alpha * res)
-            end
-        else
-            var ns = self:rows()
-            var ms = self:cols()
-            var nx = x:size()
-            var ny = y:size()
-            err.assert(ns == ny and ms == nx)
-            for i = 0, ns do
-                var res = [M.eltype](0)
-                for j = 0, ms do
-                    res = res + self:get(i, j) * x:get(j)
-                end
-                y:set(i, beta * y:get(i) + alpha * res)
-            end
-        end
-    end
-
-    assert(Operator(M))
-    
-    terra M:fill(a : T)
-        var rows = self:rows()
-        var cols = self:cols()
-        for i = 0, rows do
-            for j = 0, cols do
+    terra matrix:fill(a : T)
+        for i = 0, self:rows() do
+            for j = 0, self:cols() do
                 self:set(i, j, a)
             end
         end
     end
 
-    terra M:clear()
+    terra matrix:clear()
         self:fill(0)
     end
-
-    terraform M:copy(trans : bool, other : &M) where {M : Matrix}
+   
+    terraform matrix:copy(trans : bool, other : &M) where {M : Concept.Matrix}
         var ns = self:rows()
         var ms = self:cols()
         var no = other:rows()
@@ -153,7 +69,7 @@ local function MatrixBase(M)
         end
     end
 
-    terraform M:swap(trans : bool, other : &M) where {M : Matrix}
+    terraform matrix:swap(trans : bool, other : &M) where {M : Concept.Matrix}
         var ns = self:rows()
         var ms = self:cols()
         var no = other:rows()
@@ -181,7 +97,7 @@ local function MatrixBase(M)
         end
     end
 
-    terra M:scal(a : T)
+    terra matrix:scal(a : T)
         var ns = self:rows()
         var ms = self:cols()
         for i = 0, ns do
@@ -191,7 +107,7 @@ local function MatrixBase(M)
         end
     end
 
-    terraform M:axpy(a : T, trans : bool, other : &M) where {M : Matrix}
+    terraform matrix:axpy(a : T, trans : bool, other : &M) where {M : Concept.Matrix}
         var ns = self:rows()
         var ms = self:cols()
         var no = other:rows()
@@ -213,7 +129,7 @@ local function MatrixBase(M)
         end
     end
 
-    terraform M:dot(trans : bool, other : &M) where {M : Matrix}
+    terraform matrix:dot(trans : bool, other : &M) where {M : Concept.Matrix}
         var ns = self:rows()
         var ms = self:cols()
         var no = other:rows()
@@ -242,11 +158,159 @@ local function MatrixBase(M)
             return sum
         end
     end
-    
-    assert(Matrix(M))
+
+    assert(Concept.Matrix(matrix))
+end
+
+
+--gemv - naive falback implementation
+--compute y[i] = alpha * A[i,j] * x[j] + beta * y[i]
+local terraform gemv(alpha : T, A : &M, x : &V1, beta : T, y : &V2) 
+        where {T : Number, M : Matrix(Number),  V1 : Stack(Number), V2 : Stack(Number)}
+    var ns = A:rows()
+    var ms = A:cols()
+    var nx = x:length()
+    var ny = y:length()
+    err.assert(ns == ny and ms == nx)
+    for i = 0, ns do
+        var res = T(0)
+        for j = 0, ms do
+            res = res + A:get(i, j) * x:get(j)
+        end
+        y:set(i, beta * y:get(i) + alpha * res)
+    end
+end
+
+--gemv - blas wrappers
+local gemvsetup = macro(function(self, x, y)
+    return quote
+        var nx, xptr, incx = x:getblasinfo()
+        var ny, yptr, incy = y:getblasinfo()
+        var rows, cols, aptr, ld = self:getblasdenseinfo()
+        err.assert(rows == ny and cols == nx)
+    in
+        xptr, incx, yptr, incy, rows, cols, aptr, ld
+    end
+end)
+
+--compute y[i] = alpha * A[i,j] * x[j] + beta * y[i]
+terraform gemv(alpha : T, A : &M, x : &V1, beta : T, y : &V2) 
+        where {T : BLASNumber, M : BLASMatrix(BLASNumber),  V1 : BLASVector(BLASNumber), V2 : BLASVector(BLASNumber)}
+    var xptr, incx, yptr, incy, rows, cols, aptr, ld = gemvsetup(A, x, y)
+    blas.gemv(blas.RowMajor, blas.NoTrans, rows, cols, alpha, aptr, ld, xptr, incx, beta, yptr, incy)
+end
+
+terraform gemv(alpha : T, A : &M, x : &V1, beta : T, y : &V2) 
+        where {T : BLASFloat, M : Transpose(BLASMatrixReal),  V1 : BLASVector(BLASFloat), V2 : BLASVector(BLASFloat)}
+    var xptr, incx, yptr, incy, rows, cols, aptr, ld = gemvsetup(A, x, y)
+    blas.gemv(blas.RowMajor, blas.Trans, cols, rows, alpha, aptr, ld, xptr, incx, beta, yptr, incy)
+end
+
+terraform gemv(alpha : T, A : &M, x : &V1, beta : T, y : &V2) 
+        where {T : BLASComplexFloat, M : Transpose(BLASMatrixComplex),  V1 : BLASVector(BLASComplexFloat), V2 : BLASVector(BLASComplexFloat)}
+    var xptr, incx, yptr, incy, rows, cols, aptr, ld = gemvsetup(A, x, y)
+    blas.gemv(blas.RowMajor, blas.ConjTrans, cols, rows, alpha, aptr, ld, xptr, incx, beta, yptr, incy)
+end
+
+
+--gemm - naive falback implementation
+--C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
+local terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
+        where {T : Number, M1 : Matrix(Number), M2 : Matrix(Number), M3 : Matrix(Number)}
+    err.assert(A:cols() == B:rows(), "ArgumentError: matrix dimensions in C = alpha*C + beta * A * B are not consistent.")
+    err.assert(C:rows() == A:rows() and C:cols() == B:cols(), "ArgumentError: matrix dimensions in C = alpha*C + beta * A * B are not consistent.")
+    for i = 0, C:rows() do
+        for j = 0, C:cols() do
+            var sum = beta * C:get(i, j)
+            for k = 0, A:cols() do
+                sum = sum + alpha * A:get(i, k) * B:get(k, j)
+            end
+            C:set(i, j, sum)
+        end
+    end
+end
+
+--gemm - blas wrappers
+local gemmsetup = macro(function(A, B, C)
+    return quote
+        var na, ma, ptra, lda = A:getblasdenseinfo()
+        var nb, mb, ptrb, ldb = B:getblasdenseinfo()
+        var nc, mc, ptrc, ldc = C:getblasdenseinfo()
+        err.assert(nc == na)
+        err.assert(mc == mb)
+        err.assert(ma == nb)
+        var m : uint64 = nc
+        var n : uint64 = mc
+        var k : uint64 = ma
+    in
+        n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc
+    end
+end)
+
+--C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
+terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
+        where {T : Real, M1 : BLASMatrix(BLASFloat), M2 : BLASMatrix(BLASFloat), M3 : BLASMatrix(BLASFloat)}
+    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
+    blas.gemm(blas.RowMajor, blas.NoTrans, blas.NoTrans, 
+        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+end
+
+--C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
+terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
+        where {T : Real, M1 : Transpose(BLASMatrixReal), M2 : BLASMatrixReal, M3 : BLASMatrixReal}
+    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
+    blas.gemm(blas.RowMajor, blas.Trans, blas.NoTrans, 
+        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+end
+
+--C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
+terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
+        where {T : Real, M1 : BLASMatrixReal, M2 : Transpose(BLASMatrixReal), M3 : BLASMatrixReal}
+    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
+    blas.gemm(blas.RowMajor, blas.NoTrans, blas.Trans, 
+        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+end
+
+--C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
+terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
+        where {T : Real, M1 : Transpose(BLASMatrixReal), M2 : Transpose(BLASMatrixReal), M3 : BLASMatrixReal}
+    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
+    blas.gemm(blas.RowMajor, blas.Trans, blas.Trans, 
+        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+end
+
+--C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
+terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
+        where {T : Number, M1 : BLASMatrixComplex, M2 : BLASMatrixComplex, M3 : BLASMatrixComplex}
+    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
+    blas.gemm(blas.RowMajor, blas.NoTrans, blas.NoTrans, 
+        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+end
+
+--C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
+terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
+        where {T : Number, M1 : Transpose(BLASMatrixComplex), M2 : BLASMatrixComplex, M3 : BLASMatrixComplex}
+    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
+    blas.gemm(blas.RowMajor, blas.ConjTrans, blas.NoTrans, 
+        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+end
+
+terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
+        where {T : Number, M1 : BLASMatrixComplex, M2 : Transpose(BLASMatrixComplex), M3 : BLASMatrixComplex}
+    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
+    blas.gemm(blas.RowMajor, blas.NoTrans, blas.ConjTrans, 
+        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+end
+
+terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
+        where {T : Number, M1 : Transpose(BLASMatrixComplex), M2 : Transpose(BLASMatrixComplex), M3 : BLASMatrixComplex}
+    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
+    blas.gemm(blas.RowMajor, blas.ConjTrans, blas.ConjTrans, 
+        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
 end
 
 return {
-    scaledaddmul = scaledaddmul,
     MatrixBase = MatrixBase,
+    gemv = gemv,
+    gemm = gemm
 }

@@ -5,6 +5,15 @@
 
 -- Helper functions for tuples
 
+local function ntuple(T, N)
+    local types = terralib.newlist()
+    for k=1, N do
+        types:insert(T)
+    end
+    return tuple(unpack(types))
+end
+
+
 local function istuple(T)
   --[=[
   	Check if a given type is a tuple
@@ -92,6 +101,7 @@ local function tensortuple(T)
 end
 
 return {
+    ntuple = ntuple,
     istuple = istuple,
     unpacktuple = unpacktuple,
     dimensiontuple = dimensiontuple,

@@ -10,11 +10,9 @@ local C = terralib.includecstring[[
     #include <math.h>
 ]]
 
-import "terraform"
-
 local base = require("base")
 local concepts = require("concepts")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 local complex = terralib.memoize(function(T)
 
@@ -152,6 +150,7 @@ local complex = terralib.memoize(function(T)
 
     return complex
 end)
+
 
 return {
     complex = complex

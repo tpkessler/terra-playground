@@ -7,10 +7,9 @@ local alloc = require("alloc")
 local sparse = require("sparse")
 local nfloat = require("nfloat")
 local complex = require("complex")
-local dvector = require("dvector")
+local darray = require("darray")
 local matrix = require("matrix")
-local dmatrix = require("dmatrix")
-local tmath = require("mathfuns")
+local tmath = require("tmath")
 
 local complexDouble = complex.complex(double)
 local float256 = nfloat.FixedFloat(256)
@@ -28,8 +27,8 @@ local DefaultAlloc = alloc.DefaultAllocator()
 for T, tol in pairs(tols) do
     for _, I in pairs({int32, int64, uint32, uint64}) do
         local CSR = sparse.CSRMatrix(T, I)
-        local Vec = dvector.DynamicVector(T)
-        local Mat = dmatrix.DynamicMatrix(T)
+        local Vec = darray.DynamicVector(T)
+        local Mat = darray.DynamicMatrix(T)
         testenv(T, I) "Sparse CSR Matrix" do
             terracode
                 var alloc: DefaultAlloc
@@ -91,12 +90,12 @@ for T, tol in pairs(tols) do
                     for i = 1, rows do
                         c:set(i, i - 1, -1)
                     end
-                    var xv = Vec.from(&alloc, 1, 2, 3, 4, 5)
-                    var yv = Vec.ones_like(&alloc, &xv)
-                    var yvref = Vec.from(&alloc, -1, -3, -5, -7, -9)
+                    var xv = Vec.from(&alloc, {1, 2, 3, 4, 5})
+                    var yv = Vec.ones(&alloc, 5)
+                    var yvref = Vec.from(&alloc, {-1, -3, -5, -7, -9})
                     var alpha: T = -2
                     var beta: T = 3
-                    c:apply(false, alpha, &xv, beta, &yv)
+                    matrix.gemv(alpha, &c, &xv, beta, &yv)
                 end
 
                 test c:rows() == 5
@@ -120,9 +119,9 @@ for T, tol in pairs(tols) do
                     for i = 0, rows - 1 do
                         a:set(i, i + 1, -1)
                     end
-                    var b = Mat.new(&alloc, rows, cols)
+                    var b = Mat.new(&alloc, {rows, cols})
                     b:fill([T](2))
-                    var c = Mat.new(&alloc, rows, cols)
+                    var c = Mat.new(&alloc, {rows, cols})
                     c:fill([T](3))
                     matrix.scaledaddmul([T](1), false, &a, false, &b, [T](-1),&c)
                 end
