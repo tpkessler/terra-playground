@@ -24,6 +24,8 @@ if rawget(C, "stdout") == nil and rawget(C, "__stdoutp") ~= nil then
     rawset(C, "stdout", C.__stdoutp)
 end 
 
+local atomics = require("atomics")
+local base = require("base")
 local serde = require("serde")
 local interface = require("interface")
 local smartmem = require("smartmem")
@@ -47,6 +49,9 @@ terra Allocator:allocate(blk: &block, elsize: size_t, counter: size_t) end
 terra Allocator:reallocate(blk: &block, elsize: size_t, counter: size_t) end
 terra Allocator:deallocate(blk: &block) end
 terra Allocator:owns(blk: &block): bool end
+terra Allocator:__allocate(blk: &block, elsize: size_t, counter: size_t) end
+terra Allocator:__reallocate(blk: &block, elsize: size_t, counter: size_t) end
+terra Allocator:__deallocate(blk: &block) end
 Allocator:complete()
 
 --an allocator may also use one or more of the following options:
@@ -215,6 +220,81 @@ local DefaultAllocator = function(options)
     return generate_type(options_str)
 end
 
+require "terralibext"
+
+local TracingAllocator = terralib.memoize(function()
+    local struct tracing {
+        A: Allocator
+        used: uint64
+    }
+
+    function tracing.metamethods.__typename()
+        return "TracingAllocator"
+    end
+
+    base.AbstractBase(tracing)
+
+    local stream = global(&C.FILE)
+    local default_stream = `C.stderr
+    tracing.staticmethods.getstream = terra()
+        return stream
+    end
+
+    tracing.staticmethods.setstream = terra(locstream: &C.FILE)
+        stream = locstream
+    end
+
+    tracing.staticmethods.resetstream = terra()
+        stream = [default_stream]
+    end
+
+    local default_stream = `C.stderr
+    terra tracing:__init()
+        tracing.setstream([default_stream])
+        self.A.data = nil
+        self.A.ftab = nil
+        self.used = 0
+    end
+
+    terra tracing:__dtor()
+        C.fprintf(
+            stream,
+            "TRACING ALLOCATOR: Reachable bytes %zu\n",
+            self.used
+        )
+    end
+
+    tracing.staticmethods.from = terra(A: Allocator)
+        var tr: tracing
+        tr.A = A
+        return tr
+    end
+
+    terra tracing:__allocate(blk: &block, elsize: size_t, counter: size_t)
+        self.A:__allocate(blk, elsize, counter)
+        atomics.add(&self.used, blk:size_in_bytes())
+    end
+
+    terra tracing:__reallocate(blk: &block, elsize: size_t, counter: size_t)
+        var oldsz: uint64
+        atomics.store(&oldsz, blk:size_in_bytes())
+        self.A:__reallocate(blk, elsize, counter)
+        var sz: uint64
+        atomics.store(&sz, blk:size_in_bytes())
+        atomics.add(&self.used, sz - oldsz)
+    end
+
+    terra tracing:__deallocate(blk: &block)
+        atomics.sub(&self.used, blk:size_in_bytes())
+        self.A:__deallocate(blk)
+    end
+
+    AllocatorBase(tracing)
+    assert(Allocator:isimplemented(tracing))
+
+    return tracing
+end)
+
 --abstraction of a memory block with type information.
 local SmartObject = terralib.memoize(function(obj, options)
 
@@ -256,5 +336,6 @@ return {
     SmartObject = SmartObject,
     Allocator = Allocator,
     AllocatorBase = AllocatorBase,
-    DefaultAllocator = DefaultAllocator
+    DefaultAllocator = DefaultAllocator,
+    TracingAllocator = TracingAllocator,
 }
