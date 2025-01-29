@@ -72,11 +72,30 @@ local RangeBase = function(Range, iterator_t)
         then
             local Adapter = adapter_type.generator
             local A = Adapter(self_type, adapter_type)
-            return quote
-                var newrange = A{self, adapter}
-            in
-                newrange
-            end
+            -- HACK Trigger init() manually
+            -- Normally, we would do return `A {self, adapter}
+            -- However, the current RAII implementation does not cover all
+            -- possible cases for an init() call yet.
+            -- Below code first declares an element of type A and then
+            -- fills the entries of A by the corresponding value. The situation
+            -- is complicated by the fact that each adaptor has different
+            -- entries names. Hence, we need to do a little bit of meta
+            -- programming to extract the name of the struct field.
+            assert(#A.entries == 2)
+            local newrange = symbol(A)
+            return (
+                quote 
+                    escape
+                        emit quote var [newrange] end
+                        for i, v in ipairs{self, adapter} do
+                            local name = A.entries[i].field
+                            emit quote [newrange].[name] = v end
+                        end
+                    end
+                in
+                    [newrange]
+                end
+            )
         end
     end)
 
@@ -707,11 +726,7 @@ local adapter_view_factory = function(Adapter)
                 end
             end
             --create and return wrapper object by value
-            return quote
-                var v = view{n}
-            in
-                v
-            end
+            return `view {n}
         end)
     return factory
 end
@@ -724,11 +739,7 @@ local adapter_simple_factory = function(Adapter)
         }
         simple.generator = Adapter
         --create and return simple object by value
-        return quote
-            var v = simple{}
-        in
-            v
-        end
+        return `simple {}
     end)
     return factory
 end
