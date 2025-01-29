@@ -3,11 +3,11 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local io = terralib.includec("stdio.h")
 import "terratest/terratest"
 
 local alloc = require("alloc")
 local DefaultAllocator = alloc.DefaultAllocator()
+local TracingAllocator = alloc.TracingAllocator()
 
 for _, alignment in ipairs{0, 64} do
 
@@ -45,7 +45,10 @@ for _, alignment in ipairs{0, 64} do
             test y:isempty() == false
             test y:get(0) == 1.0
             test y:get(1) == 2.0
-            test y:size() == terralib.select(alignment == 0, 2, 64 / sizeof(double))
+            test y:size() == 2
+            if alignment ~= 0 then
+                test [uint64](y.ptr) % alignment == 0
+            end
         end
 
         testset "allocate - return - cast opaque block to typed block" do
@@ -57,7 +60,10 @@ for _, alignment in ipairs{0, 64} do
             test y:isempty() == false
             test y:get(0) == 1.0
             test y:get(1) == 2.0
-            test y:size() == terralib.select(alignment == 0, 2, 64 / sizeof(double))
+            test y:size() == 2
+            if alignment ~= 0 then
+                test [uint64](y.ptr) % alignment == 0
+            end
         end
 
         testset "__init - generated" do
@@ -67,7 +73,7 @@ for _, alignment in ipairs{0, 64} do
             test x.ptr == nil
             test x.nbytes == 0
             test x.alloc.data == nil
-            test x.alloc.tab == nil
+            test x.alloc.ftab == nil
             test x:size() == 0
             test x:isempty()
         end
@@ -82,7 +88,7 @@ for _, alignment in ipairs{0, 64} do
                 var y = x
             end
             test x:isempty() and y:owns_resource()
-            test y:size() == terralib.select(alignment == 0, 2, 64 / sizeof(int))
+            test y:size() == 2
             test y:get(0) == 1 and y:get(1) == 2
         end
 
@@ -97,7 +103,7 @@ for _, alignment in ipairs{0, 64} do
             end
             test x:owns_resource() and y:owns_resource()
             test y.ptr ~= x.ptr
-            test y:size() == terralib.select(alignment == 0, 2, 64 / sizeof(int))
+            test y:size() == 2
             test y:get(0) == 1 and y:get(1) == 2
         end
 
@@ -109,7 +115,7 @@ for _, alignment in ipairs{0, 64} do
                 var y = x
             end
             test y.ptr == x.ptr
-            test y:size() == terralib.select(alignment == 0, 2, 64 / sizeof(int))
+            test y:size() == 2
             test x:owns_resource() and y:borrows_resource()
         end
 
@@ -120,7 +126,7 @@ for _, alignment in ipairs{0, 64} do
             end
             test x.ptr == nil
             test x.alloc.data == nil
-            test x.alloc.tab == nil
+            test x.alloc.ftab == nil
             test x:size() == 0
             test x:isempty()
         end
@@ -131,7 +137,7 @@ for _, alignment in ipairs{0, 64} do
                 var y = x --y is a view of the data
                 y:__dtor()
             end
-            test x:size_in_bytes() == terralib.select(alignment == 0, 16, 64)
+            test x:size_in_bytes() == 16
             test x:owns_resource() and y:isempty()
         end
 
@@ -150,7 +156,7 @@ for _, alignment in ipairs{0, 64} do
                 var x = A:new(sizeof(double), 2)
             end
             test x:isempty() == false
-            test x:size_in_bytes() == terralib.select(alignment == 0, 16, 64)
+            test x:size_in_bytes() == 16
             test A:owns(&x)
         end
 
@@ -161,7 +167,7 @@ for _, alignment in ipairs{0, 64} do
             end
             test x.ptr == nil
             test x.alloc.data == nil
-            test x.alloc.tab == nil
+            test x.alloc.ftab == nil
             test x:size() == 0
             test x:isempty()
         end
@@ -174,7 +180,7 @@ for _, alignment in ipairs{0, 64} do
                 end
                 A:reallocate(&y, sizeof(double), 5)
             end
-            test y:size() == terralib.select(alignment == 0, 5, 64 / sizeof(double))
+            test y:size() == 5
             for i=0,2 do
                 test y:get(i)==i
             end
@@ -188,7 +194,7 @@ for _, alignment in ipairs{0, 64} do
                 end
                 var x = y:clone()
             end
-            test x:size() == terralib.select(alignment == 0, 3, 64 / sizeof(double))
+            test y:size() == 3
             test x.ptr ~= y.ptr
             test y:owns_resource()
             test x:owns_resource()
@@ -196,7 +202,71 @@ for _, alignment in ipairs{0, 64} do
                 test x:get(i)==i
             end
         end
+    end
 
+    testenv "Tracing allocator" do
+        local std = {}
+        std.io = terralib.includec("stdio.h")
+        std.lib = terralib.includec("stdlib.h")
+        local ffi = require("ffi")
+
+        local function lua_reachable_bytes(tmpname)
+            local input = assert(io.open(tmpname, "r"))
+            local output = input:read("*all")
+            input:close()
+            local _, _, bytes = string.find(output, "(%d+)")
+            return tonumber(bytes)
+        end
+
+        local get_reachable_bytes = (
+            terralib.cast(
+                {int, rawstring} -> int,
+                function(len, tmpname)
+                    return lua_reachable_bytes(ffi.string(tmpname, len))
+                end
+            )
+        )
+
+        terracode
+            var libc: DefaultAllocator
+        end
+
+        testset "RAII clean up" do
+            local tmpname = os.tmpname()
+            terracode
+                var stream = std.io.fopen([tmpname], "w")
+                do
+                    var tralloc = TracingAllocator.from(&libc)
+                    TracingAllocator.setstream(stream)
+                    do
+                        var blk = tralloc:new(sizeof(double), 2)
+                    end
+                end
+                std.io.fclose(stream)
+                var all_cleaned = get_reachable_bytes([#tmpname], [tmpname])
+            end
+
+            test all_cleaned == 0
+        end
+
+        testset "Leaking memory" do
+            local tmpname = os.tmpname()
+            terracode
+                var stream = std.io.fopen([tmpname], "w")
+                do
+                    var tralloc = TracingAllocator.from(&libc)
+                    TracingAllocator.setstream(stream)
+                    do
+                        var blk = tralloc:new(sizeof(double), 3)
+                        blk.alloc.data = nil
+                        blk.alloc.ftab = nil
+                    end
+                end
+                std.io.fclose(stream)
+                var leaking_alloc = get_reachable_bytes([#tmpname], [tmpname])
+            end
+            test leaking_alloc == [sizeof(double) * 3]
+        end
     end
 end
 

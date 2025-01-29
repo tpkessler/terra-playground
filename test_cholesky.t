@@ -29,7 +29,7 @@ for _, Ts in pairs({float, double, float128, float1024}) do
         local unit = is_complex and T:unit() or 0 
         local DMat = darray.DynamicMatrix(T)
         local DVec = darray.DynamicVector(T)
-        local Alloc = alloc.DefaultAllocator(Ts)
+        local Alloc = alloc.DefaultAllocator()
         local Rand = random.LibC(float)
         local CholeskyDense = cho.CholeskyFactory(DMat)
 

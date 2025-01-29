@@ -86,7 +86,7 @@ local function Base(block, T, options)
         self.ptr = nil
         self.nbytes = 0
         self.alloc.data = nil
-        self.alloc.tab = nil
+        self.alloc.ftab = nil
     end
 
     --exact clone of the block
@@ -122,7 +122,7 @@ local function Base(block, T, options)
             to.nbytes = from.nbytes
             --no allocator
             to.alloc.data = nil
-            to.alloc.tab = nil
+            to.alloc.ftab = nil
         end
 
     --specialized copy-assignment, returning a deepcopy or clone
@@ -142,9 +142,9 @@ end
 --abstraction of a memory block without any type information.
 local struct block
 
-local __Allocator = interface.Interface:new{
-    __allocators_best_friend = {&block, size_t, size_t}->{}
-}
+local __Allocator = interface.newinterface("__Allocator")
+terra __Allocator:__allocators_best_friend(blk: &block, elsize: size_t, counter: size_t) end
+__Allocator:complete()
 
 struct block{
     ptr : &opaque
@@ -275,7 +275,7 @@ local SmartBlock = terralib.memoize(function(T, options)
             b.ptr = ptr
             b.nbytes = nbytes
             b.alloc.data = nil
-            b.alloc.tab = nil
+            b.alloc.ftab = nil
             return b
         end
 

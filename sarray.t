@@ -43,7 +43,6 @@ end
 local SArrayRawType = function(typename, T, Size, options)
 
     --check input
-    print("type is " .. tostring(T))
     assert(terralib.types.istype(T), "ArgumentError: first argument is not a valid terra type.")
     local Size = terralib.newlist(Size)
     assert(terralib.israwlist(Size) and #Size > 0, "ArgumentError: second argument should be a list denoting the size in each dimension.")
