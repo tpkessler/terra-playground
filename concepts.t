@@ -97,6 +97,10 @@ local concept Primitive
     Self.traits.isprimitive = true
 end
 
+local concept Arithmatic
+    Self.traits.isprimitive = true
+end
+
 local concept BLASFloat
     Self:inherit(Float)
     Self.traits.isblasfloat = true
