@@ -128,6 +128,12 @@ local geometry_particulars = function(x, y, h)
         return self:position(i, j, u, v) 
     end
 
+    terra geomp:random_normal_velocity(mean : T, temperature : T)
+        --normaly distributed velocities with temperature and mean
+        var variance = tmath.sqrt(temperature)
+        return self.rand:random_normal(mean, variance), self.rand:random_normal(mean, variance)
+    end
+
     return geomp
 end
 
@@ -181,7 +187,7 @@ testenv "DSMC - geometry" do
     testset "particle random position" do
         terracode
             var xx, yy = T(0), T(0)
-            var m = 100000
+            var m = 1000000
             for k = 1, m do
                 var t = geo:random_uniform_position(4, 2)
                 xx = xx + t._0
@@ -193,6 +199,29 @@ testenv "DSMC - geometry" do
         end
         test tmath.isapprox(xx, xref, 1e-3)
         test tmath.isapprox(yy, yref, 1e-3)
+    end
+
+    testset "particle random velocity" do
+        terracode
+            var vv, ww, ss, rr = T(0), T(0), T(0), T(0)
+            var m = 1000000
+            var V, Tmp = 1.0, 2.0
+            for k = 1, m do
+                var v = geo:random_normal_velocity(V, Tmp)
+                vv = vv + v._0
+                ww = ww + v._1
+                ss = ss + (v._0 - V) * (v._0 - V)
+                rr = rr + (v._1 - V) * (v._1 - V)
+            end
+            vv = vv / m
+            ww = ww / m
+            rr = rr / m
+            ss = ss / m
+        end
+        test tmath.isapprox(vv, V, 1e-2)
+        test tmath.isapprox(ww, V, 1e-2)
+        test tmath.isapprox(rr, Tmp, 1e-2)
+        test tmath.isapprox(ss, Tmp, 1e-2)
     end
 
     testset "active cells" do
