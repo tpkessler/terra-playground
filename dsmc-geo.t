@@ -64,7 +64,7 @@ local geometry_particulars = function(x, y, h)
 
     --total number of cells, including ghost-cells that are not part of the computation
     local n_total_cells = m * n
-    local n_actice_cells = n_total_cells - mm[2] * nn[2]
+    local n_active_cells = n_total_cells - mm[2] * nn[2]
 
     --structure that holds all geometric particulars
     local struct geomp{
@@ -75,6 +75,14 @@ local geometry_particulars = function(x, y, h)
         active : bool[n_total_cells]
         rand : random_generator
     }
+
+    terra geomp:n_total_cells()
+        return n_total_cells
+    end
+
+    terra geomp:n_active_cells()
+        return n_active_cells
+    end
 
     terra geomp:multiindex(k : size_t) : {size_t, size_t}
         return k % self.dim[0], k / self.dim[0]
@@ -132,6 +140,17 @@ local geometry_particulars = function(x, y, h)
         --normaly distributed velocities with temperature and mean
         var variance = tmath.sqrt(temperature)
         return self.rand:random_normal(mean, variance), self.rand:random_normal(mean, variance)
+    end
+
+    --for range over active cells
+    geomp.metamethods.__for = function(self, body)
+        return quote
+            for cellid = 0, n_total_cells do  
+                if self.active[cellid] then
+                    [body(cellid)]
+                end
+            end
+        end
     end
 
     return geomp
@@ -256,14 +275,15 @@ testenv "DSMC - geometry" do
     end
 end
 
---[[
+
 terra main()
-    var alloc: DefaultAlloc
-    var i, j = multiindex(0)
-    var x, y = position(i, j, 0, 0)
-    io.printf("i, j = %d, %d\n", i, j)
-    io.printf("x, y = %0.3f, %0.3f\n", x, y)
+    var geo : geometry_particulars({-20, -10, 10, 20}, {0,0.5,5}, 0.25)
+    --loop over cells
+    for cellid = 0, geo:n_total_cells() do
+        if geo.active[cellid] then
+
+        end
+    end
 end
 print(main())
---]]
 
