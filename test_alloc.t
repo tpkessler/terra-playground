@@ -9,6 +9,7 @@ local alloc = require("alloc")
 local DefaultAllocator = alloc.DefaultAllocator()
 local TracingAllocator = alloc.TracingAllocator()
 
+
 for _, alignment in ipairs{0, 64} do
 
     testenv(alignment) "Block - Default allocator" do
