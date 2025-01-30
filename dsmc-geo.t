@@ -11,11 +11,13 @@ local darray = require("darray")
 local sparse = require("sparse")
 local tmath = require("tmath")
 local range = require("range")
+local random = require("random")
 
 local io = terralib.includec("stdio.h")
 
 local size_t = int64
 local T = double
+local random_generator = random.MinimalPCG(T)
 
 math.round = function(x)
     return math.floor(x+0.5)
@@ -33,6 +35,11 @@ end
 ----------------------------------------------------------------- 0                   
 -- -10           0                             20               30
 
+
+
+local DefaultAlloc = alloc.DefaultAllocator()
+local svecd5 = sarray.StaticVector(T, 5)
+local CSR = sparse.CSRMatrix(T, size_t)
 
 local geometry_particulars = function(x, y, h)
 
@@ -66,6 +73,7 @@ local geometry_particulars = function(x, y, h)
         h : T
         dim : size_t[2]
         active : bool[n_total_cells]
+        rand : random_generator
     }
 
     terra geomp:multiindex(k : size_t) : {size_t, size_t}
@@ -99,7 +107,7 @@ local geometry_particulars = function(x, y, h)
         var k = 0
         for j = 0, n do
             for i = 0, m do
-                var c = self:position(i, j, 0.5, 0.5)
+                var c = self:position(i, j, 0.5, 0.5) --compute cell-center
                 if (self.x[1] < c._0 and c._0 < self.x[2]) and (self.y[1] < c._1 and c._1 < self.y[2]) then
                     self.active[k] = false
                 else
@@ -108,33 +116,21 @@ local geometry_particulars = function(x, y, h)
                 k = k + 1
             end
         end
+        --initialize random number generator
+        self.rand = random_generator.new(238904)
+    end
+
+    terra geomp:random_uniform_position(i : size_t, j : size_t)
+        --uniformly sampled random variables between 0 and 1
+        var u = self.rand:random_uniform()
+        var v = self.rand:random_uniform()
+        --randomly sampled velocity
+        return self:position(i, j, u, v) 
     end
 
     return geomp
 end
 
-----------------------------
---characteristic dimensions
-----------------------------
-local xa = 0
-local xb = 10
-local xc = 20
--------------
-local ya = 0
-local yb = 0.5
-local yc = 5
-
----------------------------
---discretization parameters
----------------------------
-local h = 0.1   --needs to be chosen such that it fits with the boundaries
---which means that the characteristic dimensions are divisible by this number
-local N = 100   --particles per cell
-local dt = 1    --timestep for explicit time integration
-
-local DefaultAlloc = alloc.DefaultAllocator()
-local dvec_i = darray.DynamicVector(size_t)
-local CSR = sparse.CSRMatrix(T, size_t)
 
 import "terratest/terratest"
 
@@ -182,6 +178,23 @@ testenv "DSMC - geometry" do
         test x[4]==-0.5 and y[4]==2.5
     end
 
+    testset "particle random position" do
+        terracode
+            var xx, yy = T(0), T(0)
+            var m = 100000
+            for k = 1, m do
+                var t = geo:random_uniform_position(4, 2)
+                xx = xx + t._0
+                yy = yy + t._1
+            end
+            xx = xx / m
+            yy = yy / m
+            var xref, yref = geo:position(4, 2, 0.5, 0.5)
+        end
+        test tmath.isapprox(xx, xref, 1e-3)
+        test tmath.isapprox(yy, yref, 1e-3)
+    end
+
     testset "active cells" do
         --left reservoir
         for j = 0, 2 do
@@ -212,7 +225,6 @@ testenv "DSMC - geometry" do
             end
         end
     end
-
 end
 
 --[[
