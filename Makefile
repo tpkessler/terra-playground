@@ -17,7 +17,7 @@ TERRAFLAGS?=-g
 
 CFLAGS=-O2 -march=native -fPIC
 
-all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn) libnonlinearbc.$(dyn)
+all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn) libnonlinearbc.$(dyn)  gnuplot_i.$(dyn)
 
 
 libnonlinearbc.$(dyn): nonlinearbc.o
@@ -62,6 +62,12 @@ libpcg.$(dyn): $(OBJ)
 $(OBJ): %.o: pcg/%.c
 	$(CC) $(CFLAGS) $^ -c -o $@
 
+gnuplot_i.$(dyn): gnuplot_i.o
+	$(CC) -fPIC -shared $^ -o $@
+	
+gnuplot_i.o: gnuplot/src/gnuplot_i.c gnuplot/src/gnuplot_i.h
+	$(CC) $(CFLAGS) -c -o gnuplot_i.o gnuplot/src/gnuplot_i.c
+
 test: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn)
 	terra import.t
 	terra test_random.t
@@ -69,8 +75,8 @@ test: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn)
 .PHONY: clean realclean
 
 clean:
-	$(RM) export.o nonlinearbc.o tinymt32.o tinymt64.o $(OBJ)
+	$(RM) export.o nonlinearbc.o tinymt32.o tinymt64.o $(OBJ)  gnuplot_i.o
 
 realclean: clean
-	$(RM) libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libboltzmann.$(dyn)
+	$(RM) libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libboltzmann.$(dyn) gnuplot_i.$(dyn)
 
