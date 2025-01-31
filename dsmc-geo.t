@@ -189,16 +189,26 @@ local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
     return  ((size + alignment - 1) / alignment) * alignment
 end
 
-local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : size_t) where {G, A}
-    --create vectors for positions and velocities
-    var position = {dvec.new(allocator, n_tot_particles), 
-                    dvec.new(allocator, n_tot_particles)}
-    var velocity = {dvec.new(allocator, n_tot_particles),
-                    dvec.new(allocator, n_tot_particles),
-                    dvec.new(allocator, n_tot_particles)}
-    --unused particles have cell-id = -1
-    var cell_id = dvec_i.all(allocator, n_tot_particles, -1)
+local struct particle_distribution{
+    position : tuple(dvec, dvec)
+    velocity : tuple(dvec, dvec, dvec)
+    cellid   : dvec_i
+}
 
+local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : size_t) where {G, A}
+    --create a new uniinitialized particle distribution
+    var particle : particle_distribution
+    --create vectors for positions and velocities and cell-id
+    --position
+    particle.position._0 = dvec.new(allocator, n_tot_particles)
+    particle.position._1 = dvec.new(allocator, n_tot_particles)
+    --velocities
+    particle.velocity._0 = dvec.new(allocator, n_tot_particles)
+    particle.velocity._1 = dvec.new(allocator, n_tot_particles)
+    particle.velocity._2 = dvec.new(allocator, n_tot_particles)
+    --unused particles have cell-id = -1
+    particle.cellid = dvec_i.all(allocator, n_tot_particles, -1)
+    --initialize dynamic vectors
     --loop over cells
     var particle_id = 0
     for cell = 0, geo:n_total_cells() do
@@ -208,22 +218,25 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
             for k = 0, N do
                 var mi = geo:multiindex(cell)
                 --assign positions
-                position._0(particle_id) = geo:random_coordinate(0, mi._0)
-                position._1(particle_id) = geo:random_coordinate(1, mi._1)
+                particle.position._0(particle_id) = geo:random_coordinate(0, mi._0)
+                particle.position._1(particle_id) = geo:random_coordinate(1, mi._1)
                 --assign velocities
                 var variance = tmath.sqrt(T(temperature))
-                velocity._0(particle_id) = geo:random_velocity(1, variance)
-                velocity._1(particle_id) = geo:random_velocity(1, variance)
-                velocity._2(particle_id) = geo:random_velocity(1, variance)
+                particle.velocity._0(particle_id) = geo:random_velocity(1, variance)
+                particle.velocity._1(particle_id) = geo:random_velocity(1, variance)
+                particle.velocity._2(particle_id) = geo:random_velocity(1, variance)
                 --assign cell-id
-                cell_id(particle_id) = cell
+                particle.cellid(particle_id) = cell
                 --increase particle id
                 particle_id = particle_id + 1
             end
         end
     end
-    return position, velocity, cell_id
+    return particle
 end
+
+
+--local terraform advect_particles(x : &V1, v : &V2, cellid : &V3)
 
 
 terra main()
@@ -234,8 +247,7 @@ terra main()
     --total available particles, taking care of a safetyfactor
     var n_tot_particles = round_to_aligned(geo:n_active_cells() * N * safetyfactor, simdsize)
     --compute initial phase-space distribution
-    var x, v, cell_id = initial_condition(&geo, &allocator, n_tot_particles)
-    cell_id:print()
+    var particle_set = initial_condition(&geo, &allocator, n_tot_particles)
 
 end
 print(main())
