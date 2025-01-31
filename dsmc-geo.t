@@ -13,11 +13,13 @@ local tmath = require("tmath")
 local range = require("range")
 local random = require("random")
 
+import "terraform"
 local io = terralib.includec("stdio.h")
 
 local size_t = int64
 local T = double
 local random_generator = random.MinimalPCG(T)
+local Allocator = alloc.Allocator
 
 math.round = function(x)
     return math.floor(x+0.5)
@@ -68,10 +70,12 @@ local geometry_particulars = function(x, y, h)
     local n_total_cells = m * n
     local n_active_cells = n_total_cells - mm[2] * nn[2]
 
+
+
     --structure that holds all geometric particulars
+    local S = T[4]
     local struct geomp{
-        x : T[4]
-        y : T[3]
+        grid : S[2]
         h : T
         dim : size_t[2]
         active : bool[n_total_cells]
@@ -94,20 +98,24 @@ local geometry_particulars = function(x, y, h)
         return i + self.dim[0]*j
     end
 
+    terra geomp:coordinate(coordinate : size_t, i : size_t, u : T) : T
+        return self.grid[coordinate][0] + (i + u) * h
+    end
+
     terra geomp:position(i : size_t, j : size_t, u : T, v : T) : {T, T}
-        return self.x[0] + (i+u) * h, self.y[0] + (j+v) * h
+        return self.grid[0][0] + (i+u) * h, self.grid[1][0] + (j+v) * h
     end
 
     terra geomp:__init()
-        --------xcoords------
-        self.x[0] = [ x[1] ]
-        self.x[1] = [ x[2] ]
-        self.x[2] = [ x[3] ]
-        self.x[3] = [ x[4] ]
-        --------ycoords------
-        self.y[0] = [ y[1] ]
-        self.y[1] = [ y[2] ]
-        self.y[2] = [ y[3] ]
+        --------x-coords------
+        self.grid[0][0] = [ x[1] ]
+        self.grid[0][1] = [ x[2] ]
+        self.grid[0][2] = [ x[3] ]
+        self.grid[0][3] = [ x[4] ]
+        --------y-coords------
+        self.grid[1][0] = [ y[1] ]
+        self.grid[1][1] = [ y[2] ]
+        self.grid[1][2] = [ y[3] ]
         ------mesh size------
         self.h = h
         ---mesh dimensions---
@@ -118,7 +126,7 @@ local geometry_particulars = function(x, y, h)
         for j = 0, n do
             for i = 0, m do
                 var c = self:position(i, j, 0.5, 0.5) --compute cell-center
-                if (self.x[1] < c._0 and c._0 < self.x[2]) and (self.y[1] < c._1 and c._1 < self.y[2]) then
+                if (self.grid[0][1] < c._0 and c._0 < self.grid[0][2]) and (self.grid[1][1] < c._1 and c._1 < self.grid[1][2]) then
                     self.active[k] = false
                 else
                     self.active[k] = true
@@ -136,6 +144,14 @@ local geometry_particulars = function(x, y, h)
         var v = self.rand:random_uniform()
         --randomly sampled velocity
         return self:position(i, j, u, v) 
+    end
+
+    terra geomp:random_coordinate(coordinate : size_t, i : size_t) : T
+        return self:coordinate(coordinate, i, self.rand:random_uniform())
+    end
+
+    terra geomp:random_velocity(mean : T, variance : T) : T
+        return self.rand:random_normal(mean, variance)
     end
 
     terra geomp:random_normal_velocity(mean : T, temperature : T)
@@ -160,32 +176,67 @@ end
 
 
 local h = 0.25
-local N = 10
+local N = 3
 local dt = 1.0
-local safetyfactor = 1.3
+local safetyfactor = 1
+local simdsize = 64
+local temperature = 1.0
 
 local dvec = darray.DynamicVector(T)
-local dvec_i = darray.DynamicVector(T)
+local dvec_i = darray.DynamicVector(size_t)
+
+local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
+    return  ((size + alignment - 1) / alignment) * alignment
+end
+
+local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : size_t) where {G, A}
+    --create vectors for positions and velocities
+    var position = {dvec.new(allocator, n_tot_particles), 
+                    dvec.new(allocator, n_tot_particles)}
+    var velocity = {dvec.new(allocator, n_tot_particles),
+                    dvec.new(allocator, n_tot_particles),
+                    dvec.new(allocator, n_tot_particles)}
+    --unused particles have cell-id = -1
+    var cell_id = dvec_i.all(allocator, n_tot_particles, -1)
+
+    --loop over cells
+    var particle_id = 0
+    for cell = 0, geo:n_total_cells() do
+        --only perform operations for active cells
+        if geo.active[cell] then
+            --create N particles per cell
+            for k = 0, N do
+                var mi = geo:multiindex(cell)
+                --assign positions
+                position._0(particle_id) = geo:random_coordinate(0, mi._0)
+                position._1(particle_id) = geo:random_coordinate(1, mi._1)
+                --assign velocities
+                var variance = tmath.sqrt(T(temperature))
+                velocity._0(particle_id) = geo:random_velocity(1, variance)
+                velocity._1(particle_id) = geo:random_velocity(1, variance)
+                velocity._2(particle_id) = geo:random_velocity(1, variance)
+                --assign cell-id
+                cell_id(particle_id) = cell
+                --increase particle id
+                particle_id = particle_id + 1
+            end
+        end
+    end
+    return position, velocity, cell_id
+end
+
 
 terra main()
     --setup geometic particulars of Reden testcase
-    var geo : geometry_particulars({-20, -10, 10, 20}, {0,0.5,5}, h)    
+    var geo : geometry_particulars({-20, -10, 10, 20}, {0,0.5,5}, h)
     --get the default allocator
     var allocator : DefaultAllocator
     --total available particles, taking care of a safetyfactor
-    var n_tot_particles = geo:n_total_cells() * N * safetyfactor
-    --create vectors for positions and velocities
-    var x = dvec.new(&allocator, n_tot_particles)
-    var v = dvec.new(&allocator, n_tot_particles)
-    
-    
+    var n_tot_particles = round_to_aligned(geo:n_active_cells() * N * safetyfactor, simdsize)
+    --compute initial phase-space distribution
+    var x, v, cell_id = initial_condition(&geo, &allocator, n_tot_particles)
+    cell_id:print()
 
-    --loop over cells
-    for cellid = 0, geo:n_total_cells() do
-        if geo.active[cellid] then
-
-        end
-    end
 end
 print(main())
 
