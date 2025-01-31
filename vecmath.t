@@ -32,10 +32,19 @@ local sleef = setmetatable(
 local ext = (require("ffi").os == "Linux" and ".so" or ".dylib")
 terralib.linklibrary("./build-sleef/lib/libsleef" .. ext)
 
+local ffi = require("ffi")
 local vecmath = {
-    ["float"] = {[8] = {}, [16] = {}},
-    ["double"] = {[4] = {}, [8] = {}},
+    ["float"] = {[4] = {}},
+    ["double"] = {[2] = {}},
 }
+if ffi.arch == "x64" then
+    vecmath.float[8] = {}
+    vecmath.double[4] = {}
+    if has_avx512_support() then
+        vecmath.float[16] = {}
+        vecmath.double[8] = {}
+    end
+end
 
 local func = {
     ["sin"] = 10,
