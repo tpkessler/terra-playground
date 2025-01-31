@@ -193,29 +193,70 @@ local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
     return  ((size + alignment - 1) / alignment) * alignment
 end
 
-local struct particle_distribution{
-    position : tuple(dvec, dvec)                --x- and y-coordinate 
-    velocity : tuple(dvec, dvec, dvec)          --x- and y- and z-velocity component
-    cellid   : tuple(dvec_i, dvec_i, dvec_i)    --i- and j- multiindices and k- linear indices
-    mask     : dvec_b                           --used to mask the boundary, etc
-    size     : size_t
+
+local struct coordinates{
+    x : dvec
+    y : dvec
 }
+
+local struct coordinateref{
+    current : &coordinates
+    next    : &coordinates
+}
+
+local struct velocities{
+    x : dvec
+    y : dvec
+    z : dvec
+}
+
+local struct multiindices{
+    I : dvec
+    J : dvec
+}
+
+local struct indices{
+    I : dvec_i --first multi-index
+    J : dvec_i --second multi-index
+    L : dvec_i --linear index
+}
+
+local struct particle_distribution{
+    position : coordinateref                     --access to coordinate buffers
+    velocity : velocities                        --buffers for particle velocities 
+    cellid   : indices                           --i- and j- multiindices and k- linear indices
+    mask     : dvec_b                            --used to mask the boundary, etc
+    size     : size_t
+    pa       : coordinates                       --buffer used for storage of particle positions
+    pb       : coordinates                       --buffer used for storage of particle positions
+}
+
+--swap position buffers, which saves a deepcopy
+terra particle_distribution:swap_position_buffers()
+    self.position.current, self.position.next = self.position.next, self.position.current
+end
 
 local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : size_t) where {G, A}
     --create a new uniinitialized particle distribution
     var particle : particle_distribution
     --create vectors for positions and velocities and cell-id
     --position
-    particle.position._0 = dvec.zeros(allocator, n_tot_particles)
-    particle.position._1 = dvec.zeros(allocator, n_tot_particles)
+    --position buffers
+    particle.pa.x = dvec.zeros(allocator, n_tot_particles)
+    particle.pa.y = dvec.zeros(allocator, n_tot_particles)
+    particle.pb.x = dvec.zeros(allocator, n_tot_particles)
+    particle.pb.y = dvec.zeros(allocator, n_tot_particles)
+    --handle to position buffers
+    particle.position.current = &particle.pa
+    particle.position.next = &particle.pb
     --velocities
-    particle.velocity._0 = dvec.zeros(allocator, n_tot_particles)
-    particle.velocity._1 = dvec.zeros(allocator, n_tot_particles)
-    particle.velocity._2 = dvec.zeros(allocator, n_tot_particles)
+    particle.velocity.x = dvec.zeros(allocator, n_tot_particles)
+    particle.velocity.y = dvec.zeros(allocator, n_tot_particles)
+    particle.velocity.z = dvec.zeros(allocator, n_tot_particles)
     --unused particles have cell-id = -1
-    particle.cellid._0 = dvec_i.all(allocator, n_tot_particles, -1)
-    particle.cellid._1 = dvec_i.all(allocator, n_tot_particles, -1)
-    particle.cellid._2 = dvec_i.all(allocator, n_tot_particles, -1)
+    particle.cellid.I = dvec_i.all(allocator, n_tot_particles, -1)
+    particle.cellid.J = dvec_i.all(allocator, n_tot_particles, -1)
+    particle.cellid.L = dvec_i.all(allocator, n_tot_particles, -1)
     --create a mask
     particle.mask = dvec_b.all(allocator, n_tot_particles, false)
     --initialize dynamic vectors
@@ -228,17 +269,17 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
             for k = 0, N do
                 var mi = geo:multiindex(cell)
                 --assign positions
-                particle.position._0(particle_id) = geo:random_coordinate(0, mi._0)
-                particle.position._1(particle_id) = geo:random_coordinate(1, mi._1)
+                particle.position.current.x(particle_id) = geo:random_coordinate(0, mi._0)
+                particle.position.current.y(particle_id) = geo:random_coordinate(1, mi._1)
                 --assign velocities
                 var variance = tmath.sqrt(T(temperature))
-                particle.velocity._0(particle_id) = geo:random_velocity(1, variance)
-                particle.velocity._1(particle_id) = geo:random_velocity(1, variance)
-                particle.velocity._2(particle_id) = geo:random_velocity(1, variance)
+                particle.velocity.x(particle_id) = geo:random_velocity(1, variance)
+                particle.velocity.y(particle_id) = geo:random_velocity(1, variance)
+                particle.velocity.z(particle_id) = geo:random_velocity(1, variance)
                 --assign cell-id
-                particle.cellid._0(particle_id) = mi._0
-                particle.cellid._1(particle_id) = mi._1
-                particle.cellid._2(particle_id) = cell
+                particle.cellid.I(particle_id) = mi._0
+                particle.cellid.J(particle_id) = mi._1
+                particle.cellid.L(particle_id) = cell
                 --increase particle id
                 particle_id = particle_id + 1
             end
@@ -269,35 +310,36 @@ local terra coordinate_to_index(i : &SIMD_I, x : &SIMD_T, a : T, c : T, M : size
     end
 end
 
-local terra advect_particles_component(x : &SIMD_T, v : &SIMD_T, M : size_t)
+local terra advect_particles_component(a : &SIMD_T, b : &SIMD_T, v : &SIMD_T, M : size_t)
     for k = 0, M do
         --vectorized update
-        @x = @x + @v * dt
+        @b = @a + @v * dt
         --increment references
-        x = x + 1
+        a = a + 1
+        b = b + 1
         v = v + 1
     end
 end
 
 local terraform cell_index_update(geo : &G, particle : &P) where {G, P}
     coordinate_to_index(
-        [&SIMD_I](&particle.cellid._0(0)), 
-        [&SIMD_T](&particle.position._0(0)),
+        [&SIMD_I](&particle.cellid.I(0)), 
+        [&SIMD_T](&particle.position.next.x(0)),
         geo.grid[0][0],
         1.0 / h,
         particle.size / simdsize
     )
     coordinate_to_index(
-        [&SIMD_I](&particle.cellid._1(0)), 
-        [&SIMD_T](&particle.position._1(0)),
+        [&SIMD_I](&particle.cellid.J(0)), 
+        [&SIMD_T](&particle.position.next.y(0)),
         geo.grid[1][0],
         1.0 / h,
         particle.size / simdsize
     )
     linearindex(
-        [&SIMD_I](&particle.cellid._0(0)), 
-        [&SIMD_I](&particle.cellid._1(0)), 
-        [&SIMD_I](&particle.cellid._2(0)), 
+        [&SIMD_I](&particle.cellid.I(0)), 
+        [&SIMD_I](&particle.cellid.J(0)), 
+        [&SIMD_I](&particle.cellid.L(0)), 
         geo.dim[0], 
         particle.size / simdsize
     )
@@ -305,18 +347,21 @@ end
 
 local terraform advect_particles(geo : &G, particle : &P) where {G, P}
     advect_particles_component(
-        [&SIMD_T](&particle.position._0(0)), 
-        [&SIMD_T](&particle.velocity._0(0)), 
+        [&SIMD_T](&particle.position.current.x(0)), 
+        [&SIMD_T](&particle.position.next.x(0)),
+        [&SIMD_T](&particle.velocity.x(0)), 
         particle.size / simdsize
     )
     advect_particles_component(
-        [&SIMD_T](&particle.position._1(0)), 
-        [&SIMD_T](&particle.velocity._1(0)), 
+        [&SIMD_T](&particle.position.current.y(0)), 
+        [&SIMD_T](&particle.position.next.y(0)), 
+        [&SIMD_T](&particle.velocity.y(0)), 
         particle.size / simdsize
     )
 end
 
-local terra mask_interior(mask : &SIMD_B, x : &SIMD_T, y : &SIMD_T, X : T[4], Y : T[4], M : size_t)
+
+local terra symmetry_condition(mask : &SIMD_B, x : &SIMD_T, y : &SIMD_T, X : T[4], Y : T[4], M : size_t)
     for k = 0, M do
         --vectorized update
         @mask = 
@@ -329,16 +374,6 @@ local terra mask_interior(mask : &SIMD_B, x : &SIMD_T, y : &SIMD_T, X : T[4], Y 
     end
 end
 
-local terraform mask_interior_particles(geo : &G, particle : &P) where {G, P}
-    mask_interior(
-        [&SIMD_B](&particle.mask(0)),
-        [&SIMD_T](&particle.position._0(0)),
-        [&SIMD_T](&particle.position._1(0)),
-        geo.grid[0], 
-        geo.grid[1],
-        particle.size / simdsize
-    )
-end
 
 terra main()
     --setup geometic particulars of Reden testcase
@@ -355,7 +390,7 @@ terra main()
     cell_index_update(&geo, &particle)
     --create a mask for the interior particles, marking the particles
     --that have left the domain
-    mask_interior_particles(&geo, &particle)
+    --mask_interior_particles(&geo, &particle)
 
     return n_tot_particles
 end
