@@ -37,9 +37,11 @@ end
 
 
 
-local DefaultAlloc = alloc.DefaultAllocator()
+local DefaultAllocator = alloc.DefaultAllocator()
 local svecd5 = sarray.StaticVector(T, 5)
 local CSR = sparse.CSRMatrix(T, size_t)
+
+
 
 local geometry_particulars = function(x, y, h)
 
@@ -157,8 +159,46 @@ local geometry_particulars = function(x, y, h)
 end
 
 
-import "terratest/terratest"
+local h = 0.25
+local N = 10
+local dt = 1.0
+local safetyfactor = 1.3
 
+local dvec = darray.DynamicVector(T)
+local dvec_i = darray.DynamicVector(T)
+
+terra main()
+    --setup geometic particulars of Reden testcase
+    var geo : geometry_particulars({-20, -10, 10, 20}, {0,0.5,5}, h)    
+    --get the default allocator
+    var allocator : DefaultAllocator
+    --total available particles, taking care of a safetyfactor
+    var n_tot_particles = geo:n_total_cells() * N * safetyfactor
+    --create vectors for positions and velocities
+    var x = dvec.new(&allocator, n_tot_particles)
+    var v = dvec.new(&allocator, n_tot_particles)
+    
+    
+
+    --loop over cells
+    for cellid = 0, geo:n_total_cells() do
+        if geo.active[cellid] then
+
+        end
+    end
+end
+print(main())
+
+
+
+
+
+
+
+
+
+
+import "terratest/terratest"
 
 testenv "DSMC - geometry" do
 
@@ -274,16 +314,3 @@ testenv "DSMC - geometry" do
         end
     end
 end
-
-
-terra main()
-    var geo : geometry_particulars({-20, -10, 10, 20}, {0,0.5,5}, 0.25)
-    --loop over cells
-    for cellid = 0, geo:n_total_cells() do
-        if geo.active[cellid] then
-
-        end
-    end
-end
-print(main())
-
