@@ -9,14 +9,18 @@ local tmath = require("tmath")
 import "terratest/terratest"
 
 local intrinsic = {}
-intrinsic.AVX = 1
-if vecmath.has_avx512_support() then
-    intrinsic.AVX512 = 2
+intrinsic.SSE = 1
+local ffi = require("ffi")
+if ffi.arch == "x64" then
+    intrinsic.AVX = 2
+    if vecmath.has_avx512_support() then
+        intrinsic.AVX512 = 4
+    end
 end
 
 for _, T in pairs{float, double} do
     for cpuset, factor in pairs(intrinsic) do
-        local width = factor * 32 / sizeof(T)
+        local width = factor * 16 / sizeof(T)
         local arg = {}
         for i = 1, width do
             arg[i] = 0.1 * i
