@@ -250,6 +250,8 @@ local terra coordinate_to_index(i : &SIMD_I, x : &SIMD_T, a : T, c : T, M : size
     end
 end
 
+coordinate_to_index:disas()
+
 local terra advect_particles_component(x : &SIMD_T, v : &SIMD_T, M : size_t)
     for k = 0, M do
         --vectorized update
@@ -294,7 +296,7 @@ terra main()
     index_update(&geo, &particle_set)
     z:print()
 end
-print(main())
+--print(main())
 
 
 
