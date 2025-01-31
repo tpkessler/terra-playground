@@ -175,12 +175,15 @@ local geometry_particulars = function(x, y, h)
 end
 
 
-local h = 0.25
-local N = 3
+local h = 0.5
+local N = 1
 local dt = 1.0
 local safetyfactor = 1
-local simdsize = 64
 local temperature = 1.0
+
+local simdsize = 64
+local SIMD_T = vector(T, simdsize)
+local SIMD_I = vector(size_t, simdsize)
 
 local dvec = darray.DynamicVector(T)
 local dvec_i = darray.DynamicVector(size_t)
@@ -193,6 +196,7 @@ local struct particle_distribution{
     position : tuple(dvec, dvec)
     velocity : tuple(dvec, dvec, dvec)
     cellid   : dvec_i
+    size     : size_t
 }
 
 local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : size_t) where {G, A}
@@ -200,12 +204,12 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
     var particle : particle_distribution
     --create vectors for positions and velocities and cell-id
     --position
-    particle.position._0 = dvec.new(allocator, n_tot_particles)
-    particle.position._1 = dvec.new(allocator, n_tot_particles)
+    particle.position._0 = dvec.zeros(allocator, n_tot_particles)
+    particle.position._1 = dvec.zeros(allocator, n_tot_particles)
     --velocities
-    particle.velocity._0 = dvec.new(allocator, n_tot_particles)
-    particle.velocity._1 = dvec.new(allocator, n_tot_particles)
-    particle.velocity._2 = dvec.new(allocator, n_tot_particles)
+    particle.velocity._0 = dvec.zeros(allocator, n_tot_particles)
+    particle.velocity._1 = dvec.zeros(allocator, n_tot_particles)
+    particle.velocity._2 = dvec.zeros(allocator, n_tot_particles)
     --unused particles have cell-id = -1
     particle.cellid = dvec_i.all(allocator, n_tot_particles, -1)
     --initialize dynamic vectors
@@ -232,11 +236,32 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
             end
         end
     end
+    particle.size = particle_id
     return particle
 end
 
 
---local terraform advect_particles(x : &V1, v : &V2, cellid : &V3)
+
+local terra advect_particles_component(x : &SIMD_T, v : &SIMD_T, M : size_t)
+    for k = 0, M do
+        --vectorized update
+        @x = @x + @v * dt
+        --increment references
+        x = x + 1
+        v = v + 1
+    end
+end
+
+local terraform advect_particles(particle : &P) where {P}
+    advect_particles_component(
+        [&SIMD_T](&particle.position._0(0)), 
+        [&SIMD_T](&particle.velocity._0(0)), 
+        particle.size / simdsize
+    )
+end
+
+
+
 
 
 terra main()
@@ -248,7 +273,11 @@ terra main()
     var n_tot_particles = round_to_aligned(geo:n_active_cells() * N * safetyfactor, simdsize)
     --compute initial phase-space distribution
     var particle_set = initial_condition(&geo, &allocator, n_tot_particles)
-
+    var z = particle_set.position._0
+    z:print()
+    --perform advection steps
+    advect_particles(&particle_set)
+    z:print()
 end
 print(main())
 
