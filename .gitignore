@@ -49,3 +49,5 @@ testgenerate.h
 
 # configuration file of testrunner
 /config
+
+build-sleef

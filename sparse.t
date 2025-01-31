@@ -16,7 +16,6 @@ import "terraform"
 
 local CSRMatrix = terralib.memoize(function(T, I)
 
-    local Integral = concepts.Integral
     local Number = concepts.Number
     local Vector = concepts.Vector(T)
     local Matrix = concepts.Matrix(T)
@@ -243,7 +242,6 @@ local CSRMatrix = terralib.memoize(function(T, I)
         end
     end
 
-    local Number = concepts.Number
     local terraform blocked_outer_product(
         alpha: T, a: &A, b: &B, c: &C
     ) where {

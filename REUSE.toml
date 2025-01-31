@@ -52,3 +52,9 @@ path = "nonlinearbc.h"
 precendence = "override"
 SPDX-FileCopyrightText = "2025 Torsten Keßler <t.kessler@posto.de>"
 SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "sleef/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2010-2025 SLEEF Project, Naoki Shibata and contributors"
+SPDX-License-Identifier = "BSL-1.0"

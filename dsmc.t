@@ -13,7 +13,7 @@ local svector = require("svector")
 local vecbase = require("vector")
 local random = require("random")
 local io = terralib.includec("stdio.h")
-local mathfun = require("mathfuns")
+local tmath = require("mathfuns")
 local err = require("assert")
 
 local ParticleSystem = terralib.memoize(function(T)
@@ -74,7 +74,7 @@ local ParticleSystem = terralib.memoize(function(T)
             for j = 0, 3 do
                 u(j) = self.v(3 * i + j) - mean(j)
             end
-            umax = mathfun.max(umax, mathfun.sqrt(u:dot(&u)))
+            umax = tmath.max(umax, tmath.sqrt(u:dot(&u)))
         end
         return 2 * umax
     end
@@ -102,7 +102,7 @@ local ParticleSystem = terralib.memoize(function(T)
         for i = 0, 3 do
             e(i) = rand:rand_normal([T](0), [T](1))
         end
-        var nrm = mathfun.sqrt(e:dot(e))
+        var nrm = tmath.sqrt(e:dot(e))
         e:scal(1 / nrm)
     end
 
@@ -136,7 +136,7 @@ local ParticleSystem = terralib.memoize(function(T)
                 var diff = self.v(3 * i + k) - self.v(3 * j + k)
                 unrm = unrm + diff * diff
             end
-            unrm = mathfun.sqrt(unrm)
+            unrm = tmath.sqrt(unrm)
 
             -- Rejection sampling.
             -- Since we sampled the collision partners from a uniform
@@ -168,7 +168,7 @@ local ParticleSystem = terralib.memoize(function(T)
     terra particle_system:maxwellian(rand: Rand, u: &SVec, theta: T)
         for i = 0, self.n do
             for j = 0, 3 do
-                self.v(3 * i + j) = rand:rand_normal(u(j), mathfun.sqrt(theta))
+                self.v(3 * i + j) = rand:rand_normal(u(j), tmath.sqrt(theta))
             end
         end
     end
@@ -180,10 +180,10 @@ local ParticleSystem = terralib.memoize(function(T)
             for j = 0, 3 do
                 if rand:rand_uniform() < alpha then
                     self.v(3 * i + j)
-                        = rand:rand_normal(u1(j), mathfun.sqrt(theta1))
+                        = rand:rand_normal(u1(j), tmath.sqrt(theta1))
                 else
                     self.v(3 * i + j)
-                        = rand:rand_normal(u2(j), mathfun.sqrt(theta2))
+                        = rand:rand_normal(u2(j), tmath.sqrt(theta2))
                 end
             end
         end

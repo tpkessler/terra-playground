@@ -211,7 +211,9 @@ local SArrayVectorBase = function(Array)
         terra Array:copy(other : &Array)
             self.simd = other.simd
         end
+    end
 
+    if concepts.Primitive(T) and concepts.Real(T) then 
         terra Array:scal(a : T)
             self.simd = a * self.simd
         end
