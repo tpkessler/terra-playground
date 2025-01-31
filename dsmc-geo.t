@@ -191,10 +191,6 @@ local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
     return  ((size + alignment - 1) / alignment) * alignment
 end
 
-local terra coordinate_to_index(i : &SIMD_I, x : &SIMD_T, a : T, c : T)
-    @i = c * (@x - a)
-end
-
 local struct particle_distribution{
     position : tuple(dvec, dvec)
     velocity : tuple(dvec, dvec, dvec)
@@ -244,6 +240,15 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
 end
 
 
+local terra coordinate_to_index(i : &SIMD_I, x : &SIMD_T, a : T, c : T, M : size_t)
+    for k = 0, M do
+        --vectorized update
+        @i = c * (@x - a)
+        --increment references
+        x = x + 1
+        i = i + 1
+    end
+end
 
 local terra advect_particles_component(x : &SIMD_T, v : &SIMD_T, M : size_t)
     for k = 0, M do
@@ -255,7 +260,17 @@ local terra advect_particles_component(x : &SIMD_T, v : &SIMD_T, M : size_t)
     end
 end
 
-local terraform advect_particles(particle : &P) where {P}
+local terraform index_update(geo : &G, particle : &P) where {G, P}
+    coordinate_to_index(
+        [&SIMD_I](&particle.cellid(0)), 
+        [&SIMD_T](&particle.position._0(0)),
+        geo.grid[0][0],
+        1.0 / h,
+        particle.size / simdsize
+    )
+end
+
+local terraform advect_particles(geo : &G, particle : &P) where {G, P}
     advect_particles_component(
         [&SIMD_T](&particle.position._0(0)), 
         [&SIMD_T](&particle.velocity._0(0)), 
@@ -272,16 +287,16 @@ terra main()
     var n_tot_particles = round_to_aligned(geo:n_active_cells() * N * safetyfactor, simdsize)
     --compute initial phase-space distribution
     var particle_set = initial_condition(&geo, &allocator, n_tot_particles)
-    var z = particle_set.position._0
+    var z = particle_set.cellid
     z:print()
     --perform advection steps
-    advect_particles(&particle_set)
+    advect_particles(&geo, &particle_set)
+    index_update(&geo, &particle_set)
     z:print()
 end
---print(main())
+print(main())
 
 
-advect_particles_component:disas()
 
 
 
