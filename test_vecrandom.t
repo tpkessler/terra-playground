@@ -37,17 +37,17 @@ for K = 3, 6 do
                     var seed = 23478
                     var x: V[M]
                     do
-                            var rng = RNG.new(seed)
-                            for i = 0, M do
-                                    x[i] = rng:random_integer()
-                            end
+                        var rng = RNG.new(seed)
+                        for i = 0, M do
+                                x[i] = rng:random_integer()
+                        end
                     end
                     var y: V[M]
                     do
-                            var rng = RNG.new(seed)
-                            for i = 0, M do
-                                    y[i] = rng:random_integer()
-                            end
+                        var rng = RNG.new(seed)
+                        for i = 0, M do
+                                y[i] = rng:random_integer()
+                        end
                     end
                 end
                 for i = 0, M - 1 do
