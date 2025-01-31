@@ -58,3 +58,9 @@ path = "gnuplot/**"
 precedence = "override"
 SPDX-FileCopyrightText = "2018 N. Devillard <ndevilla@free.fr> and Lucas L. Treffenstädt <lucas@treffenstaedt.de>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+
+[[annotations]]
+path = "sleef/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2010-2025 SLEEF Project, Naoki Shibata and contributors"
+SPDX-License-Identifier = "BSL-1.0"

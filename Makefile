@@ -72,6 +72,13 @@ test: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn)
 	terra import.t
 	terra test_random.t
 
+libsleef: sleef/CMakeLists.txt
+	cmake -G Ninja -B build-sleef -S sleef -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
+	cmake --build build-sleef
+
+test: all
+	$(TERRA) ./testrunner.t
+
 .PHONY: clean realclean
 
 clean:
