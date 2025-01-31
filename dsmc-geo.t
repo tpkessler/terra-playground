@@ -44,7 +44,6 @@ local svecd5 = sarray.StaticVector(T, 5)
 local CSR = sparse.CSRMatrix(T, size_t)
 
 
-
 local geometry_particulars = function(x, y, h)
 
     ---------------------------
@@ -192,6 +191,10 @@ local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
     return  ((size + alignment - 1) / alignment) * alignment
 end
 
+local terra coordinate_to_index(i : &SIMD_I, x : &SIMD_T, a : T, c : T)
+    @i = c * (@x - a)
+end
+
 local struct particle_distribution{
     position : tuple(dvec, dvec)
     velocity : tuple(dvec, dvec, dvec)
@@ -260,10 +263,6 @@ local terraform advect_particles(particle : &P) where {P}
     )
 end
 
-
-
-
-
 terra main()
     --setup geometic particulars of Reden testcase
     var geo : geometry_particulars({-20, -10, 10, 20}, {0,0.5,5}, h)
@@ -279,10 +278,10 @@ terra main()
     advect_particles(&particle_set)
     z:print()
 end
-print(main())
+--print(main())
 
 
-
+advect_particles_component:disas()
 
 
 
