@@ -175,7 +175,7 @@ end
 
 
 local h = 0.5
-local N = 1
+local N = 2
 local dt = 1.0
 local safetyfactor = 1
 local temperature = 1.0
@@ -183,9 +183,11 @@ local temperature = 1.0
 local simdsize = 64
 local SIMD_T = vector(T, simdsize)
 local SIMD_I = vector(size_t, simdsize)
+local SIMD_B = vector(bool, simdsize)
 
 local dvec = darray.DynamicVector(T)
 local dvec_i = darray.DynamicVector(size_t)
+local dvec_b = darray.DynamicVector(bool)
 
 local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
     return  ((size + alignment - 1) / alignment) * alignment
@@ -195,6 +197,7 @@ local struct particle_distribution{
     position : tuple(dvec, dvec)                --x- and y-coordinate 
     velocity : tuple(dvec, dvec, dvec)          --x- and y- and z-velocity component
     cellid   : tuple(dvec_i, dvec_i, dvec_i)    --i- and j- multiindices and k- linear indices
+    mask     : dvec_b                           --used to mask the boundary, etc
     size     : size_t
 }
 
@@ -213,6 +216,8 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
     particle.cellid._0 = dvec_i.all(allocator, n_tot_particles, -1)
     particle.cellid._1 = dvec_i.all(allocator, n_tot_particles, -1)
     particle.cellid._2 = dvec_i.all(allocator, n_tot_particles, -1)
+    --create a mask
+    particle.mask = dvec_b.all(allocator, n_tot_particles, false)
     --initialize dynamic vectors
     --loop over cells
     var particle_id = 0
@@ -245,7 +250,12 @@ end
 
 local terra linearindex(i : &SIMD_I, j : &SIMD_I, I : &SIMD_I, m : size_t, M : size_t)
     for k = 0, M do
+        --vectorized update
         @I = @i + m * @j
+        --increment references
+        I = I + 1
+        i = i + 1
+        j = j + 1
     end
 end
 
@@ -299,6 +309,35 @@ local terraform advect_particles(geo : &G, particle : &P) where {G, P}
         [&SIMD_T](&particle.velocity._0(0)), 
         particle.size / simdsize
     )
+    advect_particles_component(
+        [&SIMD_T](&particle.position._1(0)), 
+        [&SIMD_T](&particle.velocity._1(0)), 
+        particle.size / simdsize
+    )
+end
+
+local terra mask_interior(mask : &SIMD_B, x : &SIMD_T, y : &SIMD_T, X : T[4], Y : T[4], M : size_t)
+    for k = 0, M do
+        --vectorized update
+        @mask = 
+            (@x > X[0] and @x < X[3]) and (@y > Y[0] and @y < Y[2]) 
+                and not (@x > X[1] and @x < X[2]) and  (@y > Y[1] and @y < Y[2])
+        --increment references
+        mask = mask + 1
+        x = x + 1
+        y = y + 1
+    end
+end
+
+local terraform mask_interior_particles(geo : &G, particle : &P) where {G, P}
+    mask_interior(
+        [&SIMD_B](&particle.mask(0)),
+        [&SIMD_T](&particle.position._0(0)),
+        [&SIMD_T](&particle.position._1(0)),
+        geo.grid[0], 
+        geo.grid[1],
+        particle.size / simdsize
+    )
 end
 
 terra main()
@@ -309,13 +348,16 @@ terra main()
     --total available particles, taking care of a safetyfactor
     var n_tot_particles = round_to_aligned(geo:n_active_cells() * N * safetyfactor, simdsize)
     --compute initial phase-space distribution
-    var particle_set = initial_condition(&geo, &allocator, n_tot_particles)
-    var z = particle_set.cellid._2
-    z:print()
-    --perform advection steps
-    advect_particles(&geo, &particle_set)
-    cell_index_update(&geo, &particle_set)
-    z:print()
+    var particle = initial_condition(&geo, &allocator, n_tot_particles)
+    --perform advection step
+    advect_particles(&geo, &particle)
+    --update cell coordinates
+    cell_index_update(&geo, &particle)
+    --create a mask for the interior particles, marking the particles
+    --that have left the domain
+    mask_interior_particles(&geo, &particle)
+
+    return n_tot_particles
 end
 print(main())
 
