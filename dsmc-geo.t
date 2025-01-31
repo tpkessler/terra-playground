@@ -192,9 +192,9 @@ local terra round_to_aligned(size : size_t, alignment : size_t) : size_t
 end
 
 local struct particle_distribution{
-    position : tuple(dvec, dvec)
-    velocity : tuple(dvec, dvec, dvec)
-    cellid   : dvec_i
+    position : tuple(dvec, dvec)                --x- and y-coordinate 
+    velocity : tuple(dvec, dvec, dvec)          --x- and y- and z-velocity component
+    cellid   : tuple(dvec_i, dvec_i, dvec_i)    --i- and j- multiindices and k- linear indices
     size     : size_t
 }
 
@@ -210,7 +210,9 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
     particle.velocity._1 = dvec.zeros(allocator, n_tot_particles)
     particle.velocity._2 = dvec.zeros(allocator, n_tot_particles)
     --unused particles have cell-id = -1
-    particle.cellid = dvec_i.all(allocator, n_tot_particles, -1)
+    particle.cellid._0 = dvec_i.all(allocator, n_tot_particles, -1)
+    particle.cellid._1 = dvec_i.all(allocator, n_tot_particles, -1)
+    particle.cellid._2 = dvec_i.all(allocator, n_tot_particles, -1)
     --initialize dynamic vectors
     --loop over cells
     var particle_id = 0
@@ -229,7 +231,9 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
                 particle.velocity._1(particle_id) = geo:random_velocity(1, variance)
                 particle.velocity._2(particle_id) = geo:random_velocity(1, variance)
                 --assign cell-id
-                particle.cellid(particle_id) = cell
+                particle.cellid._0(particle_id) = mi._0
+                particle.cellid._1(particle_id) = mi._1
+                particle.cellid._2(particle_id) = cell
                 --increase particle id
                 particle_id = particle_id + 1
             end
@@ -239,6 +243,11 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
     return particle
 end
 
+local terra linearindex(i : &SIMD_I, j : &SIMD_I, I : &SIMD_I, m : size_t, M : size_t)
+    for k = 0, M do
+        @I = @i + m * @j
+    end
+end
 
 local terra coordinate_to_index(i : &SIMD_I, x : &SIMD_T, a : T, c : T, M : size_t)
     for k = 0, M do
@@ -250,8 +259,6 @@ local terra coordinate_to_index(i : &SIMD_I, x : &SIMD_T, a : T, c : T, M : size
     end
 end
 
-coordinate_to_index:disas()
-
 local terra advect_particles_component(x : &SIMD_T, v : &SIMD_T, M : size_t)
     for k = 0, M do
         --vectorized update
@@ -262,12 +269,26 @@ local terra advect_particles_component(x : &SIMD_T, v : &SIMD_T, M : size_t)
     end
 end
 
-local terraform index_update(geo : &G, particle : &P) where {G, P}
+local terraform cell_index_update(geo : &G, particle : &P) where {G, P}
     coordinate_to_index(
-        [&SIMD_I](&particle.cellid(0)), 
+        [&SIMD_I](&particle.cellid._0(0)), 
         [&SIMD_T](&particle.position._0(0)),
         geo.grid[0][0],
         1.0 / h,
+        particle.size / simdsize
+    )
+    coordinate_to_index(
+        [&SIMD_I](&particle.cellid._1(0)), 
+        [&SIMD_T](&particle.position._1(0)),
+        geo.grid[1][0],
+        1.0 / h,
+        particle.size / simdsize
+    )
+    linearindex(
+        [&SIMD_I](&particle.cellid._0(0)), 
+        [&SIMD_I](&particle.cellid._1(0)), 
+        [&SIMD_I](&particle.cellid._2(0)), 
+        geo.dim[0], 
         particle.size / simdsize
     )
 end
@@ -289,14 +310,14 @@ terra main()
     var n_tot_particles = round_to_aligned(geo:n_active_cells() * N * safetyfactor, simdsize)
     --compute initial phase-space distribution
     var particle_set = initial_condition(&geo, &allocator, n_tot_particles)
-    var z = particle_set.cellid
+    var z = particle_set.cellid._2
     z:print()
     --perform advection steps
     advect_particles(&geo, &particle_set)
-    index_update(&geo, &particle_set)
+    cell_index_update(&geo, &particle_set)
     z:print()
 end
---print(main())
+print(main())
 
 
 
