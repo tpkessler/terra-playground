@@ -181,11 +181,13 @@ local numtostr = terralib.overloadedfunction("numtostr")
 numtostr.format = {}
 --add implementations of numtostr
 --globals are used to change the format
-for _,T in ipairs{float, double, int8, int16, int32, int64, uint8, uint16, uint32, uint64} do
+for _,T in ipairs{bool, float, double, int8, int16, int32, int64, uint8, uint16, uint32, uint64} do
     --add format for each type
     if concepts.Float(T) then
         numtostr.format[T] = global(rawstring, "%0.2f")
     elseif concepts.Integer(T) then
+        numtostr.format[T] = global(rawstring, "%d")
+    elseif concepts.Bool(T) then
         numtostr.format[T] = global(rawstring, "%d")
     else
         error("Please specify a format for this type.")
