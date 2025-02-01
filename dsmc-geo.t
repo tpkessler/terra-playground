@@ -361,18 +361,31 @@ local terraform advect_particles(geo : &G, particle : &P) where {G, P}
 end
 
 
-local terra symmetry_condition(mask : &SIMD_B, x : &SIMD_T, y : &SIMD_T, X : T[4], Y : T[4], M : size_t)
+local terraform createmask(mask : &V1, current : &V2, next : &V2, predicate, M : size_t) where {V1, V2}
     for k = 0, M do
-        --vectorized update
-        @mask = 
-            (@x > X[0] and @x < X[3]) and (@y > Y[0] and @y < Y[2]) 
-                and not (@x > X[1] and @x < X[2]) and  (@y > Y[1] and @y < Y[2])
+        @mask = @mask and predicate(current, next)
         --increment references
         mask = mask + 1
-        x = x + 1
-        y = y + 1
+        current = current + 1
+        next = next + 1
     end
 end
+
+--[[
+local terraform pred(current, next, )
+
+end
+
+local terraform symmetry_condition(geo : &G, particle : &P) where {G, P}
+    createmask(
+        [&SIMD_B](&particle.mask(0))
+        [&SIMD_T](&particle.position.current.x(0)), 
+        [&SIMD_T](&particle.position.next.x(0)),
+        pred, 
+        particle.size / simdsize
+    )
+end
+--]]
 
 
 terra main()
