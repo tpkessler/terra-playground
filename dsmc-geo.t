@@ -225,6 +225,7 @@ local struct particle_distribution{
     position : coordinateref                     --access to coordinate buffers
     velocity : velocities                        --buffers for particle velocities 
     cellid   : indices                           --i- and j- multiindices and k- linear indices
+    time     : dvec                              --buffer for particle-specific time to boundary component
     mask     : dvec_b                            --used to mask the boundary, etc
     size     : size_t
     pa       : coordinates                       --buffer used for storage of particle positions
@@ -257,6 +258,8 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
     particle.cellid.I = dvec_i.all(allocator, n_tot_particles, -1)
     particle.cellid.J = dvec_i.all(allocator, n_tot_particles, -1)
     particle.cellid.L = dvec_i.all(allocator, n_tot_particles, -1)
+    --time-to-boundary-component
+    particle.time = dvec.zeros(allocator, n_tot_particles)
     --create a mask
     particle.mask = dvec_b.all(allocator, n_tot_particles, false)
     --initialize dynamic vectors
@@ -321,6 +324,48 @@ local terra advect_particles_component(a : &SIMD_T, b : &SIMD_T, v : &SIMD_T, M 
     end
 end
 
+
+local P = &SIMD_T
+local terra time_to_boundary_segment(s : &SIMD_T, X : P[2], Y : P[2], a : T[2], b : T[2], M : size_t)
+    var v : T[2]
+    v[0] = b[0] - a[0]
+    v[1] = b[1] - a[1]
+    var g = tmath.sqrt(v[0] * v[0] + v[1] * v[1]) --length of line segmenth
+    v[0] = v[0] / g
+    v[1] = v[1] / g 
+    var u = arrayof(T, v[1],-v[0])
+    for k = 0, M do
+        --'X' in local coordinates 'u' and 'v' with origin 'a'
+        var x_u = (@X[0] - a[0]) * u[0] + (@X[1] - a[1]) * u[1]
+        var x_v = (@X[0] - a[0]) * v[0] + (@X[1] - a[1]) * v[1]
+        --'X' in local coordinates 'u' and 'v' with origin 'a'
+        var y_u = (@Y[0] - a[0]) * u[0] + (@Y[1] - a[1]) * u[1]
+        var y_v = (@Y[0] - a[0]) * v[0] + (@Y[1] - a[1]) * v[1]
+        --compute relative time to boundary segment (number between 0 and 1)
+        var mask = x_u * y_u < 0
+        @s = terralib.select(
+            mask,
+            -x_u / ((@Y[0] - @X[0]) * u[0] + (@Y[1] - @X[1]) * u[1]),
+            -1
+        )
+        --compute v-coordinate of boundary-collision-point
+        --u-coordinate = 0 by construction
+        var p_v = terralib.select(
+            mask,
+            @s * ((@Y[0] - @X[0]) * v[0] + (@Y[1] - @X[1]) * v[1]) + x_v,
+            -1
+        )
+        --mask that signifies the particles that cross the boundary segment
+        mask = mask and (p_v >= 0 and p_v <= g)
+        --update time to boundary-segment
+        @s = terralib.select(mask, @s, -1)
+        --update loop
+        s = s + 1
+        X[0] = X[0] + 1; X[1] = X[1] + 1 
+        Y[0] = Y[0] + 1; Y[1] = Y[1] + 1
+    end
+end
+
 local terraform cell_index_update(geo : &G, particle : &P) where {G, P}
     coordinate_to_index(
         [&SIMD_I](&particle.cellid.I(0)), 
@@ -360,6 +405,16 @@ local terraform advect_particles(geo : &G, particle : &P) where {G, P}
     )
 end
 
+local terraform time_to_boundary(geo : &G, particle : &P) where {G, P}
+    time_to_boundary_segment(
+        [&SIMD_T](&particle.time(0)), 
+        array([&SIMD_T](&particle.position.current.x(0)), [&SIMD_T](&particle.position.current.y(0))),
+        array([&SIMD_T](&particle.position.next.x(0)), [&SIMD_T](&particle.position.next.y(0))),
+        arrayof(T,-20,0),
+        arrayof(T,20,0),
+        particle.size / simdsize
+    )
+end
 
 local terraform createmask(mask : &V1, current : &V2, next : &V2, predicate, M : size_t) where {V1, V2}
     for k = 0, M do
@@ -370,22 +425,6 @@ local terraform createmask(mask : &V1, current : &V2, next : &V2, predicate, M :
         next = next + 1
     end
 end
-
---[[
-local terraform pred(current, next, )
-
-end
-
-local terraform symmetry_condition(geo : &G, particle : &P) where {G, P}
-    createmask(
-        [&SIMD_B](&particle.mask(0))
-        [&SIMD_T](&particle.position.current.x(0)), 
-        [&SIMD_T](&particle.position.next.x(0)),
-        pred, 
-        particle.size / simdsize
-    )
-end
---]]
 
 
 terra main()
@@ -401,10 +440,10 @@ terra main()
     advect_particles(&geo, &particle)
     --update cell coordinates
     cell_index_update(&geo, &particle)
-    --create a mask for the interior particles, marking the particles
-    --that have left the domain
-    --mask_interior_particles(&geo, &particle)
-
+    --compute time to next boundary
+    time_to_boundary(&geo, &particle)
+    var z = particle.time
+    z:print()
     return n_tot_particles
 end
 print(main())
