@@ -32,19 +32,19 @@ local sleef = setmetatable(
 local ext = (require("ffi").os == "Linux" and ".so" or ".dylib")
 terralib.linklibrary("./build-sleef/lib/libsleef" .. ext)
 
-local ffi = require("ffi")
-local vecmath = {
-    ["float"] = {[4] = {}},
-    ["double"] = {[2] = {}},
-}
-if ffi.arch == "x64" then
-    vecmath.float[8] = {}
-    vecmath.double[4] = {}
+-- SSE and AArch64
+local supported_width = terralib.newlist({128})
+if require("ffi").arch == "x64" then
+    -- AVX/AVX2
+    supported_width:insert(256)
     if has_avx512_support() then
-        vecmath.float[16] = {}
-        vecmath.double[8] = {}
+        suppoorted_width:insert(512)
+        vecmath.float[512] = {}
+        vecmath.double[512] = {}
     end
 end
+supported_width = supported_width:rev()
+local vecmath = {[float] = {}, [double] = {}}
 
 local func = {
     ["sin"] = 10,
@@ -54,17 +54,77 @@ local func = {
     ["sqrt"] = 5,
 }
 
-for typ, vmath in pairs(vecmath) do
-    for width, _ in pairs(vmath) do
-        for name, precision in pairs(func) do
-            local prefix = typ:sub(1, 1)
+for T, _ in pairs(vecmath) do
+    for name, precision in pairs(func) do
+        local prefix = tostring(T):sub(1, 1)
+        vecmath[T][name] = {}
+        for _, width in ipairs(supported_width) do
+            local len = width / (8 * sizeof(T))
             local vecname = (
-                ("%s%s%d_u%02d"):format(name, prefix, width, precision)
+                ("%s%s%d_u%02d"):format(name, prefix, len, precision)
             )
-            vecmath[typ][width][name] = sleef[vecname]
+            vecmath[T][name][width] = sleef[vecname]
         end
     end
 end
+
+--[[
+local unroll_math = function(T, N, width, func, x, y)
+    local stat = terralib.newlist()
+    local M = width / (8 * sizeof(T))
+    local SIMD = vector(T, M)
+    local xp = symbol(&SIMD)
+    local yp = symbol(&SIMD)
+    stat:insert(quote var [xp] = [&SIMD](&[x]) end)
+    stat:insert(quote var [yp] = [&SIMD](&[y]) end)
+    local Nr = math.floor(N / M)
+    for i = 1, Nr do
+        stat:insert(quote @[yp] = [func](@[xp]) end)
+        stat:insert(quote [xp] = [xp] + 1 end)
+        stat:insert(quote [yp] = [yp] + 1 end)
+    end
+    return stat
+end
+
+for name, _ in pairs(func) do
+    vecmath[name] = terralib.overloadedfunction("vec" .. name)
+    for _, T in pairs{float, double} do
+        local start = (T == double and 1 or 2)
+        for K = start, 6 do
+            local N = 2 ^ K
+            local V = vector(T, N)
+            local x = symbol(V)
+            local y = symbol(V)
+            local vecfunc = vecmath[tostring(T)]
+            vecmath[name]:adddefinition(
+                terra([x])
+                    var [y]
+                    escape
+                        local refwidth = 8
+                        local width, vecfun
+                        while refwidth > 2 do
+                            width = refwidth * sizeof(double) / sizeof(T)
+                            vecfun = vecmath[tostring(T)][width]
+                            if (
+                                vecfun == nil
+                                or N % refwidth ~= 0
+                            ) then
+                                refwidth = refwidth / 2
+                            else
+                                break
+                            end
+                        end
+                        emit quote
+                            [unroll_math(T, N, width, vecfun[name], x, y)]
+                        end
+                    end
+                    return [y]
+                end
+            )
+        end
+    end
+end
+--]]
 
 vecmath.has_avx512_support = has_avx512_support
 return vecmath
