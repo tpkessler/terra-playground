@@ -87,6 +87,71 @@ for K = 3, 6 do
                     test boundssqmean[i] == true
                 end
             end
+
+            testset "Normal distribution" do
+                local M = 1024 * 1024
+                terracode
+                    var refmean: T = -2.25
+                    var refvariance: T = 0.75
+                    var rng = RNG.new(348905, 679)
+                    var x = rng:random_normal(refmean, refvariance)
+                    var mean = x
+                    var sqmean = x * x
+                    
+                    for i = 1, M do
+                        var x = rng:random_normal(refmean, refvariance)
+
+                        mean = i * mean + x
+                        mean = mean / (i + 1)
+
+                        sqmean = i * sqmean + x * x
+                        sqmean = sqmean / (i + 1)
+                    end
+                    var tol = [T](1e-2)
+
+                    var errmean = mean - refmean
+                    var boundsmean = (errmean < tol) and (errmean > -tol)
+
+                    var errsqmean = sqmean - (refmean * refmean + refvariance * refvariance)
+                    var boundssqmean = (errsqmean < tol) and (errsqmean > -tol)
+                end
+                for i = 0, N - 1 do
+                    test boundsmean[i] == true
+                    test boundssqmean[i] == true
+                end
+            end
+
+            testset "Exponential distribution" do
+                local M = 1024 * 1024
+                terracode
+                    var frequency: T = 2.5
+                    var rng = RNG.new(3498065, 31654)
+                    var x = rng:random_exponential(frequency)
+                    var mean = x
+                    var sqmean = x * x
+                    
+                    for i = 1, M do
+                        var x = rng:random_exponential(frequency)
+
+                        mean = i * mean + x
+                        mean = mean / (i + 1)
+
+                        sqmean = i * sqmean + x * x
+                        sqmean = sqmean / (i + 1)
+                    end
+                    var tol = [T](1e-2)
+
+                    var errmean = mean - 1 / frequency
+                    var boundsmean = (errmean < tol) and (errmean > -tol)
+
+                    var errsqmean = sqmean - 2 / (frequency * frequency)
+                    var boundssqmean = (errsqmean < tol) and (errsqmean > -tol)
+                end
+                for i = 0, N - 1 do
+                    test boundsmean[i] == true
+                    test boundssqmean[i] == true
+                end
+            end
         end
     end
 end
