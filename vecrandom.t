@@ -5,6 +5,8 @@
 
 local base = require("base")
 local concepts = require("concepts")
+local tmath = require("tmath")
+local vecmath = require("vecmath")
 
 import "terraform"
 
@@ -52,6 +54,19 @@ local VectorPCG = terralib.memoize(function(F, N)
     terra pcg:random_uniform()
         var x = self:random_integer()
         return cast(&x) / [F](4294967296.) -- = 2^32
+    end
+
+    terra pcg:random_normal(mean: SIMD, variance: SIMD)
+        var u1 = self:random_uniform()
+        var u2 = self:random_uniform()
+        var radius = vecmath.sqrt(2 * vecmath.log(1 / u1))
+        var theta = 2 * [F](tmath.pi) * u2
+        return mean + variance * radius * vecmath.cos(theta)
+    end
+
+    terra pcg:random_exponential(frequency: SIMD)
+        var u = self:random_uniform()
+        return -vecmath.log(u) / frequency
     end
 
 	local Integer = concepts.Integer
