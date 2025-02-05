@@ -51,3 +51,6 @@ testgenerate.h
 /config
 
 build-sleef
+
+# macos shit
+.DS_Store
