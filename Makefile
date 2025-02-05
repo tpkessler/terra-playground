@@ -17,8 +17,7 @@ TERRAFLAGS?=-g
 
 CFLAGS=-O2 -march=native -fPIC
 
-all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn) libnonlinearbc.$(dyn)  gnuplot_i.$(dyn)
-
+all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn) libnonlinearbc.$(dyn)  gnuplot_i.$(dyn) libsleef
 
 libnonlinearbc.$(dyn): nonlinearbc.o
 	$(CC) -fPIC -shared $^ -o $@ -lpthread -lblas
@@ -75,6 +74,9 @@ test: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn)
 libsleef: sleef/CMakeLists.txt
 	cmake -G Ninja -B build-sleef -S sleef -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
 	cmake --build build-sleef
+
+test: all
+	$(TERRA) ./testrunner.t
 
 test: all
 	$(TERRA) ./testrunner.t
