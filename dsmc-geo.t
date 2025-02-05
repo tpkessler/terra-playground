@@ -11,14 +11,15 @@ local darray = require("darray")
 local sparse = require("sparse")
 local tmath = require("tmath")
 local range = require("range")
-local random = require("random")
+local random = require("vecrandom")
 
 import "terraform"
 local io = terralib.includec("stdio.h")
 
 local size_t = int64
 local T = double
-local random_generator = random.MinimalPCG(T)
+local simdsize = 64
+local random_generator = random.VectorPCG(T, simdsize)
 local Allocator = alloc.Allocator
 
 math.round = function(x)
@@ -97,11 +98,11 @@ local geometry_particulars = function(x, y, h)
         return i + self.dim[0]*j
     end
 
-    terra geomp:coordinate(coordinate : size_t, i : size_t, u : T) : T
+    terraform geomp:coordinate(coordinate : size_t, i : size_t, u : V) where {V}
         return self.grid[coordinate][0] + (i + u) * h
     end
 
-    terra geomp:position(i : size_t, j : size_t, u : T, v : T) : {T, T}
+    terraform geomp:position(i : size_t, j : size_t, u : V, v : V) where {V}
         return self.grid[0][0] + (i+u) * h, self.grid[1][0] + (j+v) * h
     end
 
@@ -124,7 +125,7 @@ local geometry_particulars = function(x, y, h)
         var k = 0
         for j = 0, n do
             for i = 0, m do
-                var c = self:position(i, j, 0.5, 0.5) --compute cell-center
+                var c = self:position(size_t(i), size_t(j), 0.5, 0.5) --compute cell-center
                 if (self.grid[0][1] < c._0 and c._0 < self.grid[0][2]) and (self.grid[1][1] < c._1 and c._1 < self.grid[1][2]) then
                     self.active[k] = false
                 else
@@ -134,7 +135,7 @@ local geometry_particulars = function(x, y, h)
             end
         end
         --initialize random number generator
-        self.rand = random_generator.new(238904)
+        self.rand = random_generator.new(238904, 1)
     end
 
     terra geomp:random_uniform_position(i : size_t, j : size_t)
@@ -145,11 +146,11 @@ local geometry_particulars = function(x, y, h)
         return self:position(i, j, u, v) 
     end
 
-    terra geomp:random_coordinate(coordinate : size_t, i : size_t) : T
+    terra geomp:random_coordinate(coordinate : size_t, i : size_t)
         return self:coordinate(coordinate, i, self.rand:random_uniform())
     end
 
-    terra geomp:random_velocity(mean : T, variance : T) : T
+    terra geomp:random_velocity(mean : T, variance : T)
         return self.rand:random_normal(mean, variance)
     end
 
@@ -180,7 +181,6 @@ local dt = 1.0
 local safetyfactor = 1
 local temperature = 1.0
 
-local simdsize = 64
 local SIMD_T = vector(T, simdsize)
 local SIMD_I = vector(size_t, simdsize)
 local SIMD_B = vector(bool, simdsize)
@@ -272,13 +272,13 @@ local terraform initial_condition(geo : &G, allocator : &A, n_tot_particles : si
             for k = 0, N do
                 var mi = geo:multiindex(cell)
                 --assign positions
-                particle.position.current.x(particle_id) = geo:random_coordinate(0, mi._0)
-                particle.position.current.y(particle_id) = geo:random_coordinate(1, mi._1)
+                particle.position.current.x(particle_id) = geo:random_coordinate(0, mi._0)[0]
+                particle.position.current.y(particle_id) = geo:random_coordinate(1, mi._1)[0]
                 --assign velocities
                 var variance = tmath.sqrt(T(temperature))
-                particle.velocity.x(particle_id) = geo:random_velocity(1, variance)
-                particle.velocity.y(particle_id) = geo:random_velocity(1, variance)
-                particle.velocity.z(particle_id) = geo:random_velocity(1, variance)
+                particle.velocity.x(particle_id) = geo:random_velocity(0, variance)[0]
+                particle.velocity.y(particle_id) = geo:random_velocity(0, variance)[0]
+                particle.velocity.z(particle_id) = geo:random_velocity(0, variance)[0]
                 --assign cell-id
                 particle.cellid.I(particle_id) = mi._0
                 particle.cellid.J(particle_id) = mi._1
@@ -446,7 +446,7 @@ terra main()
     z:print()
     return n_tot_particles
 end
-print(main())
+main()
 
 
 
@@ -488,11 +488,11 @@ testenv "DSMC - geometry" do
 
     testset "particle position" do
         terracode
-            x[0], y[0] = geo:position(4, 2, 0.0, 0.0)
-            x[1], y[1] = geo:position(4, 2, 1.0, 0.0)
-            x[2], y[2] = geo:position(4, 2, 1.0, 1.0)
-            x[3], y[3] = geo:position(4, 2, 0.0, 1.0)
-            x[4], y[4] = geo:position(4, 2, 0.5, 0.5)
+            x[0], y[0] = geo:position(size_t(4), size_t(2), 0.0, 0.0)
+            x[1], y[1] = geo:position(size_t(4), size_t(2), 1.0, 0.0)
+            x[2], y[2] = geo:position(size_t(4), size_t(2), 1.0, 1.0)
+            x[3], y[3] = geo:position(size_t(4), size_t(2), 0.0, 1.0)
+            x[4], y[4] = geo:position(size_t(4), size_t(2), 0.5, 0.5)
         end
         test x[0]==-1   and y[0]==2
         test x[1]== 0   and y[1]==2
@@ -507,12 +507,12 @@ testenv "DSMC - geometry" do
             var m = 1000000
             for k = 1, m do
                 var t = geo:random_uniform_position(4, 2)
-                xx = xx + t._0
-                yy = yy + t._1
+                xx = xx + t._0[0]
+                yy = yy + t._1[0]
             end
             xx = xx / m
             yy = yy / m
-            var xref, yref = geo:position(4, 2, 0.5, 0.5)
+            var xref, yref = geo:position(size_t(4), size_t(2), 0.5, 0.5)
         end
         test tmath.isapprox(xx, xref, 1e-3)
         test tmath.isapprox(yy, yref, 1e-3)
@@ -525,10 +525,10 @@ testenv "DSMC - geometry" do
             var V, Tmp = 1.0, 2.0
             for k = 1, m do
                 var v = geo:random_normal_velocity(V, Tmp)
-                vv = vv + v._0
-                ww = ww + v._1
-                ss = ss + (v._0 - V) * (v._0 - V)
-                rr = rr + (v._1 - V) * (v._1 - V)
+                vv = vv + v._0[0]
+                ww = ww + v._1[0]
+                ss = ss + (v._0[0] - V) * (v._0[0] - V)
+                rr = rr + (v._1[0] - V) * (v._1[0] - V)
             end
             vv = vv / m
             ww = ww / m
