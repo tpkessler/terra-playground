@@ -326,7 +326,7 @@ end
 
 
 local P = &SIMD_T
-local terra time_to_boundary_segment(s : &SIMD_T, X : P[2], Y : P[2], a : T[2], b : T[2], M : size_t, I : size_t)
+local terra time_to_boundary_segment(s : &SIMD_T, X : P[2], Y : P[2], a : T[2], b : T[2], M : size_t)
     --compute local coordinate base vectors with origin 'a'
     var v : T[2]
     v[0] = b[0] - a[0]
@@ -431,6 +431,9 @@ local terraform createmask(mask : &V1, current : &V2, next : &V2, predicate, M :
 end
 
 
+local gnuplot = require("gnuplot")
+
+
 terra main()
     --setup geometic particulars of Reden testcase
     var geo : geometry_particulars({-20, -10, 10, 20}, {0,0.5,5}, h)
@@ -448,6 +451,13 @@ terra main()
     time_to_boundary(&geo, &particle)
     var z = particle.time
     z:print()
+
+
+    var fig : gnuplot.handle
+    gnuplot.setterm(fig, "wxt", 600, 400)
+    gnuplot.plot_equation(fig, "sin(x)", "Sine wave")
+
+
     return n_tot_particles
 end
 print(main())
