@@ -39,7 +39,7 @@ end
 
 
 
-local DefaultAllocator = alloc.DefaultAllocator()
+local DefaultAllocator = alloc.DefaultAllocator{Alignment=64}
 local svecd5 = sarray.StaticVector(T, 5)
 local CSR = sparse.CSRMatrix(T, size_t)
 
