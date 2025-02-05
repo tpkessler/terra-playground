@@ -52,3 +52,9 @@ path = "nonlinearbc.h"
 precendence = "override"
 SPDX-FileCopyrightText = "2025 Torsten Keßler <t.kessler@posto.de>"
 SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "gnuplot/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2018 N. Devillard <ndevilla@free.fr> and Lucas L. Treffenstädt <lucas@treffenstaedt.de>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
