@@ -326,11 +326,12 @@ end
 
 
 local P = &SIMD_T
-local terra time_to_boundary_segment(s : &SIMD_T, X : P[2], Y : P[2], a : T[2], b : T[2], M : size_t)
+local terra time_to_boundary_segment(s : &SIMD_T, X : P[2], Y : P[2], a : T[2], b : T[2], M : size_t, I : size_t)
+    --compute local coordinate base vectors with origin 'a'
     var v : T[2]
     v[0] = b[0] - a[0]
     v[1] = b[1] - a[1]
-    var g = tmath.sqrt(v[0] * v[0] + v[1] * v[1]) --length of line segmenth
+    var g = tmath.sqrt(v[0] * v[0] + v[1] * v[1]) --length of line segment
     v[0] = v[0] / g
     v[1] = v[1] / g 
     var u = arrayof(T, v[1],-v[0])
@@ -338,11 +339,13 @@ local terra time_to_boundary_segment(s : &SIMD_T, X : P[2], Y : P[2], a : T[2], 
         --'X' in local coordinates 'u' and 'v' with origin 'a'
         var x_u = (@X[0] - a[0]) * u[0] + (@X[1] - a[1]) * u[1]
         var x_v = (@X[0] - a[0]) * v[0] + (@X[1] - a[1]) * v[1]
-        --'X' in local coordinates 'u' and 'v' with origin 'a'
+        --'Y' in local coordinates 'u' and 'v' with origin 'a'
         var y_u = (@Y[0] - a[0]) * u[0] + (@Y[1] - a[1]) * u[1]
         var y_v = (@Y[0] - a[0]) * v[0] + (@Y[1] - a[1]) * v[1]
+        --the resulting mask signifies when a particle crosses the infinite
+        --line segment that passes through 'a' and 'b'
+        var mask = x_u * y_u <= 0
         --compute relative time to boundary segment (number between 0 and 1)
-        var mask = x_u * y_u < 0
         @s = terralib.select(
             mask,
             -x_u / ((@Y[0] - @X[0]) * u[0] + (@Y[1] - @X[1]) * u[1]),
@@ -355,11 +358,12 @@ local terra time_to_boundary_segment(s : &SIMD_T, X : P[2], Y : P[2], a : T[2], 
             @s * ((@Y[0] - @X[0]) * v[0] + (@Y[1] - @X[1]) * v[1]) + x_v,
             -1
         )
-        --mask that signifies the particles that cross the boundary segment
+        --update mask that signifies the particles that cross the boundary segment
+        --from 'a' to 'b' rather than the infinite straight line through those points
         mask = mask and (p_v >= 0 and p_v <= g)
         --update time to boundary-segment
         @s = terralib.select(mask, @s, -1)
-        --update loop
+        --update loop iterators
         s = s + 1
         X[0] = X[0] + 1; X[1] = X[1] + 1 
         Y[0] = Y[0] + 1; Y[1] = Y[1] + 1
