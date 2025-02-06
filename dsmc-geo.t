@@ -10,6 +10,7 @@ local sarray = require("sarray")
 local darray = require("darray")
 local sparse = require("sparse")
 local tmath = require("tmath")
+local vecmath = require("vecmath")
 local range = require("range")
 local random = require("vecrandom")
 
@@ -324,7 +325,6 @@ local terra advect_particles_component(a : &SIMD_T, b : &SIMD_T, v : &SIMD_T, M 
     end
 end
 
-
 local P = &SIMD_T
 local terra time_to_boundary_segment(s : &SIMD_T, X : P[2], Y : P[2], a : T[2], b : T[2], M : size_t)
     --compute local coordinate base vectors with origin 'a'
@@ -368,6 +368,20 @@ local terra time_to_boundary_segment(s : &SIMD_T, X : P[2], Y : P[2], a : T[2], 
         X[0] = X[0] + 1; X[1] = X[1] + 1 
         Y[0] = Y[0] + 1; Y[1] = Y[1] + 1
     end
+end
+
+local terra diffuse_reflection(rand: random_generator, theta: T, V: P[3])
+    var variance = tmath.sqrt(theta)
+    escape
+        for j = 1, 3 do
+            emit quote @V[j - 1] = rand:random_normal(0, variance) end
+        end
+    end
+    -- If V is normally distributed, then |V| follows the half normal distribution
+    -- Since our normal is pointing outward, the inflow velocity in the normal
+    -- direction has to be negative, so we map the result from the positive
+    -- to the negative half space.
+    @V[0] = -vecmath.abs(@V[0])
 end
 
 local terraform cell_index_update(geo : &G, particle : &P) where {G, P}
