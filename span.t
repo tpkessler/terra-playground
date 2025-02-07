@@ -46,7 +46,7 @@ local Span = terralib.memoize(function(T, N)
             return `span {&[exp][0], from.N}
         elseif from:ispointer() then
             assert(from.type == T)
-            return `span {exp, 1}
+            return `span {exp, [(N == DYNAMIC_EXTEND) and 1 or N]}
         elseif tpl.istuple(from) then
             local types = tpl.unpacktuple(from)
             local len = #from.entries
