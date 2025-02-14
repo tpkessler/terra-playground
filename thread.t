@@ -62,7 +62,10 @@ end
 -- arguments, it generates a terra function with signature FUNC and a datatype
 -- that stores the function arguments. It returns a thread instance but not
 -- starting the thread.
-local C = terralib.includec("string.h") -- memcpy
+local C = terralib.includecstring(
+[[
+#include <stdio.h>
+]]) -- memcpy
 local terraform submit(allocator, func, arg...)
     var t: thread
     t.id = 0 -- Will be set up thread.create
@@ -75,16 +78,28 @@ local terraform submit(allocator, func, arg...)
             -- sizeof(&opaque) == sizeof(&int8) for terra.
             var iarg = [&int8](parg)
             var arg_ = @[&arg.type](iarg)
+            C.printf("Inside C wrapper Argument is %ld\n", arg_._0)
             var func_ = @[&func.type](iarg + sizeof([arg.type]))
             func_(unpacktuple(arg_))
             return parg
         end
     ]
-    t.arg = allocator:new(1, sizeof([arg.type]) + sizeof([func.type]))
-    C.memcpy(&t.arg(0), &arg, sizeof([arg.type]))
-    C.memcpy(&t.arg(sizeof([arg.type])), &func, sizeof([func.type]))
+    escape
+        local struct packed {
+            arg: arg.type
+            func: func.type
+        }
+        emit quote
+            var smrtpacked = [alloc.SmartObject(packed)].new(allocator)
+            smrtpacked.arg = __handle__(arg)
+            smrtpacked.func = __handle__(func)
+            t.arg = smrtpacked
+        end
+    end
     return t
 end
+local func = submit:dispatch(&alloc.DefaultAllocator(), {int, double} -> {}, int, double)
+func:printpretty()
 
 terraform thread.staticmethods.new(allocator, func, arg...)
     var t = submit(allocator, func, unpacktuple(arg))
@@ -119,6 +134,7 @@ local ThreadsafeQueue = terralib.memoize(function(T)
         var guard: lock_guard = self.mutex
         self.data:push(t)
     end
+    threadsafe_queue.methods.push:printpretty()
 
     terra threadsafe_queue:try_pop(t: &T)
         self.mutex:lock()
@@ -237,7 +253,6 @@ terra threadpool:__dtor()
     -- main thread.
     self.joiner:__dtor()
     self.threads:__dtor()
-    -- FIXME Segfaults!
     self.work_queue:__dtor()
     self.done_signal:__dtor()
     self.done_mutex:__dtor()
@@ -253,9 +268,8 @@ end
 -- at the same time.
 local TracingAllocator = alloc.TracingAllocator()
 terraform threadpool:submit(allocator, func, arg...)
-    var tralloc = TracingAllocator.from(allocator)
-    var t = submit(&tralloc, func, unpacktuple(arg))
-    self.work_queue:push(__move__(t))
+    var t = submit(allocator, func, unpacktuple(arg))
+    self.work_queue:push(t)
     self.work_signal:signal()
 end
 local sig, func = threadpool.templates.submit(&threadpool, &alloc.DefaultAllocator(), int -> {}, int)

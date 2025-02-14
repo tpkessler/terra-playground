@@ -631,14 +631,15 @@ local terraform maxwellian_inflow(
     end
 end
 
+local Cc = terralib.includec("stdio.h")
 local terraform nonlinear_maxwellian_inflow(
                     A,
                     testb: &B1,
                     trialb: &B2,
                     xvlhs: &C,
-                    normal,
+                    normal: &N,
                     transform
-                ) where {B1, B2, C}
+                ) where {B1, B2, C, N}
     -- For the nonlinear boundary condition we have to compute a nested
     -- integral of space and velocity. First, we discretize the spatial integral
     -- with quadrature. For this, we need the point evaluation of the spatial
@@ -690,7 +691,10 @@ local terraform nonlinear_maxwellian_inflow(
                             darray.DynamicVector(C.traits.eltype)
                         ].new(A, qvlhs:cols())
                     )
+                    Cc.printf("lhs size %zu\n", lhs:length())
+                    Cc.printf("qvlhs size %zu %zu\n", qvlhs:rows(), qvlhs:cols())
                     for j = 0, qvlhs:cols() do
+                        Cc.printf("i = %ld, j = %d\n", i, j)
                         lhs(j) = qvlhs(i, j)
                     end
                     var rho, u, theta = local_maxwellian(
@@ -868,11 +872,9 @@ local GenerateBCWrapper = terralib.memoize(function(Transform)
             prepare_input(&default, [sym])
         )
         var transform = [Transform] {[cap]}
-        do
-        var tracing = [alloc.TracingAllocator()].from(&default)
         var res = (
             nonlinear_maxwellian_inflow(
-                &tracing,
+                &default,
                 &testbasis,
                 &trialbasis,
                 &xvlhs,
@@ -887,7 +889,6 @@ local GenerateBCWrapper = terralib.memoize(function(Transform)
                 restng[idx] = res(i, j).tng
                 idx = idx + 1
             end
-        end
         end
     end
     return impl
