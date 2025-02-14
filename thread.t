@@ -7,18 +7,90 @@ local alloc = require("alloc")
 local atomics = require("atomics")
 local base = require("base")
 local stack = require("stack")
-local thread_impl = require("thread-impl")
+local pthread = require("pthread")
 
 require "terralibext"
 
 import "terraform"
 
-local thread = thread_impl.thread
-local mutex = thread_impl.mutex
-local lock_guard = thread_impl.lock_guard
-local cond = thread_impl.cond
-local hardware_concurrency = thread_impl.hardware_concurrency
-local submit = thread_impl.submit
+local mutex = pthread.mutex
+local lock_guard = pthread.lock_guard
+local cond = pthread.cond
+local hardware_concurrency = pthread.hardware_concurrency
+local sched = terralib.includec("sched.h")
+
+-- A thread has a unique ID that executes a given function with signature FUNC.
+-- Its argument is stored as a managed pointer on the (global) heap. This way,
+-- threads can be passed to other functions and executed there. The life time
+-- of the argument arg is thus not bound to the life time of the local stack.
+local FUNC = &opaque -> &opaque
+local struct thread {
+    id: pthread.C.pthread_t
+    func: FUNC
+    arg: alloc.SmartBlock(int8, {copyby = "view"})
+}
+base.AbstractBase(thread)
+
+terra thread.metamethods.__eq(self: &thread, other: &thread)
+    return pthread.C.equal(self.id, other.id)
+end
+
+-- Pause the calling thread for a short period and resume afterwards.
+thread.staticmethods.yield = (
+    terra()
+        return sched.sched_yield()
+    end
+)
+
+-- Exit thread with given the return value res.
+thread.staticmethods.exit = (
+    terra()
+        return pthread.C.exit(nil)
+    end
+)
+
+-- After a new thread is created, it forks from the calling thread. To access
+-- results of the forked thread we have to join it with the calling thread.
+terra thread:join()
+    return pthread.C.join(self.id, nil)
+end
+
+-- This is the heart of the thread module.
+-- Given an allocator instance for memory management and a callable and
+-- copyable instance (a function pointer, a lambda, a struct instance with
+-- an overloaded apply, or a terraform function) and a list of copyable
+-- arguments, it generates a terra function with signature FUNC and a datatype
+-- that stores the function arguments. It returns a thread instance but not
+-- starting the thread.
+local C = terralib.includec("string.h") -- memcpy
+local terraform submit(allocator, func, arg...)
+    var t: thread
+    t.id = 0 -- Will be set up thread.create
+    t.func = [
+        terra(parg: &opaque)
+            -- We cannot perform pointer arithmetics on &opaque.
+            -- Terra requires a concrete type.
+            -- Hence, we cast opaque pointers to &int8, since the C standard
+            -- requires that sizeof(void *) == sizeof(char *), that is
+            -- sizeof(&opaque) == sizeof(&int8) for terra.
+            var iarg = [&int8](parg)
+            var arg_ = @[&arg.type](iarg)
+            var func_ = @[&func.type](iarg + sizeof([arg.type]))
+            func_(unpacktuple(arg_))
+            return parg
+        end
+    ]
+    t.arg = allocator:new(1, sizeof([arg.type]) + sizeof([func.type]))
+    C.memcpy(&t.arg(0), &arg, sizeof([arg.type]))
+    C.memcpy(&t.arg(sizeof([arg.type])), &func, sizeof([func.type]))
+    return t
+end
+
+terraform thread.staticmethods.new(allocator, func, arg...)
+    var t = submit(allocator, func, unpacktuple(arg))
+    pthread.C.create(&t.id, nil, t.func, &t.arg(0))
+    return t
+end
 
 local Alloc = alloc.Allocator
 local blockThread = alloc.SmartBlock(thread, {copyby = "view"})
@@ -166,7 +238,7 @@ terra threadpool:__dtor()
     self.joiner:__dtor()
     self.threads:__dtor()
     -- FIXME Segfaults!
-    -- self.work_queue:__dtor()
+    self.work_queue:__dtor()
     self.done_signal:__dtor()
     self.done_mutex:__dtor()
     self.work_signal:__dtor()
@@ -179,10 +251,15 @@ end
 -- is available and, secondly, need to add to the work queue. Note that this
 -- access is protected by a mutex as other threads may request new work from it
 -- at the same time.
+local TracingAllocator = alloc.TracingAllocator()
 terraform threadpool:submit(allocator, func, arg...)
-    self.work_queue:push(__move__(submit(allocator, func, unpacktuple(arg))))
+    var tralloc = TracingAllocator.from(allocator)
+    var t = submit(&tralloc, func, unpacktuple(arg))
+    self.work_queue:push(__move__(t))
     self.work_signal:signal()
 end
+local sig, func = threadpool.templates.submit(&threadpool, &alloc.DefaultAllocator(), int -> {}, int)
+func:printpretty()
 
 -- The heart of the thread pool, the virtual thread, aka worker thread.
 -- It constantly waits for new work from the work queue. It is very important
@@ -297,26 +374,20 @@ threadpool.staticmethods.new = (
     end
 )
 
-local parfor = macro(function(alloc, rn, go, nthreads)
-    -- Use the maximum number of threads available on the host. This includes
-    -- virtual cores (Hyperthreading for Intel, SMT for AMD).
-    local nthreads = nthreads or `hardware_concurrency()
-    return (
-        quote
-            -- Wrap everything in a do block to trigger a desctructor call
-            -- for the thread pool after the for loop that distributes work.
-            -- Note that the actual computation does not happen in the for loop
-            -- but anytime between the submission and the barrier inside the
-            -- destructor.
-            do
-                var tp = threadpool.new(alloc, [nthreads])
-                for it in rn do
-                    tp:submit(alloc, go, it)
-                end
-            end
+local terraform parfor(alloc, rn, go, nthreads)
+    var tralloc = TracingAllocator.from(alloc)
+    do
+        var tp = threadpool.new(alloc, nthreads)
+        for it in rn do
+            tp:submit(&tralloc, go, it)
         end
-    )
-end)
+    end
+end
+
+terraform parfor(alloc, rn, go)
+    var nthreads = hardware_concurrency()
+    parfor(alloc, rn, go, nthreads)
+end
 
 return {
     thread = thread,

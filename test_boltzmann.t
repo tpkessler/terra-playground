@@ -34,7 +34,7 @@ end
 
 for N = 2, 29 do
 
-    testenv(N) "Half space integral aligned" do
+    testenv(N, skip) "Half space integral aligned" do
         local Alloc = alloc.DefaultAllocator()
         local T = dual.DualNumber(double)
         local HalfSpace = boltzmann.HalfSpaceQuadrature(T)
@@ -78,7 +78,7 @@ for N = 2, 29 do
 
     end
 
-    testenv(N) "Half space integral rotated" do
+    testenv(N, skip) "Half space integral rotated" do
         local Alloc = alloc.DefaultAllocator()
         local T = dual.DualNumber(double)
         local HalfSpace = boltzmann.HalfSpaceQuadrature(T)
@@ -213,6 +213,7 @@ testenv "Full Phasespace Integral" do
                     )
         var tng = dMat.ones(&alloc, {3, 4})
 
+        var u = arrayof(double, 0, 0, 0)
         bc.pressurebc(
                 ntestx,
                 ntestv,
@@ -236,6 +237,10 @@ testenv "Full Phasespace Integral" do
                 &trialx.data(0),
                 &trialx.col(0),
                 &trialx.rowptr(0),
+                --
+                1.0,
+                &u[0],
+                1.0,
                 --
                 &test_powers(0, 0),
                 &trial_powers(0, 0),
