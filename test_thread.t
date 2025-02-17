@@ -200,7 +200,7 @@ testenv "Parallel for" do
             var A: alloc.DefaultAllocator()
             var rn = [range.Unitrange(int)].new(0, NITEMS)
             var a: double[NITEMS]
-            thread.parfor(&A, &rn, lambda.new(go, {a = &a[0]}))
+            thread.parfor(&A, rn, lambda.new(go, {a = &a[0]}))
         end
 
         for i = 0, NITEMS - 1 do

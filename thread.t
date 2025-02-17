@@ -65,41 +65,35 @@ end
 local C = terralib.includecstring(
 [[
 #include <stdio.h>
-]]) -- memcpy
+]])
 local terraform submit(allocator, func, arg...)
     var t: thread
-    t.id = 0 -- Will be set up thread.create
-    t.func = [
-        terra(parg: &opaque)
-            -- We cannot perform pointer arithmetics on &opaque.
-            -- Terra requires a concrete type.
-            -- Hence, we cast opaque pointers to &int8, since the C standard
-            -- requires that sizeof(void *) == sizeof(char *), that is
-            -- sizeof(&opaque) == sizeof(&int8) for terra.
-            var iarg = [&int8](parg)
-            var arg_ = @[&arg.type](iarg)
-            C.printf("Inside C wrapper Argument is %ld\n", arg_._0)
-            var func_ = @[&func.type](iarg + sizeof([arg.type]))
-            func_(unpacktuple(arg_))
-            return parg
-        end
-    ]
+    -- We do not set t.id as it will be set by thread.new
     escape
         local struct packed {
-            arg: arg.type
             func: func.type
+            arg: arg.type
         }
+        local smartpacked = alloc.SmartObject(packed)
         emit quote
-            var smrtpacked = [alloc.SmartObject(packed)].new(allocator)
-            smrtpacked.arg = __handle__(arg)
-            smrtpacked.func = __handle__(func)
-            t.arg = smrtpacked
+            t.func = [
+                terra(parg: &opaque)
+                    var p = [&packed](parg)
+                    C.printf("Inside C wrapper Argument is %ld\n", p.arg._0)
+                    p.func(unpacktuple(p.arg))
+                    return parg
+                end
+            ]
+        end
+        emit quote
+            var smrtp = smartpacked.new(allocator)
+            smrtp.func = __move__(func)
+            smrtp.arg = __move__(arg)
+            t.arg = __move__(smrtp)
         end
     end
     return t
 end
-local func = submit:dispatch(&alloc.DefaultAllocator(), {int, double} -> {}, int, double)
-func:printpretty()
 
 terraform thread.staticmethods.new(allocator, func, arg...)
     var t = submit(allocator, func, unpacktuple(arg))
@@ -134,7 +128,6 @@ local ThreadsafeQueue = terralib.memoize(function(T)
         var guard: lock_guard = self.mutex
         self.data:push(t)
     end
-    threadsafe_queue.methods.push:printpretty()
 
     terra threadsafe_queue:try_pop(t: &T)
         self.mutex:lock()
@@ -272,8 +265,6 @@ terraform threadpool:submit(allocator, func, arg...)
     self.work_queue:push(t)
     self.work_signal:signal()
 end
-local sig, func = threadpool.templates.submit(&threadpool, &alloc.DefaultAllocator(), int -> {}, int)
-func:printpretty()
 
 -- The heart of the thread pool, the virtual thread, aka worker thread.
 -- It constantly waits for new work from the work queue. It is very important
