@@ -68,7 +68,26 @@ local C = terralib.includecstring(
 ]])
 local terraform submit(allocator, func, arg...)
     var t: thread
+<<<<<<< HEAD
     -- We do not set t.id as it will be set by thread.new
+=======
+    --t.id = 0 -- Will be set up thread.create
+    t.func = [
+        terra(parg: &opaque)
+            -- We cannot perform pointer arithmetics on &opaque.
+            -- Terra requires a concrete type.
+            -- Hence, we cast opaque pointers to &int8, since the C standard
+            -- requires that sizeof(void *) == sizeof(char *), that is
+            -- sizeof(&opaque) == sizeof(&int8) for terra.
+            var iarg = [&int8](parg)
+            var arg_ = @[&arg.type](iarg)
+            C.printf("Inside C wrapper Argument is %ld\n", arg_._0)
+            var func_ = @[&func.type](iarg + sizeof([arg.type]))
+            func_(unpacktuple(arg_))
+            return parg
+        end
+    ]
+>>>>>>> 66219f4 (wip debugging thread-leak)
     escape
         local struct packed {
             func: func.type
@@ -76,6 +95,7 @@ local terraform submit(allocator, func, arg...)
         }
         local smartpacked = alloc.SmartObject(packed)
         emit quote
+<<<<<<< HEAD
             t.func = [
                 terra(parg: &opaque)
                     var p = [&packed](parg)
@@ -90,6 +110,12 @@ local terraform submit(allocator, func, arg...)
             smrtp.func = __move__(func)
             smrtp.arg = __move__(arg)
             t.arg = __move__(smrtp)
+=======
+            var smrtpacked = [alloc.SmartObject(packed)].new(allocator)
+            smrtpacked.arg = arg
+            smrtpacked.func = func
+            t.arg = __move__(smrtpacked)
+>>>>>>> 66219f4 (wip debugging thread-leak)
         end
     end
     return t
