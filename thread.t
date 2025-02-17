@@ -84,10 +84,6 @@ local terraform submit(allocator, func, arg...)
                     return parg
                 end
             ]
-            var smrtp = smartpacked.new(allocator)
-            smrtp.func = __move__(func)
-            smrtp.arg = __move__(arg)
-            t.arg = __move__(smrtp)
             var smrtpacked = [alloc.SmartObject(packed)].new(allocator)
             smrtpacked.arg = arg
             smrtpacked.func = func
