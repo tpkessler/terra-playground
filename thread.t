@@ -62,32 +62,13 @@ end
 -- arguments, it generates a terra function with signature FUNC and a datatype
 -- that stores the function arguments. It returns a thread instance but not
 -- starting the thread.
-local C = terralib.includecstring(
-[[
-#include <stdio.h>
+local io = terralib.includecstring([[
+    #include <stdio.h>
 ]])
 local terraform submit(allocator, func, arg...)
     var t: thread
-<<<<<<< HEAD
     -- We do not set t.id as it will be set by thread.new
-=======
     --t.id = 0 -- Will be set up thread.create
-    t.func = [
-        terra(parg: &opaque)
-            -- We cannot perform pointer arithmetics on &opaque.
-            -- Terra requires a concrete type.
-            -- Hence, we cast opaque pointers to &int8, since the C standard
-            -- requires that sizeof(void *) == sizeof(char *), that is
-            -- sizeof(&opaque) == sizeof(&int8) for terra.
-            var iarg = [&int8](parg)
-            var arg_ = @[&arg.type](iarg)
-            C.printf("Inside C wrapper Argument is %ld\n", arg_._0)
-            var func_ = @[&func.type](iarg + sizeof([arg.type]))
-            func_(unpacktuple(arg_))
-            return parg
-        end
-    ]
->>>>>>> 66219f4 (wip debugging thread-leak)
     escape
         local struct packed {
             func: func.type
@@ -95,27 +76,22 @@ local terraform submit(allocator, func, arg...)
         }
         local smartpacked = alloc.SmartObject(packed)
         emit quote
-<<<<<<< HEAD
             t.func = [
                 terra(parg: &opaque)
                     var p = [&packed](parg)
-                    C.printf("Inside C wrapper Argument is %ld\n", p.arg._0)
+                    io.printf("Inside C wrapper Argument is %ld\n", p.arg._0)
                     p.func(unpacktuple(p.arg))
                     return parg
                 end
             ]
-        end
-        emit quote
             var smrtp = smartpacked.new(allocator)
             smrtp.func = __move__(func)
             smrtp.arg = __move__(arg)
             t.arg = __move__(smrtp)
-=======
             var smrtpacked = [alloc.SmartObject(packed)].new(allocator)
             smrtpacked.arg = arg
             smrtpacked.func = func
             t.arg = __move__(smrtpacked)
->>>>>>> 66219f4 (wip debugging thread-leak)
         end
     end
     return t
@@ -152,7 +128,7 @@ local ThreadsafeQueue = terralib.memoize(function(T)
 
     terra threadsafe_queue:push(t: T)
         var guard: lock_guard = self.mutex
-        self.data:push(t)
+        self.data:push(__move__(t))
     end
 
     terra threadsafe_queue:try_pop(t: &T)
@@ -280,7 +256,7 @@ terra threadpool:__dtor()
 end
 
 -- The program already runs concurrently when new work is submitted. Hence,
--- we need to careful when adding it to the thread pool.
+-- we need to be careful when adding it to the thread pool.
 -- Firstly, we need to signal that to the physical threads that a new work item
 -- is available and, secondly, need to add to the work queue. Note that this
 -- access is protected by a mutex as other threads may request new work from it
@@ -288,7 +264,7 @@ end
 local TracingAllocator = alloc.TracingAllocator()
 terraform threadpool:submit(allocator, func, arg...)
     var t = submit(allocator, func, unpacktuple(arg))
-    self.work_queue:push(t)
+    self.work_queue:push(__move__(t))
     self.work_signal:signal()
 end
 
@@ -410,6 +386,7 @@ local terraform parfor(alloc, rn, go, nthreads)
     do
         var tp = threadpool.new(alloc, nthreads)
         for it in rn do
+            io.printf("thread number: %d\n", it)
             tp:submit(&tralloc, go, it)
         end
     end
