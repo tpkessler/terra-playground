@@ -19,6 +19,8 @@ local cond = pthread.cond
 local hardware_concurrency = pthread.hardware_concurrency
 local sched = terralib.includec("sched.h")
 
+local C = terralib.includec("stdio.h")
+
 -- A thread has a unique ID that executes a given function with signature FUNC.
 -- Its argument is stored as a managed pointer on the (global) heap. This way,
 -- threads can be passed to other functions and executed there. The life time
@@ -49,6 +51,10 @@ thread.staticmethods.exit = (
     end
 )
 
+terra thread:create()
+    return pthread.C.create(&self.id, nil, self.func, &self.arg(0))
+end
+
 -- After a new thread is created, it forks from the calling thread. To access
 -- results of the forked thread we have to join it with the calling thread.
 terra thread:join()
@@ -65,7 +71,7 @@ end
 local io = terralib.includecstring([[
     #include <stdio.h>
 ]])
-local terraform submit(allocator, func, arg...)
+terraform thread.staticmethods.initialize(allocator, func, arg...)
     var t: thread
     -- We do not set t.id as it will be set by thread.new
     --t.id = 0 -- Will be set up thread.create
@@ -85,8 +91,8 @@ local terraform submit(allocator, func, arg...)
                 end
             ]
             var smrtp = smartpacked.new(allocator)
-            smrtp.func = __move__(func)
-            smrtp.arg = __move__(arg)
+            smrtp.func = (func)
+            smrtp.arg = (arg)
             t.arg = __move__(smrtp)
             var smrtpacked = [alloc.SmartObject(packed)].new(allocator)
             smrtpacked.arg = arg
@@ -98,8 +104,8 @@ local terraform submit(allocator, func, arg...)
 end
 
 terraform thread.staticmethods.new(allocator, func, arg...)
-    var t = submit(allocator, func, unpacktuple(arg))
-    pthread.C.create(&t.id, nil, t.func, &t.arg(0))
+    var t = thread.initialize(allocator, func, unpacktuple(arg))
+    t:create()
     return t
 end
 
@@ -123,7 +129,8 @@ local ThreadsafeQueue = terralib.memoize(function(T)
 
     terra threadsafe_queue:isempty()
         var guard: lock_guard = self.mutex
-        return self.data:size() == 0
+        var isempty = (self.data:size() == 0)
+        return isempty
     end
 
     terra threadsafe_queue:push(t: T)
@@ -132,13 +139,11 @@ local ThreadsafeQueue = terralib.memoize(function(T)
     end
 
     terra threadsafe_queue:try_pop(t: &T)
-        self.mutex:lock()
+        var guard: lock_guard = self.mutex
         if self.data:size() == 0 then
-            self.mutex:unlock()
             return false
         else
             @t = self.data:pop()
-            self.mutex:unlock()
             return true
         end
     end
@@ -263,8 +268,8 @@ end
 -- at the same time.
 local TracingAllocator = alloc.TracingAllocator()
 terraform threadpool:submit(allocator, func, arg...)
-    var t = submit(allocator, func, unpacktuple(arg))
-    self.work_queue:push(__move__(t))
+    var t = thread.initialize(allocator, func, unpacktuple(arg))
+    self.work_queue:push(t)
     self.work_signal:signal()
 end
 

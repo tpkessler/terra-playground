@@ -218,11 +218,11 @@ testenv "Parallel for" do
             t:grow(&A, 2.0, 5.0)
             t.left:grow(&A, 1.0, 3.0)
             var go = lambda.new([
-                terra(it: tuple(int32, double), v: v.type)
+                terra(it: tuple(int32, double), v: &v.type)
                     var i, x = it
                     v(i) = x
                 end
-            ], {v = v})
+            ], {v = &v})
             thread.parfor(
                 &A, range.zip([range.Unitrange(int32)].new(0, 5), t.ptr), go
             )
