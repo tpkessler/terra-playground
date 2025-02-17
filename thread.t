@@ -7,6 +7,7 @@ local alloc = require("alloc")
 local atomics = require("atomics")
 local base = require("base")
 local stack = require("stack")
+local span = require("span")
 local pthread = require("pthread")
 
 require "terralibext"
@@ -29,7 +30,7 @@ local FUNC = &opaque -> &opaque
 local struct thread {
     id: pthread.C.pthread_t
     func: FUNC
-    arg: alloc.SmartBlock(int8, {copyby = "view"})
+    arg: alloc.SmartBlock(int8, {copyby = "move"})
 }
 base.AbstractBase(thread)
 
@@ -68,32 +69,22 @@ end
 -- arguments, it generates a terra function with signature FUNC and a datatype
 -- that stores the function arguments. It returns a thread instance but not
 -- starting the thread.
-local io = terralib.includecstring([[
-    #include <stdio.h>
-]])
 terraform thread.staticmethods.initialize(allocator, func, arg...)
     var t: thread
     -- We do not set t.id as it will be set by thread.new
-    --t.id = 0 -- Will be set up thread.create
     escape
         local struct packed {
             func: func.type
             arg: arg.type
         }
-        local smartpacked = alloc.SmartObject(packed)
         emit quote
             t.func = [
                 terra(parg: &opaque)
                     var p = [&packed](parg)
-                    io.printf("Inside C wrapper Argument is %ld\n", p.arg._0)
                     p.func(unpacktuple(p.arg))
                     return parg
                 end
             ]
-            var smrtp = smartpacked.new(allocator)
-            smrtp.func = (func)
-            smrtp.arg = (arg)
-            t.arg = __move__(smrtp)
             var smrtpacked = [alloc.SmartObject(packed)].new(allocator)
             smrtpacked.arg = arg
             smrtpacked.func = func
@@ -110,7 +101,6 @@ terraform thread.staticmethods.new(allocator, func, arg...)
 end
 
 local Alloc = alloc.Allocator
-local blockThread = alloc.SmartBlock(thread, {copyby = "view"})
 local queueThread = stack.DynamicStack(thread)
 
 -- Queue with thread-safe memory access via mutex
@@ -122,6 +112,7 @@ local ThreadsafeQueue = terralib.memoize(function(T)
     }
     base.AbstractBase(threadsafe_queue)
 
+    local C = terralib.includec("stdio.h")
     terra threadsafe_queue:__dtor()
         self.data:__dtor()
         self.mutex:__dtor()
@@ -135,7 +126,7 @@ local ThreadsafeQueue = terralib.memoize(function(T)
 
     terra threadsafe_queue:push(t: T)
         var guard: lock_guard = self.mutex
-        self.data:push(__move__(t))
+        self.data:push(t)
     end
 
     terra threadsafe_queue:try_pop(t: &T)
@@ -143,7 +134,7 @@ local ThreadsafeQueue = terralib.memoize(function(T)
         if self.data:size() == 0 then
             return false
         else
-            @t = self.data:pop()
+            @t = __move__(self.data:pop())
             return true
         end
     end
@@ -161,9 +152,8 @@ end)
 
 -- A join_threads struct is an abstraction over a block of threads that
 -- automatically joins all threads when the threads go out of scope.
-local block_thread = alloc.SmartBlock(thread, {copyby = "view"})
 local struct join_threads {
-    data: block_thread
+    data: span.Span(thread)
 }
 
 terra join_threads:__dtor()
@@ -207,7 +197,7 @@ local struct threadpool {
     done_signal: cond
     done_mutex: mutex
     -- Array of physical threads running on the CPU
-    threads: block_thread
+    threads: alloc.SmartBlock(thread, {copyby = "view"})
     -- Automic join() of physical threads when the thread pool goes out of scope
     joiner: join_threads
 }
@@ -253,7 +243,7 @@ terra threadpool:__dtor()
     -- main thread.
     self.joiner:__dtor()
     self.threads:__dtor()
-    self.work_queue:__dtor()
+    -- self.work_queue:__dtor()
     self.done_signal:__dtor()
     self.done_mutex:__dtor()
     self.work_signal:__dtor()
@@ -367,7 +357,7 @@ threadpool.staticmethods.new = (
         tp.work_queue = queue_thread.new(alloc, nthreads)
         tp.done = false
         tp.threads = alloc:new(nthreads, sizeof(thread))
-        tp.joiner = join_threads {tp.threads}
+        tp.joiner.data = {&tp.threads(0), nthreads}
         -- The point of no return. From this point on, we are running the 
         -- program concurrently.
         for i = 0, nthreads do
@@ -387,13 +377,9 @@ threadpool.staticmethods.new = (
 )
 
 local terraform parfor(alloc, rn, go, nthreads)
-    var tralloc = TracingAllocator.from(alloc)
-    do
-        var tp = threadpool.new(alloc, nthreads)
-        for it in rn do
-            io.printf("thread number: %d\n", it)
-            tp:submit(&tralloc, go, it)
-        end
+    var tp = threadpool.new(alloc, nthreads)
+    for it in rn do
+        tp:submit(alloc, go, it)
     end
 end
 

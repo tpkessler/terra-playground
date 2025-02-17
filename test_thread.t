@@ -76,13 +76,8 @@ testenv "Basic data structures" do
             var a: int[NTHREADS]
             var t: thread.thread[NTHREADS]
             do
-                var joiner = (
-                    thread.join_threads {
-                        [
-                            alloc.SmartBlock(thread.thread)
-                        ].frombuffer(NTHREADS, &t[0])
-                    }
-                )
+                var joiner: thread.join_threads
+                joiner.data = t
                 for i = 0, NTHREADS do
                     t[i] = thread.thread.new(&A, go, i, &a[0])
                 end

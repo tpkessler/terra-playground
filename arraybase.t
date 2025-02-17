@@ -151,10 +151,6 @@ local ArrayBase = function(Array)
     end
 
     local terra boundscheck_linear(self : &Array, index : size_t)
-        io.printf("boundscheck: length = %d, index = %d\n", self:length(), index)
-        escape
-            print("the array type is: " .. tostring(Array))
-        end
         err.assert(index < self:length(), "BoundsError: out of bounds.")
     end
 
