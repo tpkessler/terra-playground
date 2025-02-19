@@ -6,8 +6,12 @@
 local compile = require("compile")
 local boltzmann = require("boltzmann")
 
-local GenerateBCWrapper = boltzmann.GenerateBCWrapper
+local GenerateLinearBCWrapper = boltzmann.GenerateLinearBCWrapper
+local GenerateNonLinearBCWrapper = boltzmann.GenerateNonLinearBCWrapper
 local FixedPressure = boltzmann.FixedPressure
 
-local pressurebc = GenerateBCWrapper(FixedPressure(double))
-compile.generateCAPI("nonlinearbc", {pressurebc = pressurebc})
+local halfspace = GenerateLinearBCWrapper()
+local pressurebc = GenerateNonLinearBCWrapper(FixedPressure(double))
+compile.generateCAPI(
+    "nonlinearbc", {pressurebc = pressurebc, halfspace = halfspace}
+)
