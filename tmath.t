@@ -4,6 +4,7 @@
 -- SPDX-License-Identifier: MIT
 
 import "terraform"
+local blend = require("blend")
 local concepts = require("concepts")
 
 local tmath = {}
@@ -68,6 +69,11 @@ local funs = {
     jn = "jn",
 }
 
+local finite_difference = {
+    fderf = {name = "erf", value = 1.12837916709551257390},
+    fdexpm1 = {name = "expm1", value = 1},
+}
+
 for tname, cname in pairs(funs) do
     local f = terralib.overloadedfunction(tname)
     for _, T in ipairs{float, double} do
@@ -97,6 +103,19 @@ for tname, cname in pairs(funs) do
         f:adddefinition(impl)
     end
     tmath[tname] = f
+end
+
+for name, data in pairs(finite_difference) do
+    local f = terralib.overloadedfunction(name)
+    for _, T in ipairs{float, double} do
+        local impl = blend.blend(
+            terra(x: T) return x == 0 end,
+            terra(x: T) return [T]([data.value]) end,
+            terra(x: T) return tmath.[data.name](x) / x end
+        )
+        f:adddefinition(impl)
+    end
+    tmath[name] = f
 end
 
 tmath.beta = terralib.overloadedfunction("beta")

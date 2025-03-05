@@ -29,7 +29,7 @@ end
 
 for N = 2, 29 do
 
-    testenv(N, skip) "Half space integral aligned" do
+    testenv(N) "Half space integral aligned" do
         local Alloc = alloc.DefaultAllocator()
         local T = dual.DualNumber(double)
         local HalfSpace = boltzmann.HalfSpaceQuadrature(T)
@@ -73,7 +73,7 @@ for N = 2, 29 do
 
     end
 
-    testenv(N, skip) "Half space integral rotated" do
+    testenv(N) "Half space integral rotated" do
         local Alloc = alloc.DefaultAllocator()
         local T = dual.DualNumber(double)
         local HalfSpace = boltzmann.HalfSpaceQuadrature(T)
@@ -307,6 +307,7 @@ testenv "Half space integral interface" do
             &bndU[0],
             bndtheta,
             &normal[0],
+            false,
             &mass(0, 0)
         )
         var massref = [darray.DynamicMatrix(double)].from(

@@ -83,6 +83,18 @@ for T, tol in pairs({[float] = `1e-6f, [double] = `1e-14}) do
             test tmath.isapprox(y.tng, tng, tol)
         end
 
+        testset "Exponential minus one function" do
+            terracode
+                var f = lambda.new([terra(x: Td) return tmath.expm1(-3 * x) end])
+                var x = Td {0.25, 1}
+                var y = f(x)
+                var val: T = 0.4723665527410147 - 1.0
+                var tng: T = -1.417099658223044
+            end
+            test tmath.isapprox(y.val, val, tol)
+            test tmath.isapprox(y.tng, tng, tol)
+        end
+
         testset "Error function" do
             terracode
                 var f = lambda.new([terra(x: Td) return tmath.erf(5 * x) end])
@@ -152,6 +164,54 @@ for T, tol in pairs({[float] = `1e-6f, [double] = `1e-14}) do
                 var z = f(x, y)
                 var val: T = 1.95540851400894
                 var tng: T = 1.374937617915628
+            end
+            test tmath.isapprox(z.val, val, tol)
+            test tmath.isapprox(z.tng, tng, tol)
+        end
+
+        testset "Finite Difference of exponential minus one" do
+            terracode
+                var f = lambda.new([terra(x: Td) return tmath.fdexpm1(x / 4) end])
+                var x = Td {2.5, 1}
+                var z = f(x)
+                var val: T = 1.3891935318915558
+                var tng: T = 0.19162097021626667
+            end
+            test tmath.isapprox(z.val, val, tol)
+            test tmath.isapprox(z.tng, tng, tol)
+        end
+
+        testset "Finite Difference of exponential minus one at zero" do
+            terracode
+                var f = lambda.new([terra(x: Td) return tmath.fdexpm1(x / 4) end])
+                var x = Td {0, 1}
+                var z = f(x)
+                var val: T = 1.0
+                var tng: T = 0.125
+            end
+            test tmath.isapprox(z.val, val, tol)
+            test tmath.isapprox(z.tng, tng, tol)
+        end
+
+        testset "Finite Difference of error function" do
+            terracode
+                var f = lambda.new([terra(x: Td) return tmath.fderf(3 * x) end])
+                var x = Td {2.5, 1}
+                var z = f(x)
+                var val: T = 0.13333333333333333
+                var tng: T = -0.05333333333333334
+            end
+            test tmath.isapprox(z.val, val, tol)
+            test tmath.isapprox(z.tng, tng, tol)
+        end
+
+        testset "Finite Difference of error function at zero" do
+            terracode
+                var f = lambda.new([terra(x: Td) return tmath.fderf(3 * x) end])
+                var x = Td {0, 1}
+                var z = f(x)
+                var val: T = 1.1283791670955126
+                var tng: T = 0.
             end
             test tmath.isapprox(z.val, val, tol)
             test tmath.isapprox(z.tng, tng, tol)

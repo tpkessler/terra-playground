@@ -326,6 +326,19 @@ local terraform l2inner(w, f, g, q: &Q) where {Q}
     return res
 end
 
+local terraform l2inner(w, f, g, wf: &W, xf: &X1, xg: &X2) where {W, X1, X2}
+    var it = wf:getiterator()
+    var wq = it:getvalue()
+    var res = [wq.type](0)
+    for wxy in range.zip(wf, xf, xg) do
+        var wq, xq, yq = wxy
+        var farg = [&wq.type](&xq)
+        var garg = [&wq.type](&yq)
+        res = res + wq * w(farg) * f(farg) * g(garg)
+    end
+    return res
+end
+
 local Vector = concepts.Vector
 local Number = concepts.Number
 local terraform local_maxwellian(basis : &B, coeff: &V, quad: &Q)
@@ -460,8 +473,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
 
     impl.staticmethods.new = new
 
-    local reverse
-    terraform reverse(w: &V) where {V: Vector(concepts.Any)}
+    local terraform reverse(w: &V) where {V: Vector(concepts.Any)}
         for i = 0, w:length() / 2 do
             var j = w:length() - 1 - i
             var tmp = w(i)
@@ -718,16 +730,30 @@ local terraform MaxwellianIntegrator(A, testb: &B1, trialb: &B2, bg, m: &M) wher
     var deg = testb:maxpartialdegree() + trialb:maxpartialdegree()
     var x, w = testb:quadraturerule(A, deg)
     var q = range.zip(x, w)
-    L2Mass(testb, trialb, &q, m)
+    var rn = range.product(testb, trialb)
+        >> range.transform([
+            terra(v: B1.value_t, u: B2.value_t, q: &q.type)
+                return l2inner(v, u, q)
+            end
+        ],
+        {q = &q})
+    rn:collect(m)
 end
 
-local terraform MaxwellianFluxIntegrator(A, testb: &B1, trialb: &B2, bg, normal: &N, a: &M) where {
+local terraform MaxwellianFluxIntegrator(
+    A,
+    testb: &B1,
+    trialb: &B2,
+    bg,
+    normal: &N,
+    specular: bool,
+    m: &M
+) where {
     B1, B2, N, M
 }
     var deg = testb:maxpartialdegree() + trialb:maxpartialdegree()
     var hs = [HalfSpaceQuadrature(M.traits.eltype)].new(&normal[0])
     var x, w = hs:maxwellian(A, deg + 1, bg.rho, &bg.u, bg.theta)
-    var q = range.zip(x, w)
     var flux = lambda.new([
             terra(v: &M.traits.eltype, normal: &N)
                 var res: M.traits.eltype = 0
@@ -740,7 +766,74 @@ local terraform MaxwellianFluxIntegrator(A, testb: &B1, trialb: &B2, bg, normal:
             end
         ],
         {normal = normal})
-    L2Mass(flux, testb, trialb, &q, a)
+    var tensor = range.product(testb, trialb)
+    if not specular then
+        var q = range.zip(x, w)
+        var quadrange = tensor
+            >> range.transform([
+                terra(v: B1.value_t, u: B2.value_t, flux: &flux.type, q: &q.type)
+                    return l2inner(flux, v, u, q)
+                end
+                ],
+                {flux = &flux, q = &q})
+        quadrange:collect(m)
+    else
+        escape
+            local T = M.traits.eltype
+            local xval = {}
+            for i = 1, VDIM do
+                xval[i] = symbol(T)
+            end
+            emit quote
+                var xspec = x
+                    >> range.transform([
+                        terra([xval], normal: normal.type)
+                            escape
+                                local vn = symbol(T)
+                                emit quote var [vn] = 0 end
+                                for i = 1, VDIM do
+                                    emit quote
+                                        [vn] = (
+                                            [vn] + [ xval[i] ] * normal[i - 1]
+                                        )
+                                    end
+                                end
+                                local res = {}
+                                for i = 1, VDIM do
+                                    res[i] = quote in
+                                        [ xval[i] ] - 2 * [vn] * normal[i - 1]
+                                    end
+                                end
+                                emit quote return [res] end
+                            end
+                        end
+                    ],
+                    {normal = normal}
+                )
+                var quadrange = tensor
+                    >> range.transform([
+                        terra(
+                            v: B1.value_t,
+                            u: B2.value_t,
+                            flux: &flux.type,
+                            w: &w.type,
+                            x: &x.type,
+                            xspec: &xspec.type
+                        )
+                            return l2inner(flux, v, u, w, x, xspec)
+                        end
+                        ],
+                        {
+                            flux = &flux,
+                            w = &w,
+                            x = &x,
+                            xspec = &xspec
+                        }
+                    )
+                quadrange:collect(m)
+            end
+        end
+    end
 end
 
 testenv "Mass matrix" do
@@ -822,7 +915,7 @@ testenv "Mass matrix" do
             var trialb = MonomialBasis.new(ptr, bg)
             var mass = [darray.DynamicMatrix(double)].new(&A, {4, 7})
             var bgh = background.new(1.0, {1e-2, 0.0, 0.0}, 1.375)
-            MaxwellianFluxIntegrator(&A, &testb, &trialb, bgh, &normal[0], &mass)
+            MaxwellianFluxIntegrator(&A, &testb, &trialb, bgh, &normal[0], false, &mass)
             var massref = [darray.DynamicMatrix(double)].from(
                 &A,
                 {
@@ -830,6 +923,55 @@ testenv "Mass matrix" do
                     {-0.3091462289299536,1.0238799712985998,-1.177096678431062,0.5908200082503707,-1.750502822226544,-4.966743477048509,-1.368282370282976},
                     {1.695439640446213,-1.177096678431062,6.896146660287203,-4.0794530536647615,3.78591492084042,30.498989080979694,11.667462387526047},
                     {-1.079148728314458,0.5908200082503707,-4.0794530536647615,2.98162352913931,-2.181936879596525,-17.129866024330788,-9.025732823750863}
+                }
+            )
+        end
+        for i = 0, 3 do
+            for j = 0, 6 do
+                test tmath.isapprox(mass(i, j), massref(i, j), 1e-13)
+            end
+        end
+    end
+
+    testset "Shifted basis in half space with specular reflection" do
+        terracode
+            var bg = background.new(1.0, {1.0, -2.5, 3.25}, 0.75)
+            var normal = arrayof(double, 2.0 / 7.0, 3.0 / 7.0, 6.0 / 7.0)
+            var pte = [darray.DynamicMatrix(int32)].from(
+                &A,
+                {
+                    {0, 0, 0},
+                    {1, 0, 0},
+                    {0, 1, 0},
+                    {0, 0, 1}
+                }
+            )
+            var testb = MonomialBasis.new(pte, bg)
+
+            var ptr = [darray.DynamicMatrix(int32)].from(
+                &A,
+                {
+                    {0, 0, 0},
+                    {1, 0, 0},
+                    {0, 1, 0},
+                    {0, 0, 1},
+                    {2, 0, 0},
+                    {0, 2, 0},
+                    {0, 0, 2}
+                }
+            )
+
+            var trialb = MonomialBasis.new(ptr, bg)
+            var mass = [darray.DynamicMatrix(double)].new(&A, {4, 7})
+            var bgh = background.new(1.0, {1e-2, 0.0, 0.0}, 1.375)
+            MaxwellianFluxIntegrator(&A, &testb, &trialb, bgh, &normal[0], true, &mass)
+            var massref = [darray.DynamicMatrix(double)].from(
+                &A,
+                {
+                    {0.46923124989104753,-0.7645450999358188,1.0123413339374154,-2.4453453413320534,2.065920157428131,2.954208440214089,13.243412064471753},
+                    {-0.3091462289299536,1.2635704595402664,-0.8175609460685616,1.3098914729753715,-3.8324467439367917,-2.585282468405487,-5.542589758654284},
+                    {1.695439640446213,-2.913070492356748,4.292185939398673,-9.28737449544182,7.9626216190945955,13.427730436281912,52.625432899701465},
+                    {-1.079148728314458,1.457129283003149,-2.779989141535595,5.580551353397644,-3.7552894855649956,-8.710990706608396,-29.87584453894439}
                 }
             )
         end
@@ -967,6 +1109,8 @@ local PrepareLinearInput = terralib.memoize(function(T, I)
         bndU: &T,
         bndtheta: T,
         normal: &T,
+        -- Reflection of trial functions
+        specular: bool,
         -- Pointer to matrix of size ntestv x ntrialv
         res: &T
     )
@@ -980,7 +1124,7 @@ local PrepareLinearInput = terralib.memoize(function(T, I)
         var bndbg = background.new(bndrho, bndU, bndtheta)
         var resmat = tMat.frombuffer({ntestv, ntrialv}, res)
 
-        return btest, btrial, bndbg, normal, resmat
+        return btest, btrial, bndbg, normal, specular, resmat
     end
 
     return prepare_linear_input
@@ -994,9 +1138,11 @@ local GenerateLinearBCWrapper = terralib.memoize(function()
 
     local terra impl([sym])
         var default: alloc.DefaultAllocator()
-        var testb, trialb, bndbg, normal, res = prepare_linear_input([sym])
+        var testb, trialb, bndbg, normal, specular, res = (
+            prepare_linear_input([sym])
+        )
         MaxwellianFluxIntegrator(
-            &default, &testb, &trialb, &bndbg, normal, &res
+            &default, &testb, &trialb, &bndbg, normal, specular, &res
         )
     end
 
