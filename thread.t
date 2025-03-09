@@ -79,7 +79,6 @@ local terraform submit(allocator, func, arg...)
             t.func = [
                 terra(parg: &opaque)
                     var p = [&packed](parg)
-                    io.printf("Inside C wrapper Argument is %ld\n", p.arg._0)
                     p.func(unpacktuple(p.arg))
                     return parg
                 end
@@ -141,9 +140,7 @@ local ThreadsafeQueue = terralib.memoize(function(T)
 
     threadsafe_queue.staticmethods.new = (
         terra(alloc: Alloc, capacity: int64)
-            var q: threadsafe_queue
-            q.data = S.new(alloc, capacity)
-            return q
+            return threadsafe_queue{data=S.new(alloc, capacity)}
         end
     )
     
@@ -154,7 +151,7 @@ end)
 -- automatically joins all threads when the threads go out of scope.
 local block_thread = alloc.SmartBlock(thread, {copyby = "view"})
 local struct join_threads {
-    data: block_thread
+    data: &block_thread
 }
 
 terra join_threads:__dtor()
@@ -358,7 +355,7 @@ threadpool.staticmethods.new = (
         tp.work_queue = queue_thread.new(alloc, nthreads)
         tp.done = false
         tp.threads = alloc:new(nthreads, sizeof(thread))
-        tp.joiner = join_threads {tp.threads}
+        tp.joiner = join_threads {&tp.threads}
         -- The point of no return. From this point on, we are running the 
         -- program concurrently.
         for i = 0, nthreads do
@@ -382,7 +379,6 @@ local terraform parfor(alloc, rn, go, nthreads)
     do
         var tp = threadpool.new(alloc, nthreads)
         for it in rn do
-            io.printf("thread number: %d\n", it)
             tp:submit(&tralloc, go, it)
         end
     end

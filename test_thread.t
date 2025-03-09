@@ -16,6 +16,61 @@ import "terratest/terratest"
 
 require("terralibext")
 
+
+local PCG = random.MinimalPCG
+
+local terra do_work(rng: &PCG(double))
+    var max: uint64 = 10000000ull
+    var sum: double = 0
+    for i = 0, max do
+        sum = i * sum + rng:random_normal(2.235, 0.64)
+        sum = sum / (i + 1)
+    end
+    return sum
+end
+
+local terra heavy_work(i: int, tsum: &double, mtx: &thread.mutex)
+    var rng = [PCG(double)].new(2385287, i)
+    var sum = do_work(&rng)
+    -- var guard: thread.lock_guard = mtx
+    @tsum = @tsum + sum
+    return 0
+end
+
+local NTHREADS = 4
+local NJOBS = 10
+
+local TracingAllocator = alloc.TracingAllocator()
+
+terra main()
+    var A: alloc.DefaultAllocator()
+    var tralloc = TracingAllocator.from(&A)
+
+    var sum = 0.0
+    var mtx: thread.mutex
+    do
+        var tp = thread.threadpool.new(&A, NTHREADS)
+        for i = 0, NJOBS do
+            tp:submit(&tralloc, heavy_work, i, &sum, &mtx)
+        end
+    end
+    sum = sum / NJOBS
+    var ref = 2.235004790726248e+00
+end
+
+for k = 1, 10 do
+    main()
+end
+
+
+
+
+
+
+
+
+
+
 testenv "Basic data structures" do
     terracode
         var A: alloc.DefaultAllocator()
@@ -75,14 +130,9 @@ testenv "Basic data structures" do
         terracode
             var a: int[NTHREADS]
             var t: thread.thread[NTHREADS]
+            var st = [alloc.SmartBlock(thread.thread)].frombuffer(NTHREADS, &t[0])
             do
-                var joiner = (
-                    thread.join_threads {
-                        [
-                            alloc.SmartBlock(thread.thread)
-                        ].frombuffer(NTHREADS, &t[0])
-                    }
-                )
+                var joiner = thread.join_threads{&st}
                 for i = 0, NTHREADS do
                     t[i] = thread.thread.new(&A, go, i, &a[0])
                 end

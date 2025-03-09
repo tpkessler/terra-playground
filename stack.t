@@ -81,10 +81,7 @@ local DynamicStack = terralib.memoize(function(T)
     end
 
     stack.staticmethods.frombuffer = terra(n: size_t, ptr: &T)
-        var s: stack
-        s.data = S.frombuffer(n, ptr)
-        s.size = n
-        return s
+        return stack{S.frombuffer(n, ptr), n}
     end
 
     terra stack:getdataptr()
@@ -99,15 +96,43 @@ local DynamicStack = terralib.memoize(function(T)
         return self.data:size()
     end
 
+    local io =  terralib.includec("stdio.h")
+
     terra stack:push(v : T)
         --we don't allow pushing when 'data' is empty
+        --[[
         err.assert(self.data:isempty() == false)
         if self:size() == self:capacity() then
             self.data:reallocate(1 + 2 * self:capacity())
         end
         self.size = self.size + 1
-        self:set(self.size - 1, v)
+        --]]
+        --[[
+        if v.arg:owns_resource() then
+            io.printf("before move: resource is owned\n")
+        elseif v.arg:borrows_resource() then
+            io.printf("before move: resource is borrowed\n")
+        elseif v.arg:isempty() then
+            io.printf("before move: resource is empty\n")
+        end
+        --]]
+        escape
+            print(v.handle)
+        end
+
+        self.data.ptr[self.size - 1] = v
+        --[[
+        if v.arg:owns_resource() then
+            io.printf("after move: resource is owned\n")
+        elseif v.arg:borrows_resource() then
+            io.printf("after move: resource is borrowed\n")
+        elseif v.arg:isempty() then
+            io.printf("after move: resource is empty\n")
+        end
+        --]]
     end
+    stack.methods.push:printpretty()
+
 
     terra stack:pop()
         if self:size() > 0 then
