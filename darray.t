@@ -126,13 +126,7 @@ local DArrayStackBase = function(Array)
         var __size = [ &size_t[N] ](&size)  --we need the size as an array
         var cumsize = getcumsize(@__size)   --compute cumulative sizes
         var length = cumsize[N-1]           --length is last entry in 'cumsum'
-        --return Array{alloc:allocate(sizeof(T), length), @__size, cumsize}
-        var v : Array
-        v.data = alloc:new(sizeof(T), length)
-        err.assert(v.data:owns_resource())
-        v.size = @__size
-        v.cumsize = cumsize
-        return v
+        return Array{alloc:new(sizeof(T), length), @__size, cumsize}
     end
 
     --For N==1 we allow passing the size as an integer or as a tuple holding
@@ -155,12 +149,7 @@ local DArrayStackBase = function(Array)
             var __size = [ &size_t[N] ](&size)  --we need the size as an array
             var cumsize = getcumsize(@__size)   --compute cumulative sizes
             var length = cumsize[N-1]           --length is last entry in 'cumsum'
-            --construct array from buffer
-            var v : Array
-            v.data = S.frombuffer(length, data)
-            v.size = @__size
-            v.cumsize = cumsize
-            return v
+            return Array{S.frombuffer(length, data), @__size, cumsize}
         end
     )
 

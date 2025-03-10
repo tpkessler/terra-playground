@@ -237,7 +237,7 @@ local SmartBlock = terralib.memoize(function(T, options)
             return quote
                 --var blk = exp invokes __copy, so we turn exp into an rvalue such
                 --that __copy is not called
-                var blk = exp:__forward()
+                var blk = exp
                 --err.assert(blk:size_in_bytes() % [to.elsize]  == 0)
             in
                 [&to.type](blk)

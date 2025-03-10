@@ -25,9 +25,11 @@ local newinterface = terralib.memoize(function(name)
     end
 
     function interface.metamethods.__staticinitialize(Self)
+        Self.interface_methods = {}
         for name, method in pairs(Self.methods) do
-            local sig = method.type
+            Self.interface_methods[name] = method
 
+            local sig = method.type
             local typ = terralib.newlist()
             typ:insertall(sig.parameters)
             typ[1] = &opaque
@@ -62,7 +64,7 @@ local newinterface = terralib.memoize(function(name)
 
     function interface:isimplemented(T)
         local methods = {}
-        for name, method in pairs(self.methods) do
+        for name, method in pairs(self.interface_methods) do
             local Isig = method.type
             local Tmethod = T.methods[name]
             local Ttemplate = T.templates and T.templates[name]

@@ -77,6 +77,7 @@ terraform thread.staticmethods.initialize(allocator, func, arg...)
             func: func.type
             arg: arg.type
         }
+        local smartpacked = alloc.SmartObject(packed)
         emit quote
             t.func = [
                 terra(parg: &opaque)
@@ -141,9 +142,7 @@ local ThreadsafeQueue = terralib.memoize(function(T)
 
     threadsafe_queue.staticmethods.new = (
         terra(alloc: Alloc, capacity: int64)
-            var q: threadsafe_queue
-            q.data = S.new(alloc, capacity)
-            return q
+            return threadsafe_queue{data=S.new(alloc, capacity)}
         end
     )
     
@@ -153,7 +152,7 @@ end)
 -- A join_threads struct is an abstraction over a block of threads that
 -- automatically joins all threads when the threads go out of scope.
 local struct join_threads {
-    data: span.Span(thread)
+    data: &block_thread
 }
 
 terra join_threads:__dtor()
@@ -243,7 +242,7 @@ terra threadpool:__dtor()
     -- main thread.
     self.joiner:__dtor()
     self.threads:__dtor()
-    -- self.work_queue:__dtor()
+    --self.work_queue:__dtor()
     self.done_signal:__dtor()
     self.done_mutex:__dtor()
     self.work_signal:__dtor()
@@ -357,7 +356,7 @@ threadpool.staticmethods.new = (
         tp.work_queue = queue_thread.new(alloc, nthreads)
         tp.done = false
         tp.threads = alloc:new(nthreads, sizeof(thread))
-        tp.joiner.data = {&tp.threads(0), nthreads}
+        tp.joiner = join_threads {&tp.threads}
         -- The point of no return. From this point on, we are running the 
         -- program concurrently.
         for i = 0, nthreads do
@@ -377,9 +376,12 @@ threadpool.staticmethods.new = (
 )
 
 local terraform parfor(alloc, rn, go, nthreads)
-    var tp = threadpool.new(alloc, nthreads)
-    for it in rn do
-        tp:submit(alloc, go, it)
+    var tralloc = TracingAllocator.from(alloc)
+    do
+        var tp = threadpool.new(alloc, nthreads)
+        for it in rn do
+            tp:submit(&tralloc, go, it)
+        end
     end
 end
 
