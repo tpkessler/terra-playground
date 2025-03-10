@@ -202,13 +202,17 @@ local DefaultAllocator = function(options)
             escape
                 if Alignment ~= 0 then
                     emit quote
-                        var newsz = round_to_aligned(sz, Alignment) / elsize
-                        ptr = C.aligned_alloc(Alignment, newsz * elsize)
+                        var newsz = elsize * (round_to_aligned(sz, Alignment) / elsize)
+                        ptr = C.aligned_alloc(Alignment, newsz)
+                        C.memset(ptr, 0, newsz)
                         C.memcpy(ptr, blk.ptr, blk.nbytes)
                         C.free(blk.ptr)
                     end
                 else
-                    emit quote ptr = C.realloc(blk.ptr, sz) end
+                    emit quote 
+                        ptr = C.realloc(blk.ptr, sz)
+                        C.memset([&uint8](ptr)+blk.nbytes, 0, sz - blk.nbytes)
+                    end
                 end
                 if AbortOnError then
                     emit `abort_on_error(ptr, sz)

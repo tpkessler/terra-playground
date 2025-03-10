@@ -95,26 +95,15 @@ local DynamicStack = terralib.memoize(function(T)
     terra stack:capacity()
         return self.data:size()
     end
-
-    local io = terralib.includec("stdio.h")
-
+    
     terra stack:push(v : T)
         --we don't allow pushing when 'data' is empty
         err.assert(self.data:isempty() == false)
         if self:size() == self:capacity() then
             self.data:reallocate(1 + 2 * self:capacity())
-            io.printf("reallocating memory.\n")
         end
         self.size = self.size + 1
         self.data.ptr[self.size - 1] = __move__(v)
-    end
-
-    terra stack:pop()
-        if self:size() > 0 then
-            var tmp = self:get(self.size - 1)
-            self.size = self.size - 1
-            return tmp
-        end
     end
 
     terra stack:get(i : size_t)
@@ -125,6 +114,14 @@ local DynamicStack = terralib.memoize(function(T)
     terra stack:set(i : size_t, v : T)
         err.assert(i < self:size())
         self.data:set(i, v)
+    end
+
+    terra stack:pop()
+        if self:size() > 0 then
+            var tmp = __move__(self.data(self.size - 1))
+            self.size = self.size - 1
+            return tmp
+        end
     end
 
     stack.metamethods.__apply = macro(function(self, i)

@@ -242,13 +242,13 @@ terra threadpool:__dtor()
     -- Now, all threads have finished their work and are left at the buttom of
     -- the thread worker function. At this point, we join them back into the
     -- main thread.
-    --self.joiner:__dtor()
-    --self.threads:__dtor()
+    self.joiner:__dtor()
+    self.threads:__dtor()
     --self.work_queue:__dtor()
-    --self.done_signal:__dtor()
-    --self.done_mutex:__dtor()
-    --self.work_signal:__dtor()
-    --self.work_mutex:__dtor()
+    self.done_signal:__dtor()
+    self.done_mutex:__dtor()
+    self.work_signal:__dtor()
+    self.work_mutex:__dtor()
 end
 
 -- The program already runs concurrently when new work is submitted. Hence,
