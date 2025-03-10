@@ -127,9 +127,11 @@ function generate_terrafun(templ, localenv)
 				localenv[param.typename] = dref(argtype, param.nref)
 			end
 		end
-		return terra([argumentlist])
+		local f = terra([argumentlist])
 			[templ.terrastmts(localenv)]
 		end
+		f:printpretty()
+		return f
 	end
 end
 
