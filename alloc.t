@@ -78,7 +78,11 @@ end
 
 --Base class to facilitate implementation of allocators.
 local function AllocatorBase(A)
+
     assert(RawAllocator(A))
+
+    --add initializer that sets pointers to nil.
+    terralib.ext.addmissing.__init(A)
 
     terra A:owns(blk : &block)
         if blk:owns_resource() then
@@ -116,8 +120,7 @@ local function AllocatorBase(A)
     end
 
     --single method that can free and reallocate memory
-    --this method is similar to the 'lua_Alloc' function,
-    --although we don't allow allocation here (yet). 
+    --this method is similar to the 'lua_Alloc' function.
     --see also 'https://nullprogram.com/blog/2023/12/17/'
     --a pointer to this method is set to block.alloc_f
     terra A:__allocators_best_friend(
