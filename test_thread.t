@@ -19,46 +19,12 @@ require("terralibext")
 local TracingAllocator = alloc.TracingAllocator()
 
 
-local io = terralib.includec("stdio.h")
-
-
---[[
-local terra go(i: int, a: &int)
-    a[i] = 2 * i + 1
-    return 0
-end
-
-local NTHREADS = 3
-local TracingAllocator = alloc.TracingAllocator()
-
-terra main()
-    var A: alloc.DefaultAllocator()
-    var tralloc = TracingAllocator.from(&A)
-    
-    do 
-        var a: int[NTHREADS]
-        
-        var t: thread.thread[NTHREADS]
-        for i = 0, NTHREADS do
-            t[i] = thread.thread.new(&tralloc, go, i, &a[0])
-        end
-
-        for i = 0, NTHREADS do
-            t[i]:join()
-        end
-    end
-end
-main()
---]]
-
-
-
 testenv "Basic data structures" do
     terracode
         var A: alloc.DefaultAllocator()
         var tralloc = TracingAllocator.from(&A)
     end
-    --[[
+
     testset "Mutex" do
         terracode
             var mtx: thread.mutex
@@ -74,7 +40,7 @@ testenv "Basic data structures" do
         test cnd:signal() == 0
         test cnd:broadcast() == 0
     end
-    --]]
+
 
     testset "Thread" do
         local terra go(i: int, a: &int)
@@ -85,25 +51,23 @@ testenv "Basic data structures" do
         local NTHREADS = 3
 
         terracode
-            var a: int[NTHREADS]
-            
             var t: thread.thread[NTHREADS]
+            var a: int[NTHREADS]
             for i = 0, NTHREADS do
                 t[i] = thread.thread.new(&tralloc, go, i, &a[0])
             end
-
             for i = 0, NTHREADS do
                 t[i]:join()
             end
         end
 
         for i = 0, NTHREADS - 1 do
-            --test a[i] == 2 * i + 1
+            test a[i] == 2 * i + 1
         end
     end
 
-    --[[
-    testset(skip) "Join threads" do
+
+    testset "Join threads" do
         local terra go(i: int, a: &int)
             a[i] = 2 * i + 1
             return 0
@@ -128,7 +92,7 @@ testenv "Basic data structures" do
         end
     end
 
-    testset(skip) "Lock guard" do
+    testset "Lock guard" do
         local gmutex = global(alloc.SmartObject(thread.mutex))
         local PCG = random.MinimalPCG
 
@@ -174,7 +138,7 @@ testenv "Basic data structures" do
         gmutex:get():__dtor()
     end
 
-    testset(skip) "Thread pool" do
+    testset "Thread pool" do
         local PCG = random.MinimalPCG
         local terra do_work(rng: &PCG(double))
             var max: uint64 = 10000000ull
@@ -210,11 +174,10 @@ testenv "Basic data structures" do
         end
         test tmath.isapprox(sum, ref, 1e-15)
     end
-    --]]
+
 end
 
---[[
-testenv(skip) "Parallel for" do
+testenv "Parallel for" do
     local lambda = require("lambda")
     local range = require("range")
 
@@ -261,4 +224,3 @@ testenv(skip) "Parallel for" do
         end
     end
 end
---]]

@@ -27,7 +27,7 @@ local FUNC = &opaque -> &opaque
 local struct thread {
     id: pthread.C.pthread_t
     func: FUNC
-    arg: alloc.SmartBlock(int8, {copyby = "view"})
+    arg: alloc.SmartBlock(int8, {copyby = "move"})
 }
 base.AbstractBase(thread)
 
@@ -244,7 +244,7 @@ terra threadpool:__dtor()
     -- main thread.
     self.joiner:__dtor()
     self.threads:__dtor()
-    --self.work_queue:__dtor()
+    self.work_queue:__dtor()
     self.done_signal:__dtor()
     self.done_mutex:__dtor()
     self.work_signal:__dtor()
@@ -257,7 +257,6 @@ end
 -- is available and, secondly, need to add to the work queue. Note that this
 -- access is protected by a mutex as other threads may request new work from it
 -- at the same time.
-local TracingAllocator = alloc.TracingAllocator()
 terraform threadpool:submit(allocator, func, arg...)
     var t = submit(allocator, func, unpacktuple(arg))
     self.work_queue:push(__move__(t))
@@ -378,11 +377,10 @@ threadpool.staticmethods.new = (
 )
 
 local terraform parfor(alloc, rn, go, nthreads)
-    var tralloc = TracingAllocator.from(alloc)
     do
         var tp = threadpool.new(alloc, nthreads)
         for it in rn do
-            tp:submit(&tralloc, go, it)
+            tp:submit(alloc, go, it)
         end
     end
 end
