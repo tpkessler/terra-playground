@@ -124,9 +124,12 @@ local ThreadsafeQueue = terralib.memoize(function(T)
         return self.data:size() == 0
     end
 
+    --ToDo: bug happens here iside the lock_quard
     terra threadsafe_queue:push(t: T)
+        --io.printf("lock guard\n")
         var guard: lock_guard = self.mutex
-       --self.mutex:lock()
+        --self.mutex:lock()
+        --io.printf("locked guard\n")
         self.data:push(__move__(t))
         --self.mutex:unlock() 
     end
@@ -145,7 +148,11 @@ local ThreadsafeQueue = terralib.memoize(function(T)
 
     threadsafe_queue.staticmethods.new = (
         terra(alloc: Alloc, capacity: int64)
-            return threadsafe_queue{data=S.new(alloc, capacity)}
+            var q : threadsafe_queue
+            q.data = S.new(alloc, capacity)
+            return q
+            --ToDo: fix initializers for r-value
+            --threadsafe_queue{data=S.new(alloc, capacity)}
         end
     )
     
@@ -244,13 +251,13 @@ terra threadpool:__dtor()
     -- Now, all threads have finished their work and are left at the buttom of
     -- the thread worker function. At this point, we join them back into the
     -- main thread.
-    self.joiner:__dtor()
-    self.threads:__dtor()
-    self.work_queue:__dtor()
-    self.done_signal:__dtor()
-    self.done_mutex:__dtor()
-    self.work_signal:__dtor()
-    self.work_mutex:__dtor()
+    --self.joiner:__dtor()
+    --self.threads:__dtor()
+    --self.work_queue:__dtor()
+    --self.done_signal:__dtor()
+    --self.done_mutex:__dtor()
+    --self.work_signal:__dtor()
+    --self.work_mutex:__dtor()
 end
 
 -- The program already runs concurrently when new work is submitted. Hence,
@@ -260,9 +267,7 @@ end
 -- access is protected by a mutex as other threads may request new work from it
 -- at the same time.
 terraform threadpool:submit(allocator, func, arg...)
-    io.printf("submitting job\n")
     var t = submit(allocator, func, unpacktuple(arg))
-    io.printf("job submitted\n")
     self.work_queue:push(__move__(t))
     self.work_signal:signal()
 end
@@ -381,13 +386,9 @@ threadpool.staticmethods.new = (
 )
 
 local terraform parfor(alloc, rn, go, nthreads)
-    do
-        io.printf("threadpool - parfor\n")
-        var tp = threadpool.new(alloc, nthreads)
-        for it in rn do
-            io.printf("it = %d\n", it)
-            tp:submit(alloc, go, it)
-        end
+    var tp = threadpool.new(alloc, nthreads)
+    for it in rn do
+        tp:submit(alloc, go, it)
     end
 end
 

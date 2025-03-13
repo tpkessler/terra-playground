@@ -98,21 +98,16 @@ local struct mutex {
 base.AbstractBase(mutex)
 
 terra mutex:__init()
-    C.printf("initializing mutex\n")
     var ret = thrd.mutex_init(&self.id, nil)
-    C.printf("value of mutex_init = %d\n", ret)
 end
 
 terra mutex:__dtor()
-    C.printf("destroying mutex\n")
     var ret = thrd.mutex_destroy(&self.id)
-    C.printf("value of mutex_destroy = %d\n", ret)
 end
 
 for _, method in pairs{"lock", "trylock", "unlock"} do
     local func = thrd["mutex_" .. method]
     mutex.methods[method] = terra(self: &mutex)
-        C.printf("mutex - %s\n", [method])
         return [func](&self.id)
     end
 end
