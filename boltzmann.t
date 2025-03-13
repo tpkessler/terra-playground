@@ -691,10 +691,7 @@ local terraform nonlinear_maxwellian_inflow(
                             darray.DynamicVector(C.traits.eltype)
                         ].new(A, qvlhs:cols())
                     )
-                    Cc.printf("lhs size %zu\n", lhs:length())
-                    Cc.printf("qvlhs size %zu %zu\n", qvlhs:rows(), qvlhs:cols())
                     for j = 0, qvlhs:cols() do
-                        Cc.printf("i = %ld, j = %d\n", i, j)
                         lhs(j) = qvlhs(i, j)
                     end
                     var rho, u, theta = local_maxwellian(
