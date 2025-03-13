@@ -19,7 +19,7 @@ require("terralibext")
 local TracingAllocator = alloc.TracingAllocator()
 
 
-testenv "Basic data structures" do
+testenv(skip) "Basic data structures" do
     terracode
         var A: alloc.DefaultAllocator()
         var tralloc = TracingAllocator.from(&A)

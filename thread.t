@@ -126,7 +126,9 @@ local ThreadsafeQueue = terralib.memoize(function(T)
 
     terra threadsafe_queue:push(t: T)
         var guard: lock_guard = self.mutex
+       --self.mutex:lock()
         self.data:push(__move__(t))
+        --self.mutex:unlock() 
     end
 
     terra threadsafe_queue:try_pop(t: &T)
@@ -258,7 +260,9 @@ end
 -- access is protected by a mutex as other threads may request new work from it
 -- at the same time.
 terraform threadpool:submit(allocator, func, arg...)
+    io.printf("submitting job\n")
     var t = submit(allocator, func, unpacktuple(arg))
+    io.printf("job submitted\n")
     self.work_queue:push(__move__(t))
     self.work_signal:signal()
 end
@@ -378,8 +382,10 @@ threadpool.staticmethods.new = (
 
 local terraform parfor(alloc, rn, go, nthreads)
     do
+        io.printf("threadpool - parfor\n")
         var tp = threadpool.new(alloc, nthreads)
         for it in rn do
+            io.printf("it = %d\n", it)
             tp:submit(alloc, go, it)
         end
     end

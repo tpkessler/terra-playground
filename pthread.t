@@ -5,6 +5,8 @@
 
 local base = require("base") -- AbstractBase
 
+local C = terralib.includec("stdio.h")
+
 -- SPDX-SnippetBegin
 -- SPDX-SnippetCopyrightText 2001-2003
 -- SPDX-SnippetCopyrightText 2007-8 Anthony Williams
@@ -96,17 +98,22 @@ local struct mutex {
 base.AbstractBase(mutex)
 
 terra mutex:__init()
-    thrd.mutex_init(&self.id, nil)
+    C.printf("initializing mutex\n")
+    var ret = thrd.mutex_init(&self.id, nil)
+    C.printf("value of mutex_init = %d\n", ret)
 end
 
 terra mutex:__dtor()
-    thrd.mutex_destroy(&self.id)
+    C.printf("destroying mutex\n")
+    var ret = thrd.mutex_destroy(&self.id)
+    C.printf("value of mutex_destroy = %d\n", ret)
 end
 
 for _, method in pairs{"lock", "trylock", "unlock"} do
     local func = thrd["mutex_" .. method]
     mutex.methods[method] = terra(self: &mutex)
-        return func(&self.id)
+        C.printf("mutex - %s\n", [method])
+        return [func](&self.id)
     end
 end
 
