@@ -22,7 +22,6 @@ local TracingAllocator = alloc.TracingAllocator()
 testenv "Basic data structures" do
     terracode
         var A: alloc.DefaultAllocator()
-        var tralloc = TracingAllocator.from(&A)
     end
 
     testset "Mutex" do
@@ -54,7 +53,7 @@ testenv "Basic data structures" do
             var t: thread.thread[NTHREADS]
             var a: int[NTHREADS]
             for i = 0, NTHREADS do
-                t[i] = thread.thread.new(&tralloc, go, i, &a[0])
+                t[i] = thread.thread.new(&A, go, i, &a[0])
             end
             for i = 0, NTHREADS do
                 t[i]:join()
@@ -78,9 +77,8 @@ testenv "Basic data structures" do
         terracode
             var a: int[NTHREADS]
             var t: thread.thread[NTHREADS]
-            var st = [alloc.SmartBlock(thread.thread)].frombuffer(NTHREADS, &t[0])
             do
-                var joiner = thread.join_threads{&st}
+                var joiner = thread.join_threads {t}
                 for i = 0, NTHREADS do
                     t[i] = thread.thread.new(&A, go, i, &a[0])
                 end
