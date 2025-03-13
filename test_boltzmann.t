@@ -213,6 +213,7 @@ testenv "Full Phasespace Integral" do
                     )
         var tng = dMat.ones(&alloc, {3, 4})
 
+        var u = arrayof(double, 0, 0, 0)
         bc.pressurebc(
                 ntestx,
                 ntestv,
@@ -236,6 +237,10 @@ testenv "Full Phasespace Integral" do
                 &trialx.data(0),
                 &trialx.col(0),
                 &trialx.rowptr(0),
+                --
+                1.0,
+                &u[0],
+                1.0,
                 --
                 &test_powers(0, 0),
                 &trial_powers(0, 0),
