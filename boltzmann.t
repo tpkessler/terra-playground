@@ -358,7 +358,7 @@ testenv "Moments of local Maxwellian" do
         end
 
         test tmath.isapprox(rho, locrho, 1e-14)
-        for i = 1, VDIM do
+        for i = 0, VDIM - 1 do
             test tmath.isapprox(u[i], locu(i), 1e-14)
         end
         test tmath.isapprox(theta, loctheta, 1e-14)
