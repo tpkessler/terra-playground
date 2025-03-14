@@ -5,7 +5,6 @@
 
 import "terratest/terratest"
 
-local io = terralib.includec("stdio.h")
 local alloc = require("alloc")
 local boltzmann = require("boltzmann")
 local darray = require("darray")
@@ -18,10 +17,6 @@ local range = require("range")
 local io = terralib.includec("stdio.h")
 -- Compiled terra code, reimported for integration/unit testing
 local bc = terralib.includec("./nonlinearbc.h")
---local GenerateBCWrapper = boltzmann.GenerateBCWrapper
---local FixedPressure = boltzmann.FixedPressure
-
---local pressurebc = GenerateBCWrapper(FixedPressure(double))
 
 local ffi = require("ffi")
 
@@ -213,6 +208,7 @@ testenv "Full Phasespace Integral" do
                     )
         var tng = dMat.ones(&alloc, {3, 4})
 
+        var u = arrayof(double, 0, 0, 0)
         bc.pressurebc(
                 ntestx,
                 ntestv,
@@ -237,6 +233,10 @@ testenv "Full Phasespace Integral" do
                 &trialx.col(0),
                 &trialx.rowptr(0),
                 --
+                1.0,
+                &u[0],
+                1.0,
+                --
                 &test_powers(0, 0),
                 &trial_powers(0, 0),
                 --
@@ -259,6 +259,71 @@ testenv "Full Phasespace Integral" do
     for i = 0, 1 do
         for j = 0, 2 do
             test tmath.isapprox(resval(i, j), refval(i, j), 1e-5)
+        end
+    end
+end
+
+testenv "Half space integral interface" do
+    terracode
+        var A: alloc.DefaultAllocator()
+        var ensrho = 1.0
+        var ensU = arrayof(double, 1.0, -2.5, 3.25)
+        var enstheta = 0.75
+        var normal = arrayof(double, 2.0 / 7.0, 3.0 / 7.0, 6.0 / 7.0)
+        var pte = [darray.DynamicMatrix(int32)].from(
+            &A,
+            {
+                {0, 0, 0},
+                {1, 0, 0},
+                {0, 1, 0},
+                {0, 0, 1}
+            }
+        )
+        var ptr = [darray.DynamicMatrix(int32)].from(
+            &A,
+            {
+                {0, 0, 0},
+                {1, 0, 0},
+                {0, 1, 0},
+                {0, 0, 1},
+                {2, 0, 0},
+                {0, 2, 0},
+                {0, 0, 2}
+            }
+        )
+        var mass = [darray.DynamicMatrix(double)].zeros(&A, {4, 7})
+        var bndrho = 1.0
+        var bndU = arrayof(double, 1e-2, 0.0, 0.0)
+        var bndtheta = 1.375
+        bc.halfspace(
+            ensrho,
+            &ensU[0],
+            enstheta,
+            pte:rows(),
+            ptr:rows(),
+            &pte(0, 0),
+            &ptr(0, 0),
+            bndrho,
+            &bndU[0],
+            bndtheta,
+            &normal[0],
+            false,
+            &mass(0, 0)
+        )
+        var massref = [darray.DynamicMatrix(double)].from(
+            &A,
+            {
+                {0.46923124989104753,-0.3091462289299536,1.695439640446213,-1.079148728314458,1.0238799712985998,6.896146660287203,2.98162352913931},
+                {-0.3091462289299536,1.0238799712985998,-1.177096678431062,0.5908200082503707,-1.750502822226544,-4.966743477048509,-1.368282370282976},
+                {1.695439640446213,-1.177096678431062,6.896146660287203,-4.0794530536647615,3.78591492084042,30.498989080979694,11.667462387526047},
+                {-1.079148728314458,0.5908200082503707,-4.0794530536647615,2.98162352913931,-2.181936879596525,-17.129866024330788,-9.025732823750863}
+            }
+        )
+    end
+
+    for i = 0, 3 do
+        for j = 0, 6 do
+            test tmath.isapprox(mass(i, j), massref(i, j), 1e-13)
         end
     end
 end

@@ -324,7 +324,7 @@ local struct Stats{
 
 --collecting terra statements - used in 'testenv' and 'testset'
 function collect_terra_stmts(env, terrastmts)
-    local imp = terra()         
+    local imp = terra()
         var [env.counter] = 0   
         var [env.passed] = 0    
         var [env.failed] = 0
@@ -336,7 +336,6 @@ function collect_terra_stmts(env, terrastmts)
         end
         return Stats {[env.passed], [env.failed]}
     end
-    --imp:printpretty()
     return imp
 end 
 
