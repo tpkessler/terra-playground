@@ -3,8 +3,9 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local alloc = require("alloc") -- SmartBlock, Allocator
 local base = require("base") -- AbstractBase
+
+local C = terralib.includec("stdio.h")
 
 -- SPDX-SnippetBegin
 -- SPDX-SnippetCopyrightText 2001-2003
@@ -89,120 +90,6 @@ elseif uname == "Darwin\n" then
 else
     error("Unsupported platform for multithreading")
 end
-local sched = terralib.includec("sched.h")
-
--- A thread has a unique ID that executes a given function with signature FUNC.
--- Its argument is stored as a managed pointer on the (global) heap. This way,
--- threads can be passed to other functions and executed there. The life time
--- of the argument arg is thus not bound to the life time of the local stack.
-local FUNC = &opaque -> &opaque
-local struct thread {
-    id: thrd.pthread_t
-    func: FUNC
-    arg: alloc.SmartBlock(int8, {copyby = "view"})
-}
-base.AbstractBase(thread)
-
-terra thread.metamethods.__eq(self: &thread, other: &thread)
-    return thrd.equal(self.id, other.id)
-end
-
--- Pause the calling thread for a short period and resume afterwards.
-thread.staticmethods.yield = (
-    terra()
-        return sched.sched_yield()
-    end
-)
-
--- Exit thread with given the return value res.
-thread.staticmethods.exit = (
-    terra()
-        return thrd.exit(nil)
-    end
-)
-
--- After a new thread is created, it forks from the calling thread. To access
--- results of the forked thread we have to join it with the calling thread.
-terra thread:join()
-    return thrd.join(self.id, nil)
-end
-
--- This is the heart of the thread module.
--- Given an allocator instance for memory management and a callable and
--- copyable instance (a function pointer, a lambda, a struct instance with
--- an overloaded apply, or a terraform function) and a list of copyable
--- arguments, it generates a terra function with signature FUNC and a datatype
--- that stores the function arguments. It returns a thread instance but not
--- starting the thread.
-local submit = macro(function(allocator, func, ...)
-    -- terralib.List is a lua list with some usefull methods like map and insert
-    local arg = terralib.newlist({...})
-    -- The macro runs in lua mode but the arguments are passed from terra.
-    -- The terra data is passed as node in the abstract syntax tree. As part of
-    -- this, we cannot access the value of the arguments (as it has no meaning
-    -- in lua) but their types. We need them to generate our wrapper type for
-    -- the C thread.
-    local typ = arg:map(function(x) return x:gettype() end)
-    -- Symbols are important for metaprogramming of terra functions from lua.
-    -- They represent lazy terra variables. From terra code, they behave like
-    -- terra variables. But they are also lua variables, so we can put them
-    -- in tables or use it to construct types. Terra types (structs) are called
-    -- exotypes because they can be constructed outside of terra, that is in
-    -- lua.
-    local sym = typ:map(function(T) return symbol(T) end)
-    local functype = func:gettype()
-    typ:insert(1, functype)
-    -- tuple is a special struct type whose fields are named _0, _1, ...
-    local arg_t = tuple(unpack(typ))
-    local funcsym = symbol(functype)
-
-    -- Our thread conforming wrapper around the provided callable.
-    local terra pfunc(parg: &opaque)
-        var arg = [&arg_t](parg)
-        var [funcsym] = arg._0
-        -- With escape ... end we can always leave terra and get access again
-        -- to lua. Here, we use it for loop unrolling.
-        escape
-            for i = 1, #sym do
-                emit quote var [ sym[i] ] = arg.["_" .. i] end
-            end
-        end
-        [funcsym]([sym])
-        return parg
-    end
-
-    -- Now that we have the function wrapper pfunc and the wrapper type for
-    -- arguments arg_t, we can setup a thread with the given information.
-    -- The important part here is that the argument wrapper is allocated by
-    -- the provided allocator. The allocated block has to outlive the thread.
-    -- This means we cannot use a pointer to stack memory inside the quote.
-    return quote
-        var a = [alloc.SmartObject(arg_t)].new(allocator)
-        a._0 = func
-        escape
-            for i = 1, #arg do
-                emit quote a.["_" .. i] = [ arg[i] ] end
-            end
-        end
-        var t: thread
-        t.arg = __move__(a)
-        t.func = pfunc
-    in
-        t
-    end
-end)
-
-thread.staticmethods.new = macro(function(allocator, func, ...)
-    local arg = {...}
-    return quote
-        -- This sets up all the wrapper stuff ...
-        var t = submit(allocator, func, [arg])
-        -- ... and then spawns a thread.
-        thrd.create(&t.id, nil, t.func, &t.arg(0))
-    in
-        t
-    end
-end)
 
 -- With a mutex you can restrict code access to a single thread.
 local struct mutex {
@@ -211,17 +98,17 @@ local struct mutex {
 base.AbstractBase(mutex)
 
 terra mutex:__init()
-    thrd.mutex_init(&self.id, nil)
+    var ret = thrd.mutex_init(&self.id, nil)
 end
 
 terra mutex:__dtor()
-    thrd.mutex_destroy(&self.id)
+    var ret = thrd.mutex_destroy(&self.id)
 end
 
 for _, method in pairs{"lock", "trylock", "unlock"} do
     local func = thrd["mutex_" .. method]
     mutex.methods[method] = terra(self: &mutex)
-        return func(&self.id)
+        return [func](&self.id)
     end
 end
 
@@ -281,11 +168,9 @@ terra cond:wait(mtx: &mutex)
 end
 
 return {
-    pthread = thrd,
-    thread = thread,
+    C = thrd,
     mutex = mutex,
     lock_guard = lock_guard,
     cond = cond,
-    submit = submit,
     hardware_concurrency = boost.hardware_concurrency,
 }

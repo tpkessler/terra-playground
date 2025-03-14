@@ -4,6 +4,7 @@
 -- SPDX-License-Identifier: MIT
 
 import "terraform"
+import "terratest/terratest"
 
 local alloc = require("alloc")
 local base = require("base")
@@ -21,14 +22,14 @@ local thread = require("thread")
 local momfit = require("momfit")
 local sparse = require("sparse")
 local stack = require("stack")
+local span = require("span")
 local qr = require("qr")
 
 local io = terralib.includec("stdio.h")
 
 local VDIM = 3
 
-local pow
-terraform pow(n: I, x: T) where {I: concepts.Integer, T: concepts.Real}
+local terraform pow(n: I, x: T) where {I: concepts.Integer, T: concepts.Real}
     escape
         local pow_raw = terralib.memoize(function(I, T)
             local terra impl(n: I, x: T): T
@@ -47,18 +48,41 @@ terraform pow(n: I, x: T) where {I: concepts.Integer, T: concepts.Real}
     end
 end
 
-local monomial
-terraform monomial(v: &T, p: &I) where {I: concepts.Integer, T: concepts.Number}
-    var res = [v.type.type](1)
+local terraform monomial(v: &T, p: &I) where {
+    I: concepts.Integer, T: concepts.Number
+}
+    var res = [T](1)
     for i = 0, VDIM do
         res = res * pow(p[i], v[i])
     end
     return res
 end
 
+local struct background{
+    rho: double
+    u: sarray.StaticVector(double, VDIM)
+    theta: double
+}
+base.AbstractBase(background)
+
+background.staticmethods.new = (
+    terra(rho: double, u: span.Span(double, VDIM), theta: double)
+        var bg: background
+        bg.rho = rho
+        escape
+            for i = 1, VDIM do
+                emit quote bg.u(i - 1) = u(i - 1) end
+            end
+        end
+        bg.theta = theta
+        return bg
+    end
+)
+
 local iMat = darray.DynamicMatrix(int32)
 local struct MonomialBasis(base.AbstractBase){
     p: iMat
+    bg: background
 }
 
 terra MonomialBasis:maxpartialdegree()
@@ -71,17 +95,100 @@ terra MonomialBasis:maxpartialdegree()
     return maxdeg
 end
 
-MonomialBasis.staticmethods.new = terra(p: iMat)
+local deepcopy = macro(function(A, x)
+    local V = darray.DynamicVector(x:gettype().traits.eltype)
+    return quote
+        var p = V.new(A, x:length())
+        p:copy(&x)
+    in
+        __move__(p)
+    end
+end)
+
+local Integer = concepts.Integer
+terraform MonomialBasis:quadraturerule(A, deg: I) where {I: Integer}
+    var px, wx = gauss.hermite(A, deg / 2 + 1,
+            {origin = 0.0, scaling = tmath.sqrt(2.)})
+    wx:scal(1 / tmath.sqrt(2 * tmath.pi))
+    escape
+        local xarg = {}
+        local warg = {}
+        for i = 1, VDIM - 1 do
+            xarg[i] = `deepcopy(A, px)
+            warg[i] = `deepcopy(A, wx)
+        end
+        xarg[VDIM] = `__move__(px)
+        warg[VDIM] = `__move__(wx)
+
+        local xtpl = {}
+        for i = 1, VDIM do
+            xtpl[i] = symbol(double)
+        end
+        emit quote
+            var xt = (
+                range.product([xarg])
+                >> range.transform([
+                    terra([xtpl], bg: &background)
+                        escape
+                            local res = {}
+                            for i = 1, VDIM do
+                                res[i] = quote in
+                                    tmath.sqrt(bg.theta) * [ xtpl[i] ]
+                                    + bg.u(i - 1)
+                                end
+                            end
+                            emit quote return [res] end
+                        end
+                    end
+                ], {bg = &self.bg})
+            )
+            var wt = range.product([warg])
+                >> range.reduce(range.op.mul)
+                >> range.transform(
+                    [
+                        terra(w: double, bg: &background)
+                            return bg.rho * w
+                        end
+                    ],
+                    {bg = &self.bg}
+                )
+            return xt, wt
+        end
+    end
+end
+
+MonomialBasis.staticmethods.new = terra(p: iMat, bg: background)
     var basis: MonomialBasis
     basis.p = __move__(p)
+    basis.bg = bg
     return basis
 end
 
 do
     -- HACK Define our own lambda as a more flexible solution
-    local struct Func {p: &int32}
+    local struct Func {
+        p: &int32
+        bg: &background
+    }
+
+    local Number = concepts.Number
+    local terraform apply(self: Func, x: &T) where {T: Number}
+        escape
+            local shift = {}
+            for i = 1, VDIM do
+                shift[i] = quote in
+                    (x[i - 1] -  self.bg.u(i - 1)) / tmath.sqrt(self.bg.theta)
+                end
+            end
+            emit quote
+                var y = arrayof(T, [shift])
+                return monomial(&y[0], self.p)
+            end
+        end
+    end
+
     Func.metamethods.__apply = macro(function(self, x)
-        return `monomial(x, self.p)
+        return `apply(self, x)
     end)
     
     local struct iterator {
@@ -91,7 +198,8 @@ do
         len: int64
     }
     terra iterator:getvalue()
-        self.func.p = &(self.basis.p(self.idx, 0))
+        self.func.p = &self.basis.p(self.idx, 0)
+        self.func.bg = &self.basis.bg
         return self.func
     end
 
@@ -142,14 +250,17 @@ local TensorBasis = terralib.memoize(function(T)
         return self:nspacedof() * self:nvelocitydof()
     end
 
-    tensor_basis.staticmethods.new = terra(b: CSR, transposed: bool, p: iMat)
-        var tb : tensor_basis
-        tb.space = __move__(b)
-        tb.transposed = transposed
-        tb.velocity = MonomialBasis.new(__move__(p))
-        return tb
-    end
+    tensor_basis.staticmethods.new = (
+        terra(b: CSR, transposed: bool, p: iMat, bg: background)
+            var tb : tensor_basis
+            tb.space = __move__(b)
+            tb.transposed = transposed
+            tb.velocity = MonomialBasis.new(__move__(p), bg)
+            return tb
+        end
+    )
 
+    local spanVDIM = span.Span(double, VDIM)
     terraform tensor_basis.staticmethods.frombuffer(
         A,
         transposed: bool,
@@ -160,7 +271,10 @@ local TensorBasis = terralib.memoize(function(T)
         col: &int32,
         rowptr: &I,
         nv: I4,
-        ptr: &I)
+        ptr: &I,
+        rho: double,
+        u: spanVDIM,
+        theta: double)
         where {
                 S: concepts.Number,
                 I1: concepts.Integer,
@@ -176,7 +290,10 @@ local TensorBasis = terralib.memoize(function(T)
         var tb: tensor_basis
         tb.space = CSR.frombuffer(nq, nx, nnz, &cast(0), col, rowptr)
         tb.transposed = transposed
-        tb.velocity = MonomialBasis.new(__move__(iMat.frombuffer({nv, VDIM}, ptr)))
+        var bg = background.new(rho, u, theta)
+        tb.velocity = MonomialBasis.new(
+            __move__(iMat.frombuffer({nv, VDIM}, ptr)), bg
+        )
         tb.cast = __move__(cast)
 
         return tb
@@ -187,13 +304,37 @@ end)
 
 local terraform l2inner(f, g, q: &Q) where {Q}
     var it = q:getiterator()
-    var xw = it:getvalue()
-    var x, w = xw
+    var x, w = it:getvalue()
     var res = [w.type](0)
     for xw in q do
         var x, w = xw
         var arg = [&w.type](&x)
         res = res + w * f(arg) * g(arg)
+    end
+    return res
+end
+
+local terraform l2inner(w, f, g, q: &Q) where {Q}
+    var it = q:getiterator()
+    var xq, wq = it:getvalue()
+    var res = [wq.type](0)
+    for xw in q do
+        var xq, wq = xw
+        var arg = [&wq.type](&xq)
+        res = res + wq * w(arg) * f(arg) * g(arg)
+    end
+    return res
+end
+
+local terraform l2inner(w, f, g, wf: &W, xf: &X1, xg: &X2) where {W, X1, X2}
+    var it = wf:getiterator()
+    var wq = it:getvalue()
+    var res = [wq.type](0)
+    for wxy in range.zip(wf, xf, xg) do
+        var wq, xq, yq = wxy
+        var farg = [&wq.type](&xq)
+        var garg = [&wq.type](&yq)
+        res = res + wq * w(farg) * f(farg) * g(garg)
     end
     return res
 end
@@ -209,13 +350,14 @@ local terraform local_maxwellian(basis : &B, coeff: &V, quad: &Q)
     var it = quad:getiterator()
     var xref, wref = it:getvalue()
     for bc in range.zip(basis, coeff) do
+        var b, c = bc
         var cnst = lambda.new([terra(v: &wref.type) return 1.0 end])
-        m1 = m1 + l2inner(bc._0, cnst, quad) * bc._1
+        m1 = m1 + l2inner(b, cnst, quad) * c
         escape
             for i = 0, VDIM - 1 do
                 local vi = `lambda.new([terra(v: &wref.type) return v[i] end])
                 emit quote
-                    m2(i) = m2(i) + l2inner(bc._0, [vi], quad) * bc._1
+                    m2(i) = m2(i) + l2inner(b, [vi], quad) * c
                 end
             end
         end
@@ -230,7 +372,7 @@ local terraform local_maxwellian(basis : &B, coeff: &V, quad: &Q)
                             return vsqr
                         end
                     ])        
-        m3 = m3 + l2inner(bc._0, vsqr, quad) * bc._1
+        m3 = m3 + l2inner(b, vsqr, quad) * c
     end
 
     var rho = m1
@@ -244,6 +386,57 @@ local terraform local_maxwellian(basis : &B, coeff: &V, quad: &Q)
     end
     theta = theta / VDIM
     return rho, u, theta
+end
+
+testenv "Moments of local Maxwellian" do
+    terracode
+        var A: alloc.DefaultAllocator()
+    end
+
+    testset "Shifted Maxwellian" do
+        terracode
+            var p = [darray.DynamicMatrix(int32)].from(&A, {{0, 0, 0}})
+            var c = [darray.DynamicVector(double)].from(&A, {1.0})
+            var rho = 2.5
+            var u = arrayof(double, -1, 3, -2)
+            var theta = 0.75
+            var bg = background.new(rho, &u[0], theta)
+            var basis = MonomialBasis.new(p, bg)
+            var xq, wq = basis:quadraturerule(&A, 2)
+            var quad = range.zip(xq, wq)
+            var locrho, locu, loctheta = local_maxwellian(&basis, &c, &quad)
+        end
+
+        test tmath.isapprox(rho, locrho, 1e-14)
+        for i = 1, VDIM do
+            test tmath.isapprox(u[i - 1], locu(i - 1), 1e-14)
+        end
+        test tmath.isapprox(theta, loctheta, 1e-14)
+    end
+
+    testset "Bumped distribution" do
+        terracode
+            var p = [darray.DynamicMatrix(int32)].from(&A, {{2, 0, 0}})
+            var c = [darray.DynamicVector(double)].from(&A, {1.0})
+            var rho = 2.5
+            var u = arrayof(double, -1.5, 0, 0)
+            var theta = 7.0 / 8.0
+            var bg = background.new(rho, &u[0], theta)
+            var basis = MonomialBasis.new(p, bg)
+            var xq, wq = basis:quadraturerule(&A, 2 + 2)
+            var quad = range.zip(xq, wq)
+            var locrho, locu, loctheta = local_maxwellian(&basis, &c, &quad)
+            var rhoref = 5.0 / 2.0
+            var uref = arrayof(double, -1.5, 0.0, 0.0)
+            var reftheta = 35.0 / 24.0
+        end
+
+        test tmath.isapprox(rhoref, locrho, 1e-14)
+        for i = 1, VDIM do
+            test tmath.isapprox(uref[i - 1], locu(i - 1), 1e-14)
+        end
+        test tmath.isapprox(reftheta, loctheta, 1e-14)
+    end
 end
 
 local HalfSpaceQuadrature = terralib.memoize(function(T)
@@ -280,8 +473,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
 
     impl.staticmethods.new = new
 
-    local reverse
-    terraform reverse(w: &V) where {V: Vector(concepts.Any)}
+    local terraform reverse(w: &V) where {V: Vector(concepts.Any)}
         for i = 0, w:length() / 2 do
             var j = w:length() - 1 - i
             var tmp = w(i)
@@ -512,14 +704,294 @@ local terraform maxwellian_inflow(
     end
 end
 
+local terraform L2Mass(testb: &B1, trialb: &B2, q: &Q, m: &M) where {
+    B1, B2, Q, M
+}
+    for i, te in range.enumerate(testb) do
+        for j, tr in range.enumerate(trialb) do
+            m(i, j) = l2inner(te, tr, q)
+        end
+    end
+end
+
+local terraform L2Mass(weight, testb: &B1, trialb: &B2, q: &Q, m: &M) where {
+    B1, B2, Q, M
+}
+    for i, te in range.enumerate(testb) do
+        for j, tr in range.enumerate(trialb) do
+            m(i, j) = l2inner(weight, te, tr, q)
+        end
+    end
+end
+
+local terraform MaxwellianIntegrator(A, testb: &B1, trialb: &B2, bg, m: &M) where {
+    B1, B2, M
+}
+    var deg = testb:maxpartialdegree() + trialb:maxpartialdegree()
+    var x, w = testb:quadraturerule(A, deg)
+    var q = range.zip(x, w)
+    var rn = range.product(testb, trialb)
+        >> range.transform([
+            terra(v: B1.value_t, u: B2.value_t, q: &q.type)
+                return l2inner(v, u, q)
+            end
+        ],
+        {q = &q})
+    rn:collect(m)
+end
+
+local terraform MaxwellianFluxIntegrator(
+    A,
+    testb: &B1,
+    trialb: &B2,
+    bg,
+    normal: &N,
+    specular: bool,
+    m: &M
+) where {
+    B1, B2, N, M
+}
+    var deg = testb:maxpartialdegree() + trialb:maxpartialdegree()
+    var hs = [HalfSpaceQuadrature(M.traits.eltype)].new(&normal[0])
+    var x, w = hs:maxwellian(A, deg + 1, bg.rho, &bg.u, bg.theta)
+    var flux = lambda.new([
+            terra(v: &M.traits.eltype, normal: &N)
+                var res: M.traits.eltype = 0
+                escape
+                    for k = 0, VDIM - 1 do
+                        emit quote res = res + v[k] * normal[k] end
+                    end
+                end
+                return res
+            end
+        ],
+        {normal = normal})
+    var tensor = range.product(testb, trialb)
+    if not specular then
+        var q = range.zip(x, w)
+        var quadrange = tensor
+            >> range.transform([
+                terra(v: B1.value_t, u: B2.value_t, flux: &flux.type, q: &q.type)
+                    return l2inner(flux, v, u, q)
+                end
+                ],
+                {flux = &flux, q = &q})
+        quadrange:collect(m)
+    else
+        escape
+            local T = M.traits.eltype
+            local xval = {}
+            for i = 1, VDIM do
+                xval[i] = symbol(T)
+            end
+            emit quote
+                var xspec = x
+                    >> range.transform([
+                        terra([xval], normal: normal.type)
+                            escape
+                                local vn = symbol(T)
+                                emit quote var [vn] = 0 end
+                                for i = 1, VDIM do
+                                    emit quote
+                                        [vn] = (
+                                            [vn] + [ xval[i] ] * normal[i - 1]
+                                        )
+                                    end
+                                end
+                                local res = {}
+                                for i = 1, VDIM do
+                                    res[i] = quote in
+                                        [ xval[i] ] - 2 * [vn] * normal[i - 1]
+                                    end
+                                end
+                                emit quote return [res] end
+                            end
+                        end
+                    ],
+                    {normal = normal}
+                )
+                var quadrange = tensor
+                    >> range.transform([
+                        terra(
+                            v: B1.value_t,
+                            u: B2.value_t,
+                            flux: &flux.type,
+                            w: &w.type,
+                            x: &x.type,
+                            xspec: &xspec.type
+                        )
+                            return l2inner(flux, v, u, w, x, xspec)
+                        end
+                        ],
+                        {
+                            flux = &flux,
+                            w = &w,
+                            x = &x,
+                            xspec = &xspec
+                        }
+                    )
+                quadrange:collect(m)
+            end
+        end
+    end
+end
+
+testenv "Mass matrix" do
+    terracode
+        var A: alloc.DefaultAllocator()
+    end
+
+    testset "Shifted basis in full space" do
+        terracode
+            var bg = background.new(1.0, {1.0, -2.5, 3.25}, 0.75)
+            var pte = [darray.DynamicMatrix(int32)].from(
+                &A,
+                {
+                    {0, 0, 0},
+                    {1, 0, 0},
+                    {0, 1, 0},
+                    {0, 0, 1},
+                    {2, 0, 0},
+                    {0, 2, 0},
+                    {0, 0, 2}
+                }
+            )
+            var testb = MonomialBasis.new(pte, bg)
+
+            var ptr = [darray.DynamicMatrix(int32)].from(
+                &A, {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {2, 2, 2}}
+            )
+            var trialb = MonomialBasis.new(ptr, bg)
+            var mass = [darray.DynamicMatrix(double)].new(&A, {7, 5})
+            MaxwellianIntegrator(&A, &testb, &trialb, bg, &mass)
+            var massref = [darray.DynamicMatrix(double)].from(
+                &A,
+                {
+                    {1, 0, 0, 0, 1},
+                    {0, 1, 0, 0, 0},
+                    {0, 0, 1, 0, 0},
+                    {0, 0, 0, 1, 0},
+                    {1, 0, 0, 0, 3},
+                    {1, 0, 0, 0, 3},
+                    {1, 0, 0, 0, 3}
+                }
+            )
+        end
+        for i = 0, 6 do
+            for j = 0, 4 do
+                test tmath.isapprox(mass(i, j), massref(i, j), 1e-14)
+            end
+        end
+    end
+
+    testset "Shifted basis in half space" do
+        terracode
+            var bg = background.new(1.0, {1.0, -2.5, 3.25}, 0.75)
+            var normal = arrayof(double, 2.0 / 7.0, 3.0 / 7.0, 6.0 / 7.0)
+            var pte = [darray.DynamicMatrix(int32)].from(
+                &A,
+                {
+                    {0, 0, 0},
+                    {1, 0, 0},
+                    {0, 1, 0},
+                    {0, 0, 1}
+                }
+            )
+            var testb = MonomialBasis.new(pte, bg)
+
+            var ptr = [darray.DynamicMatrix(int32)].from(
+                &A,
+                {
+                    {0, 0, 0},
+                    {1, 0, 0},
+                    {0, 1, 0},
+                    {0, 0, 1},
+                    {2, 0, 0},
+                    {0, 2, 0},
+                    {0, 0, 2}
+                }
+            )
+
+            var trialb = MonomialBasis.new(ptr, bg)
+            var mass = [darray.DynamicMatrix(double)].new(&A, {4, 7})
+            var bgh = background.new(1.0, {1e-2, 0.0, 0.0}, 1.375)
+            MaxwellianFluxIntegrator(&A, &testb, &trialb, bgh, &normal[0], false, &mass)
+            var massref = [darray.DynamicMatrix(double)].from(
+                &A,
+                {
+                    {0.46923124989104753,-0.3091462289299536,1.695439640446213,-1.079148728314458,1.0238799712985998,6.896146660287203,2.98162352913931},
+                    {-0.3091462289299536,1.0238799712985998,-1.177096678431062,0.5908200082503707,-1.750502822226544,-4.966743477048509,-1.368282370282976},
+                    {1.695439640446213,-1.177096678431062,6.896146660287203,-4.0794530536647615,3.78591492084042,30.498989080979694,11.667462387526047},
+                    {-1.079148728314458,0.5908200082503707,-4.0794530536647615,2.98162352913931,-2.181936879596525,-17.129866024330788,-9.025732823750863}
+                }
+            )
+        end
+        for i = 0, 3 do
+            for j = 0, 6 do
+                test tmath.isapprox(mass(i, j), massref(i, j), 1e-13)
+            end
+        end
+    end
+
+    testset "Shifted basis in half space with specular reflection" do
+        terracode
+            var bg = background.new(1.0, {1.0, -2.5, 3.25}, 0.75)
+            var normal = arrayof(double, 2.0 / 7.0, 3.0 / 7.0, 6.0 / 7.0)
+            var pte = [darray.DynamicMatrix(int32)].from(
+                &A,
+                {
+                    {0, 0, 0},
+                    {1, 0, 0},
+                    {0, 1, 0},
+                    {0, 0, 1}
+                }
+            )
+            var testb = MonomialBasis.new(pte, bg)
+
+            var ptr = [darray.DynamicMatrix(int32)].from(
+                &A,
+                {
+                    {0, 0, 0},
+                    {1, 0, 0},
+                    {0, 1, 0},
+                    {0, 0, 1},
+                    {2, 0, 0},
+                    {0, 2, 0},
+                    {0, 0, 2}
+                }
+            )
+
+            var trialb = MonomialBasis.new(ptr, bg)
+            var mass = [darray.DynamicMatrix(double)].new(&A, {4, 7})
+            var bgh = background.new(1.0, {1e-2, 0.0, 0.0}, 1.375)
+            MaxwellianFluxIntegrator(&A, &testb, &trialb, bgh, &normal[0], true, &mass)
+            var massref = [darray.DynamicMatrix(double)].from(
+                &A,
+                {
+                    {0.46923124989104753,-0.7645450999358188,1.0123413339374154,-2.4453453413320534,2.065920157428131,2.954208440214089,13.243412064471753},
+                    {-0.3091462289299536,1.2635704595402664,-0.8175609460685616,1.3098914729753715,-3.8324467439367917,-2.585282468405487,-5.542589758654284},
+                    {1.695439640446213,-2.913070492356748,4.292185939398673,-9.28737449544182,7.9626216190945955,13.427730436281912,52.625432899701465},
+                    {-1.079148728314458,1.457129283003149,-2.779989141535595,5.580551353397644,-3.7552894855649956,-8.710990706608396,-29.87584453894439}
+                }
+            )
+        end
+        for i = 0, 3 do
+            for j = 0, 6 do
+                test tmath.isapprox(mass(i, j), massref(i, j), 1e-13)
+            end
+        end
+    end
+end
+
+
 local terraform nonlinear_maxwellian_inflow(
                     A,
                     testb: &B1,
                     trialb: &B2,
                     xvlhs: &C,
-                    normal,
+                    normal: &N,
                     transform
-                ) where {B1, B2, C}
+                ) where {B1, B2, C, N}
     -- For the nonlinear boundary condition we have to compute a nested
     -- integral of space and velocity. First, we discretize the spatial integral
     -- with quadrature. For this, we need the point evaluation of the spatial
@@ -545,29 +1017,8 @@ local terraform nonlinear_maxwellian_inflow(
     -- polynomials up to degree deg exactly. We account for (1, v, |v|^2)
     -- by using two more points.
     var maxtrialdegree = trialb.velocity:maxpartialdegree()
-    var vhermite, whermite = (
-        gauss.hermite(
-            A,
-            maxtrialdegree / 2 + 1 + 2,
-            {origin = 0.0, scaling = tmath.sqrt(2.)}
-        )
-    )
-    whermite:scal(1 / tmath.sqrt(2 * tmath.pi))
-    var qmaxwellian = escape
-        local varg = {}
-        local warg = {}
-        for i = 1, VDIM do
-            varg[i] = `&vhermite
-            warg[i] = `&whermite
-        end
-        emit quote
-            var vt = range.product([varg])
-            var wt = range.product([warg]) >> range.reduce(range.op.mul)
-            var p = range.zip(&vt, &wt)
-        in
-            &p
-        end
-    end
+    var xq, wq = trialb.velocity:quadraturerule(A, maxtrialdegree + 2)
+    var qmaxwellian = [quote var q = range.zip(xq, wq) in &q end]
     var halfmomq = [darray.DynamicMatrix(C.traits.eltype)].zeros(
                                                         A,
                                                         {nq,
@@ -622,9 +1073,7 @@ local terraform nonlinear_maxwellian_inflow(
             }
         )
 
-    for i in qrange do
-        half(i)
-    end
+    thread.parfor(A, qrange, half)
     var halfmom = [darray.DynamicMatrix(C.traits.eltype)].zeros(
                                                         A,
                                                         {testb:nspacedof(),
@@ -636,9 +1085,71 @@ local terraform nonlinear_maxwellian_inflow(
     return halfmom
 end
 
-local PrepareInput = terralib.memoize(function(T, I)
+local PrepareLinearInput = terralib.memoize(function(T, I)
     local Alloc = alloc.Allocator
-    local terra prepare_input(
+    local tMat = darray.DynamicMatrix(T)
+    local iMat = darray.DynamicMatrix(I)
+    local terra prepare_linear_input(
+        -- Scaling of the background Maxwellian
+        ensrho: T,
+        ensU: &T,
+        enstheta: T,
+        -- Number of test functions in velocity
+        ntestv: int32,
+        -- Number of trial function in velocity
+        ntrialv: int32,
+        -- Monomial powers of polynomials
+        test_powers: &I,
+        trial_powers: &I,
+        -- Scaling of the boundary Maxwellian
+        bndrho: T,
+        bndU: &T,
+        bndtheta: T,
+        normal: &T,
+        -- Reflection of trial functions
+        specular: bool,
+        -- Pointer to matrix of size ntestv x ntrialv
+        res: &T
+    )
+        var ensbg = background.new(ensrho, ensU, enstheta)
+        var btest = MonomialBasis.new(
+            __move__(iMat.frombuffer({ntestv, VDIM}, test_powers)), ensbg
+        )
+        var btrial = MonomialBasis.new(
+            __move__(iMat.frombuffer({ntrialv, VDIM}, trial_powers)), ensbg
+        )
+        var bndbg = background.new(bndrho, bndU, bndtheta)
+        var resmat = tMat.frombuffer({ntestv, ntrialv}, res)
+
+        return btest, btrial, bndbg, normal, specular, resmat
+    end
+
+    return prepare_linear_input
+end)
+
+local GenerateLinearBCWrapper = terralib.memoize(function()
+    local T = double
+    local I = int32
+    local prepare_linear_input = PrepareLinearInput(T, I)
+    local sym = prepare_linear_input.type.parameters:map(symbol)
+
+    local terra impl([sym])
+        var default: alloc.DefaultAllocator()
+        var testb, trialb, bndbg, normal, specular, res = (
+            prepare_linear_input([sym])
+        )
+        MaxwellianFluxIntegrator(
+            &default, &testb, &trialb, &bndbg, normal, specular, &res
+        )
+    end
+
+    return impl
+end)
+
+local PrepareNonLinearInput = terralib.memoize(function(T, I)
+    local Alloc = alloc.Allocator
+    local spanVDIM = span.Span(T, VDIM)
+    local terra prepare_nonlinear_input(
         A: Alloc,
         -- Dimension of test space and the result arrays
         ntestx: int32,
@@ -666,6 +1177,10 @@ local PrepareInput = terralib.memoize(function(T, I)
         trialdata: &T,
         trialcol: &I,
         trialrowptr: &I,
+        -- Maxwellian background
+        rho: T,
+        u: &T,
+        theta: T,
         -- Monomial powers of polynomial approximation in velocity
         test_powers: &I,
         trial_powers: &I
@@ -680,7 +1195,10 @@ local PrepareInput = terralib.memoize(function(T, I)
                                                             testrow,
                                                             testcolptr,
                                                             ntestv,
-                                                            test_powers
+                                                            test_powers,
+                                                            rho,
+                                                            [spanVDIM](u),
+                                                            theta
                                                         )
         var trialbasis = [TensorBasis(dual.DualNumber(T))].frombuffer(
                                                             A,
@@ -692,7 +1210,10 @@ local PrepareInput = terralib.memoize(function(T, I)
                                                             trialcol,
                                                             trialrowptr,
                                                             ntrialv,
-                                                            trial_powers
+                                                            trial_powers,
+                                                            rho,
+                                                            [spanVDIM](u),
+                                                            theta
                                                         )
 
         var normal = [darray.DynamicMatrix(dual.DualNumber(T))].zeros(
@@ -736,14 +1257,14 @@ local PrepareInput = terralib.memoize(function(T, I)
         end
         return testbasis, trialbasis, xvlhs, normal
     end
-    return prepare_input
+    return prepare_nonlinear_input
 end)
 
-local GenerateBCWrapper = terralib.memoize(function(Transform)
+local GenerateNonLinearBCWrapper = terralib.memoize(function(Transform)
     local T = double
     local I = int32
-    local prepare_input = PrepareInput(T, I)
-    local types = prepare_input.type.parameters
+    local prepare_nonlinear_input = PrepareNonLinearInput(T, I)
+    local types = prepare_nonlinear_input.type.parameters
     -- remove the the alloc argument from the parameter list for the C wrapper
     local sym = types:map(function(T) return symbol(T) end):sub(2, -1)
     local cap = Transform.entries:map(
@@ -755,7 +1276,7 @@ local GenerateBCWrapper = terralib.memoize(function(Transform)
     local terra impl([sym], resval: &T, restng: &T, [cap])
         var default: alloc.DefaultAllocator()
         var testbasis, trialbasis, xvlhs, normal = (
-            prepare_input(&default, [sym])
+            prepare_nonlinear_input(&default, [sym])
         )
         var transform = [Transform] {[cap]}
         var res = (
@@ -797,7 +1318,9 @@ end)
 
 return {
     HalfSpaceQuadrature = HalfSpaceQuadrature,
-    GenerateBCWrapper = GenerateBCWrapper,
-    PrepareInput = PrepareInput,
+    GenerateNonLinearBCWrapper = GenerateNonLinearBCWrapper,
+    PrepareNonLinearInput = PrepareNonLinearInput,
+    GenerateLinearBCWrapper = GenerateLinearBCWrapper,
+    PrepareLinearInput = PrepareLinearInput,
     FixedPressure = FixedPressure,
 }

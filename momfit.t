@@ -28,13 +28,13 @@ local terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
         R: RecDiff(Real),
         I: Interval(Real)
     }
-    var x = [darray
-.DynamicVector(I.traits.eltype)].new(alloc, n)
-    ([range.Unitrange(int)].new(0, n)
-        >> range.transform(
-            [terra(i: int, n: int): I.traits.eltype
-                return tmath.cos(tmath.pi * (2 * i + 1) / (2 * n))
-            end],
+    var x = [darray.DynamicVector(I.traits.eltype)].new(alloc, n)
+    (
+        [range.Unitrange(int)].new(0, n)
+            >> range.transform(
+                [terra(i: int, n: int): I.traits.eltype
+                    return tmath.cos(tmath.pi * (2 * i + 1) / (2 * n))
+                end],
             {n = n})
     ):collect(&x)
 
@@ -42,15 +42,13 @@ local terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
     if n > 10 then
         nmax = 2 * n
     end
-    var mom = [darray
-.DynamicVector(R.traits.eltype)].zeros(alloc, nmax)
+    var mom = [darray.DynamicVector(R.traits.eltype)].zeros(alloc, nmax)
     recdiff.olver(alloc, rec, &mom)
 
     -- The quadrature weights on the reference domain (-1, 1) are given by
     -- the inverse DCT-III transform, that is a scaled DCT-II transform of
     -- the moments of the weight function in the Chebyshev basis.
-    var w = [darray
-.DynamicVector(R.traits.eltype)].zeros(alloc, n)
+    var w = [darray.DynamicVector(R.traits.eltype)].zeros(alloc, n)
     for i = 0, n do
         var res = mom(0) / 2
         for j = 1, n do
@@ -61,8 +59,7 @@ local terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
     end
     w:scal([I.traits.eltype](2) / n)
 
-    var xq = [darray
-.DynamicVector(I.traits.eltype)].new(alloc, n)
+    var xq = [darray.DynamicVector(I.traits.eltype)].new(alloc, n)
     (x >> range.transform([
             terra(
                 x: I.traits.eltype,
@@ -74,8 +71,7 @@ local terraform clenshawcurtis(alloc, n: N, rec: &R, dom: &I)
             {a = dom.left, b = dom.right})
     ):collect(&xq)
 
-    var wq = [darray
-.DynamicVector(I.traits.eltype)].new(alloc, n)
+    var wq = [darray.DynamicVector(I.traits.eltype)].new(alloc, n)
     (w >> range.transform([
             terra(
                 w: I.traits.eltype,
@@ -134,8 +130,8 @@ local ExpMom = terralib.memoize(function(T)
     terraform impl:getinit(y: &S) where {S: Stack(T)}
         var a = self.a
         var arg = 2 * tmath.sqrt(a)
-        var y0 = tmath.sqrt(tmath.pi) * tmath.erf(arg) / arg 
-        var y1 = -y0 - (tmath.exp(-4 * a) - 1) / (2 * a)
+        var y0 = tmath.sqrt(tmath.pi) * tmath.fderf(arg)
+        var y1 = -y0 + 2 * tmath.fdexpm1(-4 * a)
         y:set(0, y0)
         y:set(1, y1)
     end

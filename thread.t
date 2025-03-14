@@ -7,18 +7,100 @@ local alloc = require("alloc")
 local atomics = require("atomics")
 local base = require("base")
 local stack = require("stack")
-local thread_impl = require("thread-impl")
+local pthread = require("pthread")
+local span = require("span")
 
 require "terralibext"
 
 import "terraform"
 
-local thread = thread_impl.thread
-local mutex = thread_impl.mutex
-local lock_guard = thread_impl.lock_guard
-local cond = thread_impl.cond
-local hardware_concurrency = thread_impl.hardware_concurrency
-local submit = thread_impl.submit
+local mutex = pthread.mutex
+local lock_guard = pthread.lock_guard
+local cond = pthread.cond
+local hardware_concurrency = pthread.hardware_concurrency
+local sched = terralib.includec("sched.h")
+
+-- A thread has a unique ID that executes a given function with signature FUNC.
+-- Its argument is stored as a managed pointer on the (global) heap. This way,
+-- threads can be passed to other functions and executed there. The life time
+-- of the argument arg is thus not bound to the life time of the local stack.
+local FUNC = &opaque -> &opaque
+local struct thread {
+    id: pthread.C.pthread_t
+    func: FUNC
+    arg: alloc.SmartBlock(int8, {copyby = "move"})
+}
+base.AbstractBase(thread)
+
+terra thread.metamethods.__eq(self: &thread, other: &thread)
+    return pthread.C.equal(self.id, other.id)
+end
+
+-- Pause the calling thread for a short period and resume afterwards.
+thread.staticmethods.yield = (
+    terra()
+        return sched.sched_yield()
+    end
+)
+
+-- Exit thread with given the return value res.
+thread.staticmethods.exit = (
+    terra()
+        return pthread.C.exit(nil)
+    end
+)
+
+-- After a new thread is created, it forks from the calling thread. To access
+-- results of the forked thread we have to join it with the calling thread.
+terra thread:join()
+    return pthread.C.join(self.id, nil)
+end
+
+-- This is the heart of the thread module.
+-- Given an allocator instance for memory management and a callable and
+-- copyable instance (a function pointer, a lambda, a struct instance with
+-- an overloaded apply, or a terraform function) and a list of copyable
+-- arguments, it generates a terra function with signature FUNC and a datatype
+-- that stores the function arguments. It returns a thread instance but not
+-- starting the thread.
+local io = terralib.includecstring([[
+    #include <stdio.h>
+]])
+local terraform submit(allocator, func, arg...)
+    var t: thread
+    -- We do not set t.id as it will be set by thread.new
+    --t.id = 0 -- Will be set up thread.create
+    escape
+        local struct packed {
+            func: func.type
+            arg: arg.type
+        }
+        local smartpacked = alloc.SmartObject(packed)
+
+        --terralib.ext.addmissing.__move(smartpacked)
+        --smartpacked.methods.__move:printpretty()
+        emit quote
+            t.func = [
+                terra(parg: &opaque)
+                    var p = [&packed](parg)
+                    p.func(unpacktuple(p.arg))
+                    return parg
+                end
+            ]
+            var smrtpacked = [alloc.SmartObject(packed)].new(allocator)
+            smrtpacked.arg = arg
+            smrtpacked.func = func
+            t.arg = __move__(smrtpacked)
+        end
+    end
+    return t
+end
+
+terraform thread.staticmethods.new(allocator, func, arg...)
+    var t = submit(allocator, func, unpacktuple(arg))
+    pthread.C.create(&t.id, nil, t.func, &t.arg(0))
+    return t
+end
 
 local Alloc = alloc.Allocator
 local blockThread = alloc.SmartBlock(thread, {copyby = "view"})
@@ -43,9 +125,14 @@ local ThreadsafeQueue = terralib.memoize(function(T)
         return self.data:size() == 0
     end
 
+    --ToDo: bug happens here iside the lock_quard
     terra threadsafe_queue:push(t: T)
+        --io.printf("lock guard\n")
         var guard: lock_guard = self.mutex
-        self.data:push(t)
+        --self.mutex:lock()
+        --io.printf("locked guard\n")
+        self.data:push(__move__(t))
+        --self.mutex:unlock() 
     end
 
     terra threadsafe_queue:try_pop(t: &T)
@@ -62,9 +149,11 @@ local ThreadsafeQueue = terralib.memoize(function(T)
 
     threadsafe_queue.staticmethods.new = (
         terra(alloc: Alloc, capacity: int64)
-            var q: threadsafe_queue
+            var q : threadsafe_queue
             q.data = S.new(alloc, capacity)
             return q
+            --ToDo: fix initializers for r-value
+            --threadsafe_queue{data=S.new(alloc, capacity)}
         end
     )
     
@@ -75,7 +164,7 @@ end)
 -- automatically joins all threads when the threads go out of scope.
 local block_thread = alloc.SmartBlock(thread, {copyby = "view"})
 local struct join_threads {
-    data: block_thread
+    data: span.Span(thread)
 }
 
 terra join_threads:__dtor()
@@ -165,8 +254,7 @@ terra threadpool:__dtor()
     -- main thread.
     self.joiner:__dtor()
     self.threads:__dtor()
-    -- FIXME Segfaults!
-    -- self.work_queue:__dtor()
+    self.work_queue:__dtor()
     self.done_signal:__dtor()
     self.done_mutex:__dtor()
     self.work_signal:__dtor()
@@ -174,13 +262,14 @@ terra threadpool:__dtor()
 end
 
 -- The program already runs concurrently when new work is submitted. Hence,
--- we need to careful when adding it to the thread pool.
+-- we need to be careful when adding it to the thread pool.
 -- Firstly, we need to signal that to the physical threads that a new work item
 -- is available and, secondly, need to add to the work queue. Note that this
 -- access is protected by a mutex as other threads may request new work from it
 -- at the same time.
 terraform threadpool:submit(allocator, func, arg...)
-    self.work_queue:push(__move__(submit(allocator, func, unpacktuple(arg))))
+    var t = submit(allocator, func, unpacktuple(arg))
+    self.work_queue:push(__move__(t))
     self.work_signal:signal()
 end
 
@@ -278,7 +367,7 @@ threadpool.staticmethods.new = (
         tp.work_queue = queue_thread.new(alloc, nthreads)
         tp.done = false
         tp.threads = alloc:new(nthreads, sizeof(thread))
-        tp.joiner = join_threads {tp.threads}
+        tp.joiner = join_threads {{&tp.threads(0), nthreads}}
         -- The point of no return. From this point on, we are running the 
         -- program concurrently.
         for i = 0, nthreads do
@@ -297,26 +386,17 @@ threadpool.staticmethods.new = (
     end
 )
 
-local parfor = macro(function(alloc, rn, go, nthreads)
-    -- Use the maximum number of threads available on the host. This includes
-    -- virtual cores (Hyperthreading for Intel, SMT for AMD).
-    local nthreads = nthreads or `hardware_concurrency()
-    return (
-        quote
-            -- Wrap everything in a do block to trigger a desctructor call
-            -- for the thread pool after the for loop that distributes work.
-            -- Note that the actual computation does not happen in the for loop
-            -- but anytime between the submission and the barrier inside the
-            -- destructor.
-            do
-                var tp = threadpool.new(alloc, [nthreads])
-                for it in rn do
-                    tp:submit(alloc, go, it)
-                end
-            end
-        end
-    )
-end)
+local terraform parfor(alloc, rn, go, nthreads)
+    var tp = threadpool.new(alloc, nthreads)
+    for it in rn do
+        tp:submit(alloc, go, it)
+    end
+end
+
+terraform parfor(alloc, rn, go)
+    var nthreads = hardware_concurrency()
+    parfor(alloc, rn, go, nthreads)
+end
 
 return {
     thread = thread,

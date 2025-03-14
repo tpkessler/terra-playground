@@ -77,17 +77,11 @@ local DynamicStack = terralib.memoize(function(T)
     stack.traits.eltype = T
 
     stack.staticmethods.new = terra(alloc : Allocator, capacity: size_t)
-        var s : stack
-        s.data = alloc:new(sizeof(T), capacity)
-        s.size = 0
-        return s
+        return stack{alloc:new(sizeof(T), capacity), 0}
     end
 
     stack.staticmethods.frombuffer = terra(n: size_t, ptr: &T)
-        var s: stack
-        s.data = S.frombuffer(n, ptr)
-        s.size = n
-        return s
+        return stack{S.frombuffer(n, ptr), n}
     end
 
     terra stack:getdataptr()
@@ -101,7 +95,7 @@ local DynamicStack = terralib.memoize(function(T)
     terra stack:capacity()
         return self.data:size()
     end
-
+    
     terra stack:push(v : T)
         --we don't allow pushing when 'data' is empty
         err.assert(self.data:isempty() == false)
@@ -109,15 +103,7 @@ local DynamicStack = terralib.memoize(function(T)
             self.data:reallocate(1 + 2 * self:capacity())
         end
         self.size = self.size + 1
-        self:set(self.size - 1, v)
-    end
-
-    terra stack:pop()
-        if self:size() > 0 then
-            var tmp = self:get(self.size - 1)
-            self.size = self.size - 1
-            return tmp
-        end
+        self.data.ptr[self.size - 1] = __move__(v)
     end
 
     terra stack:get(i : size_t)
@@ -128,6 +114,14 @@ local DynamicStack = terralib.memoize(function(T)
     terra stack:set(i : size_t, v : T)
         err.assert(i < self:size())
         self.data:set(i, v)
+    end
+
+    terra stack:pop()
+        if self:size() > 0 then
+            var tmp = __move__(self.data(self.size - 1))
+            self.size = self.size - 1
+            return tmp
+        end
     end
 
     stack.metamethods.__apply = macro(function(self, i)

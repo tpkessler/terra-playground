@@ -30,6 +30,7 @@ local serde = require("serde")
 local interface = require("interface")
 local smartmem = require("smartmem")
 local err = require("assert")
+local pthread = require("pthread")
 
 import "terraform"
 
@@ -78,7 +79,11 @@ end
 
 --Base class to facilitate implementation of allocators.
 local function AllocatorBase(A)
+
     assert(RawAllocator(A))
+
+    --add initializer that sets pointers to nil.
+    terralib.ext.addmissing.__init(A)
 
     terra A:owns(blk : &block)
         if blk:owns_resource() then
@@ -116,8 +121,7 @@ local function AllocatorBase(A)
     end
 
     --single method that can free and reallocate memory
-    --this method is similar to the 'lua_Alloc' function,
-    --although we don't allow allocation here (yet). 
+    --this method is similar to the 'lua_Alloc' function.
     --see also 'https://nullprogram.com/blog/2023/12/17/'
     --a pointer to this method is set to block.alloc_f
     terra A:__allocators_best_friend(
@@ -198,13 +202,17 @@ local DefaultAllocator = function(options)
             escape
                 if Alignment ~= 0 then
                     emit quote
-                        var newsz = round_to_aligned(sz, Alignment) / elsize
-                        ptr = C.aligned_alloc(Alignment, newsz * elsize)
+                        var newsz = elsize * (round_to_aligned(sz, Alignment) / elsize)
+                        ptr = C.aligned_alloc(Alignment, newsz)
+                        C.memset(ptr, 0, newsz)
                         C.memcpy(ptr, blk.ptr, blk.nbytes)
                         C.free(blk.ptr)
                     end
                 else
-                    emit quote ptr = C.realloc(blk.ptr, sz) end
+                    emit quote 
+                        ptr = C.realloc(blk.ptr, sz)
+                        C.memset([&uint8](ptr)+blk.nbytes, 0, sz - blk.nbytes)
+                    end
                 end
                 if AbortOnError then
                     emit `abort_on_error(ptr, sz)
@@ -231,8 +239,11 @@ end
 require "terralibext"
 
 local TracingAllocator = terralib.memoize(function()
+    local mutex = pthread.mutex
+    local lock_guard = pthread.lock_guard
     local struct tracing {
         A: Allocator
+        mtx: mutex
         used: uint64
     }
 
@@ -262,6 +273,7 @@ local TracingAllocator = terralib.memoize(function()
         self.A.data = nil
         self.A.ftab = nil
         self.used = 0
+        self.mtx:__init()
     end
 
     terra tracing:__dtor()
@@ -270,6 +282,7 @@ local TracingAllocator = terralib.memoize(function()
             "TRACING ALLOCATOR: Reachable bytes %zu\n",
             self.used
         )
+        self.mtx:__dtor()
     end
 
     tracing.staticmethods.from = terra(A: Allocator)
@@ -279,11 +292,13 @@ local TracingAllocator = terralib.memoize(function()
     end
 
     terra tracing:__allocate(blk: &block, elsize: size_t, counter: size_t)
+        var guard: lock_guard = self.mtx
         self.A:__allocate(blk, elsize, counter)
         atomics.add(&self.used, blk:size_in_bytes())
     end
 
     terra tracing:__reallocate(blk: &block, elsize: size_t, counter: size_t)
+        var guard: lock_guard = self.mtx
         var oldsz: uint64
         atomics.store(&oldsz, blk:size_in_bytes())
         self.A:__reallocate(blk, elsize, counter)
@@ -293,6 +308,7 @@ local TracingAllocator = terralib.memoize(function()
     end
 
     terra tracing:__deallocate(blk: &block)
+        var guard: lock_guard = self.mtx
         atomics.sub(&self.used, blk:size_in_bytes())
         self.A:__deallocate(blk)
     end

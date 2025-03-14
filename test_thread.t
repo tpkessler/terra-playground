@@ -16,11 +16,14 @@ import "terratest/terratest"
 
 require("terralibext")
 
+local TracingAllocator = alloc.TracingAllocator()
+
+
 testenv "Basic data structures" do
     terracode
         var A: alloc.DefaultAllocator()
     end
-    
+
     testset "Mutex" do
         terracode
             var mtx: thread.mutex
@@ -37,6 +40,7 @@ testenv "Basic data structures" do
         test cnd:broadcast() == 0
     end
 
+
     testset "Thread" do
         local terra go(i: int, a: &int)
             a[i] = 2 * i + 1
@@ -46,13 +50,11 @@ testenv "Basic data structures" do
         local NTHREADS = 3
 
         terracode
-            var a: int[NTHREADS]
             var t: thread.thread[NTHREADS]
-            
+            var a: int[NTHREADS]
             for i = 0, NTHREADS do
                 t[i] = thread.thread.new(&A, go, i, &a[0])
             end
-
             for i = 0, NTHREADS do
                 t[i]:join()
             end
@@ -76,13 +78,7 @@ testenv "Basic data structures" do
             var a: int[NTHREADS]
             var t: thread.thread[NTHREADS]
             do
-                var joiner = (
-                    thread.join_threads {
-                        [
-                            alloc.SmartBlock(thread.thread)
-                        ].frombuffer(NTHREADS, &t[0])
-                    }
-                )
+                var joiner = thread.join_threads {t}
                 for i = 0, NTHREADS do
                     t[i] = thread.thread.new(&A, go, i, &a[0])
                 end
@@ -93,7 +89,6 @@ testenv "Basic data structures" do
             test a[i] == 2 * i + 1
         end
     end
-
 
     testset "Lock guard" do
         local gmutex = global(alloc.SmartObject(thread.mutex))
@@ -141,8 +136,6 @@ testenv "Basic data structures" do
         gmutex:get():__dtor()
     end
 
-
-
     testset "Thread pool" do
         local PCG = random.MinimalPCG
         local terra do_work(rng: &PCG(double))
@@ -182,10 +175,6 @@ testenv "Basic data structures" do
 
 end
 
-
-
-
-
 testenv "Parallel for" do
     local lambda = require("lambda")
     local range = require("range")
@@ -200,7 +189,7 @@ testenv "Parallel for" do
             var A: alloc.DefaultAllocator()
             var rn = [range.Unitrange(int)].new(0, NITEMS)
             var a: double[NITEMS]
-            thread.parfor(&A, &rn, lambda.new(go, {a = &a[0]}))
+            thread.parfor(&A, rn, lambda.new(go, {a = &a[0]}))
         end
 
         for i = 0, NITEMS - 1 do

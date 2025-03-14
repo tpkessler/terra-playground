@@ -4,6 +4,7 @@
 -- SPDX-License-Identifier: MIT
 
 local base = require("base")
+local blend = require("blend")
 local concepts = require("concepts")
 local tmath = require("tmath")
 local io = terralib.includec("stdio.h")
@@ -103,6 +104,11 @@ local DualNumber = terralib.memoize(function(T)
             return dual {expval, expval * x.tng}
         end
 
+        terra fun.expm1(x: dual)
+            var expval = tmath.expm1(x.val)
+            return dual {expval, (expval + 1) * x.tng}
+        end
+
         terra fun.erf(x: dual)
             var y = x.val
             var erfval = tmath.erf(y)
@@ -186,6 +192,20 @@ local DualNumber = terralib.memoize(function(T)
             var res = tmath.pow(x.val, y.val)
             return dual {res, res * (x.tng * y.val / x.val + y.tng * tmath.log(x.val))}
         end)
+
+        tmath.fdexpm1:adddefinition(blend.blend(
+                terra(x: dual) return x.val == 0 end,
+                terra(x: dual) return dual {1, x.tng / 2} end,
+                terra(x: dual) return tmath.expm1(x) / x end
+            )
+        )
+
+        tmath.fderf:adddefinition(blend.blend(
+                terra(x: dual) return x.val == 0 end,
+                terra(x: dual) return dual {2 / tmath.sqrt(tmath.pi), 0} end,
+                terra(x: dual) return tmath.erf(x) / x end
+            )
+        )
     end
 
     dual.metamethods.__eq = terra(x: dual, y: dual)

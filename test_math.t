@@ -101,5 +101,18 @@ testenv "Correctness of selected math functions" do
         test tmath.isapprox(tmath.j0(1.0f), 0.7651976865579666f, 1e-7f)
         test tmath.isapprox(tmath.j0(1.0), 0.7651976865579666, 1e-15)
     end
+end
 
+testenv "Finite differences" do
+    testset "Exponential minus one" do
+        test tmath.fdexpm1(0.0) == 1.0
+        test tmath.fdexpm1(0.0f) == 1.0f
+
+        test tmath.isapprox(tmath.fdexpm1(1e-1), 1.0517091807564771, 1e-15)
+    end
+
+    testset "Error function" do
+        test tmath.fderf(0.0) == 2 / tmath.sqrt(tmath.pi)
+        test tmath.isapprox(tmath.fderf(1e-1), 1.1246291601828489, 1e-15)
+    end
 end
