@@ -45,7 +45,7 @@ testenv "Concrete concepts" do
 
 	testset "Real number hierarchy" do
 		test [Number(Number)]
-		test [Number(BLASNumber)]
+		test [Number(BLASNumber, true)]
 		test [Number(Real) and not Real(Number)]
 		test [Real(Integer) and not Integer(Real)]
 		test [Integer(UnsignedInteger) and not UnsignedInteger(Integer)]
@@ -542,5 +542,9 @@ testenv "Parametrized concepts" do
 		test [SVec3D(I) == false]
 		test [SVec3D(D) == true]
 		test [SVec3D(E) == false]
+	end
+
+	testset "Parametrized types" do
+
 	end
 end

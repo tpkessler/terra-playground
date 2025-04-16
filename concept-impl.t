@@ -19,21 +19,9 @@ local function isconcept(C)
     return terralib.types.istype(C) and C:isstruct() and C.type == "concept"
 end
 
-table.size = function(t)
-    local count = 0
-    for k,v in pairs(t) do
-        count = count + 1
-    end
-    return count
-end
-
 local function isempty(tab)
     return next(tab) == nil
 end
-
---local function isempty(tab)
---    return rawequal(next(tab), nil)
---end
 
 local function iscollection(C)
     return (
@@ -45,11 +33,12 @@ local function iscollection(C)
     )
 end
 
-local function printtable(t)
+table.size = function(t)
+    local count = 0
     for k,v in pairs(t) do
-        print(tostring(k) .." = " ..tostring(v))
+        count = count + 1
     end
-    print()
+    return count
 end
 
 local function isrefprimitive(T)
@@ -61,16 +50,287 @@ local function isrefprimitive(T)
     end
 end
 
-local function printtable(t)
-    for k,v in pairs(t) do
-        print(tostring(k) .." = " ..tostring(v))
-    end
-    print()
+local is_specialized_over
+local function collectioncheck(C, T)
+    -- Check for collections are different from methods or traits checks.
+    -- The latter describe a logical "and" operation. This method AND that method
+    -- or this trait AND that trait have to be satisfied if a concept comparison
+    -- evaluates to true. However, collections represent a logical "OR".
+    -- If given a collection and a concrete type, then the concept check already
+    -- returns true if the concept check yields true on any of the friends.
+    -- The situation complicates if we want to compare to collections, since
+    -- we have to compare to logical "OR" operations. This means that in the
+    -- concept comparison not all concepts are active for different inputs.
+    -- There is now direct relation between the friends of one concept and
+    -- the friends of the other side. If the "OR" operation evaluates to true
+    -- we can't tell which of the friends has evaluated to true (for "AND",
+    -- we know that _all_ need to evaluate to true). But when we put a restriction
+    -- on the concepts, we can filter the relevant concepts. We require that
+    -- the truth sets of the participating concepets on both sides either agree
+    -- or are disjoint (atomic concepts). In this case, the logical "OR" can be tested
+    -- by iterating over the atoms.
+    -- If C = {R1, ..., RN} and D = {U1, ..., UM} are atomic, then D <= C if, and only if,
+    -- for all i = 1, ..., M there exists j in {1, ..., N} with Ui <= Rj
+    -- This is exactly what we check in the second branch of the logical or below.
+    -- The first check is meant as a quick exit for types or concepts listed
+    -- in the friends table without the need to iterate over all friends of
+    -- the other argument. 
+    local ret = (
+        C.friends[T] or fun.all(
+            function(S)
+                return fun.any(
+                    function(F)
+                        return is_specialized_over(F, S)
+                    end,
+                    C.friends
+                )
+            end,
+            isconcept(T) and T.friends or {T}
+        )
+    )
+    assert(
+        ret,
+        "Argument " .. tostring(T) ..
+        " is not satisfied by any of the elements in " .. tostring(C)
+    )
+    return true
 end
 
-local is_specialized_over
+local traitcheck = function(C, T)
+    for trait, desired in pairs(C.traits) do
+        assert(
+            T.traits[trait] ~= nil,
+            (
+                "Concept %s requires trait %s but that was not found for %s"
+            ):format(tostring(C), trait, tostring(T))
+        )
+        if desired ~= traittag then
+            local actual = T.traits[trait]
+            assert(
+                -- Traits can also be lua values (numbers or strings).
+                -- Thus, we first check for equality and then for concept
+                -- specialization.
+                actual == desired or is_specialized_over(actual, desired),
+                (
+                    "Concept %s requires value %s for trait %s but found %s"
+                ):format(
+                    tostring(C),
+                    tostring(desired),
+                    tostring(trait),
+                    tostring(actual)
+                )
+            )
+        end
+    end
+    return true
+end
+
+local generatorcheck = function(C, T)
+    assert(
+        C.generator and C.generator == T.generator or true,
+        (
+            "Concept %s requires parametrized type but found %s"
+        ):format(tostring(C), tostring(T))
+    )
+    assert(fun.all(
+            function(D, S)
+                return is_specialized_over(S, D)
+            end,
+            fun.zip(C.arguments, T.arguments)
+        ),
+        (
+            "Argument %s is not specialized over %s"
+        ):format(tostring(T.arguments), tostring(C.arguments))
+    )
+    return true
+end
+
+local function isrefself(Self, T)
+    assert(terralib.types.istype(Self))
+    assert(terralib.types.istype(T))
+    if T:ispointer() then
+        return isrefself(Self, T.type)
+    else
+        return T == Self
+    end
+end
+
+local function checksignature(Self, Csig, Tsig)
+    assert(
+        #Csig.parameters == #Tsig.parameters,
+        "Cannot compare signatures\n" ..
+        tostring(Csig) .. "\n" ..
+        tostring(Tsig)
+    )
+    -- Skip self argument
+    for i = 2, #Csig.parameters do
+        local Carg = Csig.parameters[i]
+        local Targ = Tsig.parameters[i]
+        assert(
+            -- We skip the concept check if the signature contains
+            -- a reference to the current type on which we check
+            -- the concept. Otherwise, we trigger an infinite recursion.
+            isrefself(Self, Targ) or is_specialized_over(Targ, Carg),
+            (
+                "%s is not specialized over %s in slot %d " ..
+                "of signatures\n%s\n%s"
+            ):format(
+                tostring(Targ),
+                tostring(Carg),
+                i,
+                tostring(Csig),
+                tostring(Tsig)
+            )
+        )
+    end
+    -- We don't check the return type as we have no control over it
+    -- during the method dispatch.
+    return true
+end
+
+local methodtagcheck = function(C, T, name)
+    return (
+        C.methods[name] == methodtag
+        and (T.methods[name] or (T.templates and T.templates[name]))
+    )
+end
+
+local rawmethodcheck = function(C, T, name)
+    local desired = C.methods[name].type
+    local method = T.methods[name]
+    return (
+        terralib.isfunction(method) and checksignature(T, desired, method.type)
+    )
+end
+
+local overloadedcheck = function(C, T, name)
+    local desired = C.methods[name].type
+    local method = T.methods[name]
+    return (
+        terralib.isoverloadedfunction(method)
+        and fun.any(
+            function(actual)
+                return checksignature(T, desired, actual.type)
+            end,
+            method.definitions
+        )
+    )
+end
+
+local templatecheck = function(C, T, name)
+    local desired = C.methods[name].type
+    local tmpl = T.templates and T.templates[name]
+    return (
+        method
+        and fun.any(
+            function(actual)
+                return checksignature(T, desired, actual)
+            end,
+            fun.map(
+                function(compressed, func)
+                    return compressed:signature()
+                end,
+                tmpl.methods
+            )
+        )
+    )
+end
+
+local methodlookup = {
+    tag = methodtagcheck,
+    raw = rawmethodcheck,
+    overloaded = overloadedcheck,
+    template = templatecheck,
+}
+
+local methodcheck = function(C, T)
+    return fun.all(
+        function(name, method)
+            assert(
+                fun.any(
+                    function(cname, check)
+                        return check(C, T, name)
+                    end,
+                    methodlookup
+                ),
+                (
+                    "Concept %s requires method %s but that was not found for %s"
+                ):format(tostring(C), name, tostring(T))
+            )
+            return true
+        end,
+        C.methods
+    )
+end
+
+local metamethodcheck = function(C, T)
+    for name, _ in pairs(C.metamethods) do
+        assert(
+            T.metamethods[method],
+            (
+                "Concept %s requires metamethod %s but that was not found for %s"
+            ):format(tostring(C), method, tostring(T))
+        )
+    end
+    return true
+end
+
+local entrycheck = function(C, T)
+    for _, ref_entry in pairs(C.entries) do
+        local ref_name = ref_entry.field
+        local ref_type = ref_entry.type
+        local has_entry = false
+        for _, entry in pairs(T.entries) do
+            local name = entry.field
+            local type = entry.type
+            if name == ref_name then
+                assert(is_specialized_over(type, ref_type),
+                    (
+                        "Concept %s requires entry named %s to satisfy %s " ..
+                        "but found %s"
+                    ):format(
+                        tostring(C),
+                        name,
+                        tostring(ref_type),
+                        tostring(type)
+                    )
+                )
+                has_entry = true
+                break
+            end
+        end
+        assert(
+            has_entry,
+            (
+                "Concept %s requires entry named %s " ..
+                "but that was not found for %s"
+            ):format(tostring(C), ref_name, tostring(T))
+        )
+    end
+    return true
+end
+
+local partialcheck = {
+    collection = collectioncheck,
+    trait = traitcheck,
+    generator = generatorcheck,
+    method = methodcheck,
+    metamethod = metamethodcheck,
+    entry = entrycheck,
+}
+
+local function check(C, T)
+    if C == T then
+        return true
+    else
+        return fun.all(
+            function(name, pcheck) return pcheck(C, T) end, partialcheck
+        )
+    end
+end
+
 -- Checks if T satifies a concept C if T is concrete type.
--- Checks if T is more specialized than C if T is a concept.
+--[=[
 local function check(C, T, verbose)
     verbose = verbose == nil and false or verbose
     assert(isconcept(C))
@@ -323,6 +583,7 @@ local function check(C, T, verbose)
 
     return true
 end
+--]=]
 
 local function Base(C, custom_check)
     assert(
