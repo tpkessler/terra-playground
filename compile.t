@@ -41,7 +41,18 @@ local function getCheader(methods)
     headerfile:insert("#pragma once")
     headerfile:insert("#include <stdint.h>")
     headerfile:insert("#include <stdbool.h>")
+    -- Make generation of the header file reproducible by sorting the
+    -- declarations alphabetically.
+    local sorted_methods = {}
     for name, method in pairs(methods) do
+        sorted_methods[#sorted_methods + 1] = {name = name, method = method}
+    end
+    table.sort(
+        sorted_methods,
+        function(a, b) return a.name:upper() < b.name:upper() end
+    )
+    for _, entry in ipairs(sorted_methods) do
+        local name, method = entry.name, entry.method
         local param = method.type.parameters:map(toC)
         local returntype = toC(method.type.returntype)
         local func = ("%s %s(%s);"):format(returntype, name, param:concat(", ")) 
