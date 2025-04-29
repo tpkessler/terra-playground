@@ -317,10 +317,16 @@ for _,T in ipairs{int,float,double,float256} do
                 for i = 0, N - 1 do              
                     test v:get(i) == T(3)
                 end 
-            end 
+            end
 
+            testset "like" do
+                terracode
+                    var v = DVector.new(&alloc, N)
+                    var w = v:like()
+                end
+                test v:length() == w:length()
+            end
         end --testenv(T, N) "Dynamic Vector" do
-
     end --N
 
     testenv(T) "Dynamic Vector interface - Fixed N" do

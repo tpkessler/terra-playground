@@ -167,6 +167,16 @@ local DArrayStackBase = function(Array)
 
     local S = alloc.SmartBlock(T)
 
+    Array.methods.like = terra(self: &Array)
+        var A = self.data.alloc
+        var newself: Array
+        var length = self.cumsize[N - 1]
+        A:__allocators_best_friend(&newself.data, sizeof(T), length)
+        newself.size = self.size
+        newself.cumsize = self.cumsize
+        return newself
+    end
+
     Array.staticmethods.frombuffer = (
         terra(size : tup.ntuple(size_t, N), data : &T)
             var __size = [ &size_t[N] ](&size)  --we need the size as an array
