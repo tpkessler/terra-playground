@@ -1089,7 +1089,7 @@ local terraform nonlinear_maxwellian_inflow(
                         &innormal[0],
                         &outmom(0)
                     )
-                    var outflow = outmom:dot(&lhs)
+                    var outflow = -outmom:dot(&lhs)
 
                     transform(&rho, &u, &theta, inflow, outflow)
 
