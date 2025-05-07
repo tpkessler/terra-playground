@@ -1049,7 +1049,50 @@ local terraform nonlinear_maxwellian_inflow(
                     var rho, u, theta = local_maxwellian(
                                             &trialb.velocity, &lhs, qmaxwellian
                                         )
-                    transform(&rho, &u, &theta)
+
+                    var un: rho.type = 0
+                    escape
+                        for j = 1, VDIM do
+                            emit quote un = un + u(j - 1) * normal(i, j - 1) end
+                        end
+                    end
+                    var mach = un / tmath.sqrt(2 * theta)
+                    var inflow = -rho * tmath.sqrt(theta / (2 * tmath.pi)) * (
+                        tmath.exp(-mach * mach)
+                        - tmath.sqrt(tmath.pi) * mach * (1 - tmath.erf(mach))
+                    )
+
+                    var outmom = [
+                        darray.DynamicVector(C.traits.eltype)
+                    ].new(A, trialb:nvelocitydof())
+                    var innormal: N.traits.eltype[VDIM]
+                    escape
+                        for j = 1, VDIM do
+                            emit quote innormal[j - 1] = -normal(i, j - 1) end
+                        end
+                    end
+
+                    var rhob: C.traits.eltype = trialb.velocity.bg.rho
+                    var ub: sarray.StaticVector(C.traits.eltype, VDIM)
+                    escape
+                        for j = 1, VDIM do
+                            emit quote ub(j - 1) = trialb.velocity.bg.u(j - 1) end
+                        end
+                    end
+                    var thetab: C.traits.eltype = trialb.velocity.bg.theta
+                    maxwellian_inflow(
+                        A,
+                        trialb,
+                        rhob,
+                        ub,
+                        thetab,
+                        &innormal[0],
+                        &outmom(0)
+                    )
+                    var outflow = -outmom:dot(&lhs)
+
+                    transform(&rho, &u, &theta, inflow, outflow)
+
                     maxwellian_inflow(
                         A,
                         testb,
@@ -1307,13 +1350,29 @@ local FixedPressure = terralib.memoize(function(T)
     }
     fixed_pressure.metamethods.__apply = macro(function(self, ...)
         local arg = {...}
-        local terraform apply(self, rho, u, theta)
+        local terraform apply(self, rho, u, theta, inflow, outflow)
             var pressure = self.pressure
             @rho = pressure / @theta
         end
         return `apply(self, [arg])
     end)
     return fixed_pressure
+end)
+
+local FixedMassFlowRate = terralib.memoize(function(T)
+    local struct fixed_mass_flow_rate{
+        mflow: T
+    }
+    fixed_mass_flow_rate.metamethods.__apply = macro(function(self, ...)
+        local arg = {...}
+        local terraform apply(self, rho, u, theta, inflow, outflow)
+            var mflow = self.mflow
+            inflow = inflow / @rho
+            @rho = -(mflow + outflow) / inflow
+        end
+        return `apply(self, [arg])
+    end)
+    return fixed_mass_flow_rate
 end)
 
 return {
@@ -1323,4 +1382,5 @@ return {
     GenerateLinearBCWrapper = GenerateLinearBCWrapper,
     PrepareLinearInput = PrepareLinearInput,
     FixedPressure = FixedPressure,
+    FixedMassFlowRate = FixedMassFlowRate,
 }

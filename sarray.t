@@ -155,6 +155,9 @@ local SArrayStackBase = function(Array)
         return Array{}
     end
 
+    Array.methods.like = terra(self: &Array)
+        return Array{}
+    end
 end
 
 local SArrayVectorBase = function(Array)

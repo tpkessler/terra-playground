@@ -142,7 +142,40 @@ local DArrayStackBase = function(Array)
         Array.staticmethods.new = new
     end
 
+    local terra resize(self: &Array, newsize: tup.ntuple(size_t, N))
+        var size = @[ &size_t[N] ](&newsize)
+        var cumsize = getcumsize(size)
+        var length = cumsize[N - 1]
+        var A = self.data.alloc
+        A:__allocators_best_friend(&self.data, sizeof(T), length)
+        self.size = size
+        self.cumsize = cumsize
+    end
+
+    if N == 1 then
+        Array.methods.resize = terralib.overloadedfunction("resize",
+            {
+                resize,
+                terra(self: &Array, newsize: size_t)
+                    return resize(self, {newsize})
+                end
+            }
+        )
+    else
+        Array.methods.resize = resize
+    end
+
     local S = alloc.SmartBlock(T)
+
+    Array.methods.like = terra(self: &Array)
+        var A = self.data.alloc
+        var newself: Array
+        var length = self.cumsize[N - 1]
+        A:__allocators_best_friend(&newself.data, sizeof(T), length)
+        newself.size = self.size
+        newself.cumsize = self.cumsize
+        return newself
+    end
 
     Array.staticmethods.frombuffer = (
         terra(size : tup.ntuple(size_t, N), data : &T)

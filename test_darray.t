@@ -304,8 +304,29 @@ for _,T in ipairs{int,float,double,float256} do
                 end 
             end 
 
-        end --testenv(T, N) "Dynamic Vector" do
+            testset "resize" do 
+                terracode                    
+                    var v = DVector.all(&alloc, N, T(3))
+                    var oldlength = v:length()
+                    v:resize(2 * N)
+                    var newlength = v:length()
+                end 
+                test oldlength == N
+                test newlength == 2 * N
+                test v.data:owns_resource()
+                for i = 0, N - 1 do              
+                    test v:get(i) == T(3)
+                end 
+            end
 
+            testset "like" do
+                terracode
+                    var v = DVector.new(&alloc, N)
+                    var w = v:like()
+                end
+                test v:length() == w:length()
+            end
+        end --testenv(T, N) "Dynamic Vector" do
     end --N
 
     testenv(T) "Dynamic Vector interface - Fixed N" do
@@ -429,6 +450,18 @@ for _,T in ipairs{float, double, float128, int, cint, cfloat, cdouble, cfloat128
                 test A:size(0) == M and A:size(1) == N and A:length() == M * N
                 test A:rows() == M and A:cols() == N
                 test tmath.isapprox(&A, T(2), 0)
+            end
+
+            testset "resize" do
+                terracode
+                    var A = DMatrix.new(&alloc, {M, N})
+                    var old1, old2 = A:size(0), A:size(1)
+                    var oldlength = A:length()
+                    A:resize({2 * M, 3 * N})
+                end
+                test old1 == M and old2 == N and oldlength == M * N
+                test A:rows() == 2 * M and A:cols() == 3 * N
+                test A:length() == 6 * N * M
             end
             
             testset "zeros" do                       
