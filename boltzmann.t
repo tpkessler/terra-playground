@@ -261,27 +261,21 @@ local TensorBasis = terralib.memoize(function(T)
     )
 
     local spanVDIM = span.Span(double, VDIM)
-    terraform tensor_basis.staticmethods.frombuffer(
-        A,
+    terra tensor_basis.staticmethods.frombuffer(
+        A: alloc.Allocator,
         transposed: bool,
-        nq: I1,
-        nx: I2,
-        nnz: I3,
-        data: &S,
-        col: &int32,
+        nq: I,
+        nx: I,
+        nnz: I,
+        data: &double,
+        col: &I,
         rowptr: &I,
-        nv: I4,
+        nv: I,
         ptr: &I,
         rho: double,
         u: spanVDIM,
-        theta: double)
-        where {
-                S: concepts.Number,
-                I1: concepts.Integer,
-                I2: concepts.Integer,
-                I3: concepts.Integer,
-                I4: concepts.Integer
-              }
+        theta: double
+    )
         var cast = Stack.new(A, nnz)
         for i = 0, nnz do
             -- Explicit cast as possibly S ~= T
@@ -589,7 +583,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         var whermite = VecT.new(A, nhalf)
         castvector(&xhermite, &qhermite._0)
         castvector(&whermite, &qhermite._1)
-        whermite:scal(tmath.sqrt(1 / (2 * tmath.pi)))
+        whermite:scal(tmath.sqrt([T](1) / (2 * tmath.pi)))
 
         -- The quadrature is computed for the the reference half space
         -- defined by the normal (1, 0, 0). This configuration is mapped

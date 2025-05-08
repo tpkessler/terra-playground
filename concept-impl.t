@@ -29,16 +29,10 @@ local function iscollection(C)
         and isempty(C.methods)
         and isempty(C.metamethods)
         and isempty(C.traits)
+        and C.generator == nil
+        and isempty(C.parameters)
         and #C.entries == 0
     )
-end
-
-table.size = function(t)
-    local count = 0
-    for k,v in pairs(t) do
-        count = count + 1
-    end
-    return count
 end
 
 local function isrefprimitive(T)
@@ -51,17 +45,17 @@ local function isrefprimitive(T)
 end
 
 local is_specialized_over
-local function collectioncheck(C, T)
+local function collectioncheck(C, D)
     -- Check for collections are different from methods or traits checks.
     -- The latter describe a logical "and" operation. This method AND that method
     -- or this trait AND that trait have to be satisfied if a concept comparison
     -- evaluates to true. However, collections represent a logical "OR".
     -- If given a collection and a concrete type, then the concept check already
     -- returns true if the concept check yields true on any of the friends.
-    -- The situation complicates if we want to compare to collections, since
+    -- The situation complicates if we want to compare two collections, since
     -- we have to compare to logical "OR" operations. This means that in the
     -- concept comparison not all concepts are active for different inputs.
-    -- There is now direct relation between the friends of one concept and
+    -- There is no direct relation between the friends of one concept and
     -- the friends of the other side. If the "OR" operation evaluates to true
     -- we can't tell which of the friends has evaluated to true (for "AND",
     -- we know that _all_ need to evaluate to true). But when we put a restriction
@@ -74,25 +68,33 @@ local function collectioncheck(C, T)
     -- This is exactly what we check in the second branch of the logical or below.
     -- The first check is meant as a quick exit for types or concepts listed
     -- in the friends table without the need to iterate over all friends of
-    -- the other argument. 
-    local ret = (
-        C.friends[T] or fun.all(
-            function(S)
-                return fun.any(
-                    function(F)
-                        return is_specialized_over(F, S)
-                    end,
+    -- the other argument.
+    if C.friends[D] then
+        return true
+    end
+
+    if iscollection(C) then
+        if iscollection(D) then
+            assert(
+                fun.all(
+                    function(U) return is_specialized_over(U, C) end,
+                    D.friends
+                ),
+                "Argument " .. tostring(D) ..
+                " is not satisfied by any of the elements in " .. tostring(C)
+            )
+        else
+            assert(
+                isempty(C.friends)
+                or fun.any(
+                    function(R) return is_specialized_over(D, R) end,
                     C.friends
-                )
-            end,
-            isconcept(T) and T.friends or {T}
-        )
-    )
-    assert(
-        ret,
-        "Argument " .. tostring(T) ..
-        " is not satisfied by any of the elements in " .. tostring(C)
-    )
+                ),
+                "Argument " .. tostring(D) ..
+                " is not satisfied by any of the elements in " .. tostring(C)
+            )
+        end
+    end
     return true
 end
 
@@ -126,8 +128,11 @@ local traitcheck = function(C, T)
 end
 
 local generatorcheck = function(C, T)
+    if not C.generator then
+        return true
+    end
     assert(
-        C.generator and C.generator == T.generator or true,
+        C.generator == T.generator,
         (
             "Concept %s requires parametrized type but found %s"
         ):format(tostring(C), tostring(T))
@@ -136,11 +141,11 @@ local generatorcheck = function(C, T)
             function(D, S)
                 return is_specialized_over(S, D)
             end,
-            fun.zip(C.arguments, T.arguments)
+            fun.zip(C.parameters or {}, T.parameters or {})
         ),
         (
             "Argument %s is not specialized over %s"
-        ):format(tostring(T.arguments), tostring(C.arguments))
+        ):format(tostring(T.parameters), tostring(C.parameters))
     )
     return true
 end
@@ -156,36 +161,18 @@ local function isrefself(Self, T)
 end
 
 local function checksignature(Self, Csig, Tsig)
-    assert(
-        #Csig.parameters == #Tsig.parameters,
-        "Cannot compare signatures\n" ..
-        tostring(Csig) .. "\n" ..
-        tostring(Tsig)
-    )
-    -- Skip self argument
-    for i = 2, #Csig.parameters do
-        local Carg = Csig.parameters[i]
-        local Targ = Tsig.parameters[i]
-        assert(
-            -- We skip the concept check if the signature contains
-            -- a reference to the current type on which we check
-            -- the concept. Otherwise, we trigger an infinite recursion.
-            isrefself(Self, Targ) or is_specialized_over(Targ, Carg),
-            (
-                "%s is not specialized over %s in slot %d " ..
-                "of signatures\n%s\n%s"
-            ):format(
-                tostring(Targ),
-                tostring(Carg),
-                i,
-                tostring(Csig),
-                tostring(Tsig)
-            )
-        )
+    if #Csig.parameters ~= #Tsig.parameters then
+        return false
     end
     -- We don't check the return type as we have no control over it
     -- during the method dispatch.
-    return true
+    return fun.all(
+        function(Targ, Carg)
+            return isrefself(Self, Targ) or is_specialized_over(Targ, Carg)
+        end,
+        -- Skip self argument in method signature
+        fun.zip(Tsig.parameters, Csig.parameters):drop(1)
+    )
 end
 
 local methodtagcheck = function(C, T, name)
@@ -198,9 +185,9 @@ end
 local rawmethodcheck = function(C, T, name)
     local desired = C.methods[name].type
     local method = T.methods[name]
-    return (
-        terralib.isfunction(method) and checksignature(T, desired, method.type)
-    )
+    -- method:isfunction() doesn't work on incomplete functions, so we simply
+    -- check is method is a pointer, that is, if method.type exists.
+    return method and method.type and checksignature(T, desired, method.type)
 end
 
 local overloadedcheck = function(C, T, name)
@@ -220,24 +207,24 @@ end
 local templatecheck = function(C, T, name)
     local desired = C.methods[name].type
     local tmpl = T.templates and T.templates[name]
-    return (
-        method
-        and fun.any(
+    if tmpl then
+        return fun.any(
             function(actual)
                 return checksignature(T, desired, actual)
             end,
             fun.map(
                 function(compressed, func)
-                    return compressed:signature()
+                    return compressed:signature().type
                 end,
                 tmpl.methods
             )
         )
-    )
+    else
+        return false
+    end
 end
 
 local methodlookup = {
-    tag = methodtagcheck,
     raw = rawmethodcheck,
     overloaded = overloadedcheck,
     template = templatecheck,
@@ -247,7 +234,7 @@ local methodcheck = function(C, T)
     return fun.all(
         function(name, method)
             assert(
-                fun.any(
+                methodtagcheck(C, T, name) or fun.any(
                     function(cname, check)
                         return check(C, T, name)
                     end,
@@ -266,10 +253,10 @@ end
 local metamethodcheck = function(C, T)
     for name, _ in pairs(C.metamethods) do
         assert(
-            T.metamethods[method],
+            T.metamethods[name],
             (
                 "Concept %s requires metamethod %s but that was not found for %s"
-            ):format(tostring(C), method, tostring(T))
+            ):format(tostring(C), name, tostring(T))
         )
     end
     return true
@@ -319,272 +306,6 @@ local partialcheck = {
     entry = entrycheck,
 }
 
-local function check(C, T)
-    if C == T then
-        return true
-    else
-        return fun.all(
-            function(name, pcheck) return pcheck(C, T) end, partialcheck
-        )
-    end
-end
-
--- Checks if T satifies a concept C if T is concrete type.
---[=[
-local function check(C, T, verbose)
-    verbose = verbose == nil and false or verbose
-    assert(isconcept(C))
-    assert(terralib.types.istype(T))
-
-    -- Quick exit if you check the concept against itsself. This is useful
-    -- if the concept refers to itsself in a method declaration
-    if C == T then
-        return true
-    end
-
-    --otherwise we need to check that all elements in collection T
-    --are also in the collection C
-    if iscollection(C) then
-        --if T is explicitly listed in the collection C then return early
-        if C.friends[T] then
-            return true
-        end
-        --otherwise, if T is not a collection, then we check if T
-        --is satisfied by any of the elements in C
-        if not iscollection(T) then
-            for friend_of_C, _ in pairs(C.friends) do
-                local ok, ret = pcall(function(S) return check(friend_of_C, T, verbose) end)
-                if ok then return true end
-            end
-            --not satisfied, so we abort
-            error("Concept or type " .. tostring(T) .. " is not a satisfied by any of the elements in " .. tostring(C) .. ".")
-        end
-    end
-
-    --T is a collection, so we check if all elements of T are elements of C
-    if iscollection(T) then
-        --check that all elements in collection T are in collection C
-        local res = fun.all(
-            function(S) return check(C, S, verbose) end,
-            T.friends
-        )
-        return res
-    end
-
-    --check number of traits
-    if C.traits and not isempty(C.traits) then
-        local C_traits_size, T_traits_size = table.size(C.traits), table.size(T.traits)
-        assert(C_traits_size <= T_traits_size,
-            (
-                "Need at least %d traits but only %d given."
-            ):format(C_traits_size, T_traits_size)
-        )
-    end
-    --traits comparison
-    for trait, desired in pairs(C.traits) do
-        assert(
-            T.traits[trait] ~= nil,
-            (
-                "Concept %s requires trait %s but that was not found for %s"
-            ):format(tostring(C), trait, tostring(T))
-        )
-        if desired ~= traittag then
-            local actual = T.traits[trait]
-            assert(
-                -- Traits can also be lua values (numbers or strings).
-                -- Thus, we first check for equality and then for concept
-                -- specialization.
-                actual == desired or is_specialized_over(actual, desired),
-                (
-                    "Concept %s requires value %s for trait %s but found %s"
-                ):format(
-                    tostring(C),
-                    tostring(desired),
-                    tostring(trait),
-                    tostring(actual)
-                )
-            )
-        end
-    end
-
-    local function isrefself(T, S)
-        assert(terralib.types.istype(S))
-        if S:ispointer(S) then
-            return isrefself(T, S.type)
-        else
-            return S == T
-        end
-    end
-
-    local function check_sig(Csig, Tsig)
-        local function go(Csig, Tsig)
-            assert(
-                #Csig.parameters == #Tsig.parameters,
-                "Cannot compare signatures\n" ..
-                tostring(Csig) .. "\n" ..
-                tostring(Tsig)
-            )
-            -- Skip self argument
-            for i = 2, #Csig.parameters do
-                local Carg = Csig.parameters[i]
-                local Targ = Tsig.parameters[i]
-                assert(
-                    -- We skip the concept check if the signature contains
-                    -- a reference to the current type on which we check
-                    -- the concept. Otherwise, we trigger an infinite recursion.
-                    isrefself(T, Targ) or is_specialized_over(Targ, Carg),
-                    (
-                        "%s is not specialized over %s in slot %d " ..
-                        "of signatures\n%s\n%s"
-                    ):format(
-                        tostring(Targ),
-                        tostring(Carg),
-                        i,
-                        tostring(Csig),
-                        tostring(Tsig)
-                    )
-                )
-            end
-            -- We don't check the return type as we have no control over it
-            -- during the method dispatch.
-            return true
-        end
-        local ok, ret = pcall(
-            function(Csig, Tsig) return go(Csig, Tsig) end, Csig, Tsig
-        )
-        if verbose then
-            print(ret)
-        end
-        return ok and ret
-    end
-
-    local function check_overloaded_method(Cfunc, Tlist)
-        local ref_sig = Cfunc.type
-        local res = fun.any(
-                        function(func)
-                            local sig = func.type
-                            return check_sig(ref_sig, sig)
-                		end,
-                        Tlist
-                    )
-        return res
-    end
-
-    local function check_method(method)
-        local conceptfun, typefun = C.methods[method], T.methods[method]
-        if not typefun then
-            return false
-        end
-        if conceptfun == methodtag then
-            return true
-        end
-        assert(
-            not terralib.ismacro(typefun),
-            (
-                "%s requires concrete method for %s but type %s " ..
-                "defines it as a macro"
-            ):format(tostring(C), method, tostring(T))
-        )
-        if terralib.isoverloadedfunction(typefun) then
-            return check_overloaded_method(conceptfun, typefun.definitions)
-        else
-            local ref_sig = conceptfun.type
-            return check_sig(ref_sig, typefun.type)
-        end
-    end
-
-    local function check_template(method)
-        if not T.templates then
-            return false
-        end
-        local conceptfun, typefun = C.methods[method], T.templates[method]
-        if not typefun then
-            return false
-        end
-        if conceptfun == methodtag then
-            return true
-        end
-        local res = check_overloaded_method(
-                        conceptfun,
-                        fun.map(
-                            function(sig, func)
-                                return sig:signature()
-                            end,
-                            typefun.methods
-                        )
-                    )
-        return res
-    end
-
-    --check all methods
-    local res = fun.all(
-        function(method, func)
-            assert(
-                check_method(method) or check_template(method),
-                (
-                    "Concept %s requires the method %s " ..
-                    "but that was not found for %s"
-                ):format(tostring(C), method, tostring(T))
-            )
-            return true
-        end,
-        C.methods
-    )
-    --check all metamethods
-    for method, _ in pairs(C.metamethods) do
-        assert(
-            T.metamethods[method],
-            (
-                "Concept %s requires metamethod %s but that was not found for %s"
-            ):format(tostring(C), method, tostring(T))
-        )
-    end
-
-    --check number of struct entries
-    if T:isstruct() then 
-        assert(#C.entries <= #T.entries,
-            (
-                "Need at least %d entries in struct but only %d given."
-            ):format(#C.entries, #T.entries)
-        )
-    end
-    --check individual struct entries
-    for _, ref_entry in pairs(C.entries) do
-        local ref_name = ref_entry.field
-        local ref_type = ref_entry.type
-        local has_entry = false
-        for _, entry in pairs(T.entries) do
-            local name = entry.field
-            local type = entry.type
-            if name == ref_name then
-                assert(is_specialized_over(type, ref_type),
-                    (
-                        "Concept %s requires entry named %s to satisfy %s " ..
-                        "but found %s"
-                    ):format(
-                        tostring(C),
-                        name,
-                        tostring(ref_type),
-                        tostring(type)
-                    )
-                )
-                has_entry = true
-                break
-            end
-        end
-        assert(
-            has_entry,
-            (
-                "Concept %s requires entry named %s " ..
-                "but that was not found for %s"
-            ):format(tostring(C), ref_name, tostring(T))
-        )
-    end
-
-    return true
-end
---]=]
-
 local function Base(C, custom_check)
     assert(
         terralib.types.istype(C) and C:isstruct(),
@@ -592,18 +313,26 @@ local function Base(C, custom_check)
     )
     C.traits = terralib.newlist()
     C.friends = terralib.newlist()
+    C.generator = nil
+    C.parameters = terralib.newlist()
     C.type = "concept"
+    C.custom_check = custom_check
     --add the custom check which evaluates a predicate returning true/false
     --or add default which is based on traits / methods / metamethods / entries
     if custom_check then
-        C.check = function(C, T)
-            if C ~= T then
-                assert(custom_check(C, T))
-            end
-            return true
-        end 
+        function C:check(T)
+            return assert(
+                self == T or self:custom_check(T),
+                "Custom check on " .. tostring(self) ..
+                " and " .. tostring(T) .. " failed"
+            )
+        end
     else
-        C.check = check
+        function C:check(T)
+            return self == T or fun.all(
+                function(name, pcheck) return pcheck(self, T) end, partialcheck
+            )
+        end
     end
     local mt = getmetatable(C)
     function mt:__call(T, verbose)
@@ -619,11 +348,20 @@ local function Base(C, custom_check)
 
     function C:inherit(D)
         for _, entry in pairs(D.entries) do
-            C.entries:insert(entry)
+            self.entries:insert(entry)
         end
-        for _, tab in pairs({"methods", "metamethods", "traits"}) do
+
+        self.generator = D.generator
+
+        local entries = {
+            "methods",
+            "metamethods",
+            "traits",
+            "parameters",
+        }
+        for _, tab in pairs(entries) do
             for k, v in pairs(D[tab]) do
-                C[tab][k] = v
+                self[tab][k] = v
             end
         end
     end

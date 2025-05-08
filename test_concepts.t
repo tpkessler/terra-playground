@@ -45,7 +45,7 @@ testenv "Concrete concepts" do
 
 	testset "Real number hierarchy" do
 		test [Number(Number)]
-		test [Number(BLASNumber, true)]
+		test [Number(BLASNumber)]
 		test [Number(Real) and not Real(Number)]
 		test [Real(Integer) and not Integer(Real)]
 		test [Integer(UnsignedInteger) and not UnsignedInteger(Integer)]
@@ -73,8 +73,12 @@ testenv "Concrete concepts" do
 
     testset "Floats" do
 		test [Float(Float)]
-        test [Float(double) and Float(float)]
-		test [BLASFloat(double) and BLASFloat(float)]
+        test [Number(double)]
+		test [Number(float)]
+        test [Float(double)]
+		test [Float(float)]
+		test [BLASFloat(double)]
+		test [BLASFloat(float)]
         test [concepts.is_specialized_over(Float, Float)]
         test [Float(int32) == false]
         test [Float(rawstring) == false]
@@ -200,18 +204,17 @@ testenv "Concrete concepts" do
 	end
 
 	testset "Overloaded terra function" do
-		--concept 1
 		local struct A(concepts.Base) {}
 		A.methods.size = {&A} -> {concepts.Integral}
-		--concept 2
+
 		local struct B(concepts.Base) {}
 		B.methods.size = {&B, concepts.Integral} -> {concepts.Integral}
-		--concept 3
+
 		local struct C(concepts.Base) {}
 		C.methods.size = {&C, Float, concepts.Integral} -> {concepts.Integral}
-		--struct definition
+
 		local struct hassize{}
-		--implementation of the size method as an overloaded function
+
 		hassize.methods.size = terralib.overloadedfunction("size",{
 			terra(self : &hassize) return 1 end,
 			terra(self : &hassize, i : int) return i end
