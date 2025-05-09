@@ -17,7 +17,7 @@ TERRAFLAGS?=-g
 
 CFLAGS=-O2 -march=native -fPIC
 
-all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn) libnonlinearbc.$(dyn)  gnuplot_i.$(dyn)
+all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn) libnonlinearbc.$(dyn)  gnuplot_i.$(dyn) libsleef
 
 
 libnonlinearbc.$(dyn): nonlinearbc.o
@@ -71,6 +71,16 @@ gnuplot_i.o: gnuplot/src/gnuplot_i.c gnuplot/src/gnuplot_i.h
 test: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn)
 	terra import.t
 	terra test_random.t
+
+libsleef: sleef/CMakeLists.txt
+	cmake -G Ninja -B build-sleef -S sleef -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
+	cmake --build build-sleef
+
+test: all
+	$(TERRA) ./testrunner.t
+
+test: all
+	$(TERRA) ./testrunner.t
 
 .PHONY: clean realclean
 
