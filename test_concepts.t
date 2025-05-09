@@ -271,6 +271,20 @@ testenv "Concrete concepts" do
 		test [MySpecialVector(MyConcreteVector)]
 	end
 
+	testset "Traits with friends" do
+		local struct S(base.AbstractBase) {}
+		concept A
+			Self.traits.iscool = true
+			Self:addfriend(S)
+		end
+		local struct T(base.AbstractBase) {}
+		T.traits.iscool = true
+
+		test [A(T)]
+		-- If A is not a collection, friends are a short cut for concept checks
+		test [A(S)]
+	end
+
 	testset "Entries" do
 		local struct Ent(concepts.Base) {
 			x: Float

@@ -69,10 +69,6 @@ local function collectioncheck(C, D)
     -- The first check is meant as a quick exit for types or concepts listed
     -- in the friends table without the need to iterate over all friends of
     -- the other argument.
-    if C.friends[D] then
-        return true
-    end
-
     if iscollection(C) then
         if iscollection(D) then
             assert(
@@ -329,7 +325,7 @@ local function Base(C, custom_check)
         end
     else
         function C:check(T)
-            return self == T or fun.all(
+            return self == T or self.friends[T] or fun.all(
                 function(name, pcheck) return pcheck(self, T) end, partialcheck
             )
         end
