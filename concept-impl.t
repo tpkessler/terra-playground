@@ -130,7 +130,7 @@ local generatorcheck = function(C, T)
     assert(
         C.generator == T.generator,
         (
-            "Concept %s requires parametrized type but found %s"
+            "Concept %s requires the same generator as %s"
         ):format(tostring(C), tostring(T))
     )
     assert(fun.all(
