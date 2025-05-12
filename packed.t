@@ -1,14 +1,17 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
 local base = require("base")
 local concepts = require("concepts")
+local parametrized = require("parametrized")
 
 import "terraform"
 
-local SparsePackedFactory = terralib.memoize(function(T, I, M, K)
+local SparsePackedFactory = parametrized.type(function(T, I, M, K)
     local struct sparse_packed {
         Ap: T[M * K]
         loc: I[M * K]
@@ -78,7 +81,7 @@ local SparsePackedFactory = terralib.memoize(function(T, I, M, K)
     return sparse_packed
 end)
 
-local DensePackedFactory = terralib.memoize(function(T, M, K)
+local DensePackedFactory = parametrized.type(function(T, M, K)
     local struct dense_packed {
         A: T[M * K]
     }

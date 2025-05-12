@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -11,10 +13,11 @@ local base = require("base")
 local matrix = require("matrix")
 local packed = require("packed")
 local simd = require("simd")
+local parametrized = require("parametrized")
 
 import "terraform"
 
-local CSRMatrix = terralib.memoize(function(T, I)
+local CSRMatrix = parametrized.type(function(T, I)
 
     local Integral = concepts.Integral
     local Number = concepts.Number
@@ -122,7 +125,7 @@ local CSRMatrix = terralib.memoize(function(T, I)
     if Primitive(T) then
         -- Inspired by the GPU implementation
         -- https://gpuopen.com/learn/amd-lab-notes/amd-lab-notes-spmv-docs-spmv_part1/
-        local VecApply = terralib.memoize(function(N)
+        local VecApply = parametrized.type(function(N)
             local SIMD = simd.VectorFactory(T, N)
             local terraform vecapply(
                 self: &csr,

@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -9,6 +11,7 @@ local base = require("base")
 local stack = require("stack")
 local pthread = require("pthread")
 local span = require("span")
+local parametrized = require("parametrized")
 
 require "terralibext"
 
@@ -107,7 +110,7 @@ local blockThread = alloc.SmartBlock(thread, {copyby = "view"})
 local queueThread = stack.DynamicStack(thread)
 
 -- Queue with thread-safe memory access via mutex
-local ThreadsafeQueue = terralib.memoize(function(T)
+local ThreadsafeQueue = parametrized.type(function(T)
     local S = stack.DynamicStack(T)
     local struct threadsafe_queue {
         mutex: mutex

@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -13,8 +15,9 @@ local C = terralib.includecstring[[
 local base = require("base")
 local concepts = require("concepts")
 local tmath = require("tmath")
+local parametrized = require("parametrized")
 
-local complex = terralib.memoize(function(T)
+local complex = parametrized.type(function(T)
 
     local struct complex{
         re: T

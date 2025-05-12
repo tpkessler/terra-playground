@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -10,6 +12,7 @@ local err = require("assert")
 local concepts = require("concepts")
 local tmath = require("tmath")
 local lapack = require("lapack")
+local parametrized = require("parametrized")
 
 local Bool = concepts.Bool
 local Number = concepts.Number
@@ -144,7 +147,7 @@ terraform solve(trans: B, a: &M, u: &U, x: &V)
     end
 end
 
-local QRFactory = terralib.memoize(function(M, U)
+local QRFactory = parametrized.type(function(M, U)
 
     local T = M.traits.eltype
     local Vector = concepts.Vector(T)

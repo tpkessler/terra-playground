@@ -1,3 +1,5 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
 -- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
@@ -8,11 +10,12 @@ local concepts = require("concepts")
 local err = require("assert")
 local range = require("range")
 local tpl = require("tuple")
+local parametrized = require("parametrized")
 
 local DYNAMIC_EXTEND = setmetatable(
     {}, {__tostring = function(self) return "DynamicExtend" end}
 )
-local Span = terralib.memoize(function(T, N)
+local Span = parametrized.type(function(T, N)
     N = N or DYNAMIC_EXTEND
 
     local struct span {

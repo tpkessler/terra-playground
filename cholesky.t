@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -10,6 +12,7 @@ local err = require("assert")
 local concepts = require("concepts")
 local tmath = require("tmath")
 local lapack = require("lapack")
+local parametrized = require("parametrized")
 
 local Bool   = concepts.Bool
 local Number = concepts.Number
@@ -72,7 +75,7 @@ terraform solve(trans: B, a: &M, x: &V)
     lapack.potrs(lapack.ROW_MAJOR, @"L", n, 1, adata, lda, xdata, incx)
 end
 
-local CholeskyFactory = terralib.memoize(function(M)
+local CholeskyFactory = parametrized.type(function(M)
 
     local T = M.traits.eltype
     local Vector = concepts.Vector(T)

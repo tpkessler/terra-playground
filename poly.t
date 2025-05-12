@@ -1,13 +1,16 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
 local sarray = require("sarray")
 local tmath = require("tmath")
 local base = require("base")
+local parametrized = require("parametrized")
 
-local Polynomial = terralib.memoize(function(T, N)
+local Polynomial = parametrized.type(function(T, N)
     
     local svector = sarray.StaticVector(T,N)
 

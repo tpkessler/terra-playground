@@ -1,9 +1,13 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
-local VectorFactory = terralib.memoize(function(T, N)
+local parametrized = require("parametrized")
+
+local VectorFactory = parametrized.type(function(T, N)
     local SIMD = vector(T, N)
     local struct vec {
         data: SIMD

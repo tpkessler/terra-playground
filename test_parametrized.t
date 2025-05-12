@@ -1,3 +1,10 @@
+-- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
+--
+-- SPDX-License-Identifier: MIT
+
 local parametrized = require("parametrized")
 local concepts = require("concepts")
 
@@ -35,6 +42,7 @@ testenv "Parametrized types" do
         local S = Point(double)
 
         test [concepts.isconcept(C)]
+        test [concepts.isconcept(D)]
         test [C(T)]
         test [C(S) == false]
         test [D(T) == false]

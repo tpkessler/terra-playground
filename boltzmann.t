@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -24,6 +26,7 @@ local sparse = require("sparse")
 local stack = require("stack")
 local span = require("span")
 local qr = require("qr")
+local parametrized = require("parametrized")
 
 local io = terralib.includec("stdio.h")
 
@@ -218,7 +221,7 @@ do
     range.Base(MonomialBasis, iterator)
 end
 
-local TensorBasis = terralib.memoize(function(T)
+local TensorBasis = parametrized.type(function(T)
     local I = int32
     local iMat = darray.DynamicMatrix(I)
     local CSR = sparse.CSRMatrix(T, I)
@@ -433,7 +436,7 @@ testenv "Moments of local Maxwellian" do
     end
 end
 
-local HalfSpaceQuadrature = terralib.memoize(function(T)
+local HalfSpaceQuadrature = parametrized.type(function(T)
     local SVec = sarray.StaticVector(T, VDIM)
     local struct impl {
         normal: SVec
@@ -1338,7 +1341,7 @@ local GenerateNonLinearBCWrapper = terralib.memoize(function(Transform)
     return impl
 end)
 
-local FixedPressure = terralib.memoize(function(T)
+local FixedPressure = parametrized.type(function(T)
     local struct fixed_pressure{
         pressure: T
     }
@@ -1353,7 +1356,7 @@ local FixedPressure = terralib.memoize(function(T)
     return fixed_pressure
 end)
 
-local FixedMassFlowRate = terralib.memoize(function(T)
+local FixedMassFlowRate = parametrized.type(function(T)
     local struct fixed_mass_flow_rate{
         mflow: T
     }

@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -12,6 +14,7 @@ local lambda = require("lambda")
 local tmath = require("tmath")
 local nfloat = require("nfloat")
 local err = require("assert")
+local parametrized = require("parametrized")
 
 local size_t = uint64
 
@@ -157,7 +160,7 @@ terraform truncate(v : T) where {T : concepts.NFloat}
 end
 
 
-local unitrange = terralib.memoize(function(T)
+local unitrange = parametrized.type(function(T)
 
     local struct range{
         a : T
@@ -214,7 +217,7 @@ local unitrange = terralib.memoize(function(T)
     return range
 end)
 
-local steprange = terralib.memoize(function(T)
+local steprange = parametrized.type(function(T)
 
     local struct range{
         a : T
@@ -273,7 +276,7 @@ local steprange = terralib.memoize(function(T)
     return range
 end)
 
-local infunitrange = terralib.memoize(function(T)
+local infunitrange = parametrized.type(function(T)
 
     local struct range{
         a : T
@@ -317,7 +320,7 @@ local infunitrange = terralib.memoize(function(T)
     return range
 end)
 
-local infsteprange = terralib.memoize(function(T)
+local infsteprange = parametrized.type(function(T)
 
     local struct range{
         a : T
@@ -362,7 +365,7 @@ local infsteprange = terralib.memoize(function(T)
     return range
 end)
 
-local Unitrange = terralib.memoize(function(T, sentinal)
+local Unitrange = parametrized.type(function(T, sentinal)
     local sentinal = sentinal or "bounded"
     if sentinal == "bounded" then
         return unitrange(T)
@@ -373,7 +376,7 @@ local Unitrange = terralib.memoize(function(T, sentinal)
     end
 end)
 
-local Steprange = terralib.memoize(function(T, sentinal)
+local Steprange = parametrized.type(function(T, sentinal)
     local sentinal = sentinal or "bounded"
     if sentinal == "bounded" then
         return steprange(T)

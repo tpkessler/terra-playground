@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -14,6 +16,7 @@ local vec = require("vector")
 local vecblas = require("vector_blas")
 local mat = require("matrix")
 local range = require("range")
+local parametrized = require("parametrized")
 
 local size_t = uint64
 
@@ -315,7 +318,7 @@ end
 
 --StaticVector is reimplemented separately from 'Array' because otherwise
 --SVector.metamethods.__typename is memoized incorrectly
-local StaticVector = terralib.memoize(function(T, N)
+local StaticVector = parametrized.type(function(T, N)
     
     local function typename(traits)
         return ("StaticVector(%s, %d)"):format(tostring(T), N)
@@ -376,7 +379,7 @@ local TransposedSMatrix = function(ParentMatrix)
     return SMatrix
 end
 
-local StaticMatrix = terralib.memoize(function(T, Size, options)
+local StaticMatrix = parametrized.type(function(T, Size, options)
 
     local function typename(traits)
         return ("StaticMatrix(%s, {%d, %d})"):format(tostring(T), Size{1}, Size{2})

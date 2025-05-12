@@ -1,13 +1,16 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
 local alloc = require("alloc")
 local base = require("base")
 local range = require("range")
+local parametrized = require("parametrized")
 
-local BinaryTree = terralib.memoize(function(T)
+local BinaryTree = parametrized.type(function(T)
     local struct tree
     local stree = alloc.SmartObject(tree)
     struct tree {
