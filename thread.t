@@ -21,6 +21,7 @@ local mutex = pthread.mutex
 local lock_guard = pthread.lock_guard
 local cond = pthread.cond
 local hardware_concurrency = pthread.hardware_concurrency
+local omp_get_num_threads = pthread.omp_get_num_threads
 local sched = terralib.includec("sched.h")
 
 -- A thread has a unique ID that executes a given function with signature FUNC.
@@ -397,7 +398,7 @@ local terraform parfor(alloc, rn, go, nthreads)
 end
 
 terraform parfor(alloc, rn, go)
-    var nthreads = hardware_concurrency()
+    var nthreads = omp_get_num_threads()
     parfor(alloc, rn, go, nthreads)
 end
 
@@ -409,5 +410,6 @@ return {
     cond = cond,
     threadpool = threadpool,
     max_threads = hardware_concurrency,
+    omp_get_num_threads = omp_get_num_threads,
     parfor = parfor,
 }

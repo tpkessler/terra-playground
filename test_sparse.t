@@ -125,7 +125,7 @@ for T, tol in pairs(tols) do
                     b:fill([T](2))
                     var c = Mat.new(&alloc, {rows, cols})
                     c:fill([T](3))
-                    matrix.scaledaddmul([T](1), false, &a, false, &b, [T](-1),&c)
+                    matrix.gemm([T](1), &a, &b, [T](-1), &c)
                 end
                 test tmath.isapprox(c(rows - 2, cols - 3), -3 + 2, [tol])
             end

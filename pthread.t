@@ -169,10 +169,22 @@ terra cond:wait(mtx: &mutex)
     return thrd.cond_wait(&self.id, &mtx.id)
 end
 
+local C = terralib.includec("stdlib.h")
+terra omp_get_num_threads()
+    var res = C.getenv("OMP_NUM_THREADS")
+    if res ~= nil then
+        var nthreads: uint32 = C.atoi(res)
+        return nthreads
+    else
+        return boost.hardware_concurrency()
+    end
+end
+
 return {
     C = thrd,
     mutex = mutex,
     lock_guard = lock_guard,
     cond = cond,
     hardware_concurrency = boost.hardware_concurrency,
+    omp_get_num_threads = omp_get_num_threads,
 }

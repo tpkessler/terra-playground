@@ -13,6 +13,9 @@ local base = require("base")
 local matrix = require("matrix")
 local packed = require("packed")
 local simd = require("simd")
+local lambda = require("lambda")
+local thread = require("thread")
+local range = require("range")
 local parametrized = require("parametrized")
 
 import "terraform"
@@ -285,11 +288,10 @@ local CSRMatrix = parametrized.type(function(T, I)
     local ACols = math.floor(128 * sizeof(double) / sizeof(T))
     local BCols = math.floor(128 * sizeof(double) / sizeof(T))
     local Matrix = concepts.Matrix(T)
-    terraform matrix.scaledaddmul(
+    -- TODO Implement missing cases
+    terraform matrix.gemm(
         alpha: T,
-        atrans: bool,
         A: &csr,
-        btrans: bool,
         B: &M1,
         beta: T,
         C: &M2
@@ -300,8 +302,6 @@ local CSRMatrix = parametrized.type(function(T, I)
         var mb = B:cols()
         var nc = C:rows()
         var mc = C:cols()
-        -- TODO Implement missing cases
-        err.assert(atrans == false and btrans == false)
         err.assert(na == nc)
         err.assert(ma == nb)
         err.assert(mb == mc)
@@ -315,28 +315,44 @@ local CSRMatrix = parametrized.type(function(T, I)
             C:scal(beta)
         end
 
-        var ap: packed.SparsePackedFactory(T, I, ARows, ACols)
-        var bp: packed.DensePackedFactory(T, ACols, BCols)
-        var cp: packed.DensePackedFactory(T, ARows, BCols)
         -- CAKE: matrix multiplication using constant-bandwidth blocks
         -- https://dl.acm.org/doi/abs/10.1145/3458817.3476166
-        for n = 0, mblockb do
-            var jdx = n
-            for m = 0, nblocka do
-                -- var idx = terralib.select(
-                --     n % 2 == 0, m, nblocka - m - 1
-                -- )
-                var idx = m
-                cp:pack(C, idx * ARows, jdx * BCols)
-                for k = 0, mblocka do
-                    var kdx = k
-                    ap:pack(A, idx * ARows, kdx * ACols)
-                    bp:pack(B, kdx * ACols, jdx * BCols)
-                    blocked_outer_product(alpha, &ap, &bp, &cp)
+        var rn = range.product(
+            [range.Unitrange(I)].new(0, mblockb),
+            [range.Unitrange(I)].new(0, nblocka)
+        )
+        var go = lambda.new(
+            [
+                terra(
+                    it: {I, I},
+                    alpha: alpha.type,
+                    A: A.type,
+                    B: B.type,
+                    beta: beta.type,
+                    C: C.type,
+                    mblocka: mblocka.type
+                )
+                    var jdx, idx = it
+                    var ap: packed.SparsePackedFactory(T, I, ARows, ACols)
+                    var bp: packed.DensePackedFactory(T, ACols, BCols)
+                    var cp: packed.DensePackedFactory(T, ARows, BCols)
+
+                    cp:pack(C, idx * ARows, jdx * BCols)
+                    for k = 0, mblocka do
+                        var kdx = k
+                        ap:pack(A, idx * ARows, kdx * ACols)
+                        bp:pack(B, kdx * ACols, jdx * BCols)
+                        blocked_outer_product(alpha, &ap, &bp, &cp)
+                    end
+                    cp:unpack(C, idx * ARows, jdx * BCols)
                 end
-                cp:unpack(C, idx * ARows, jdx * BCols)
-            end
-        end
+            ],
+            {alpha = alpha, A = A, B = B, beta = beta, C = C, mblocka = mblocka}
+        )
+        -- HACK: Use default allocator as we cannot access the allocator
+        -- for the sparse matrix.
+        var allocator: alloc.DefaultAllocator()
+        thread.parfor(&allocator, rn, go)
     end
 
     local Alloc = alloc.Allocator
