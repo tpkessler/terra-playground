@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -16,6 +18,7 @@ local stack = require("stack")
 local mat = require("matrix")
 local range = require("range")
 local tup = require("tuple")
+local parametrized = require("parametrized")
 
 local luafun = require("fun")
 
@@ -359,7 +362,7 @@ end
 
 --DynamicVector is reimplemented separately from 'Array' because otherwise
 --DynamicVector.metamethods.__typename is memoized incorrectly
-local DynamicVector = terralib.memoize(function(T)
+local DynamicVector = parametrized.type(function(T)
     
     local function typename(traits)
         return ("DynamicVector(%s)"):format(tostring(T))
@@ -429,7 +432,7 @@ local TransposedDMatrix = function(ParentMatrix)
 end
 
 
-local DynamicMatrix = terralib.memoize(function(T, options)
+local DynamicMatrix = parametrized.type(function(T, options)
 
     local function typename(traits)
         return ("DynamicMatrix(%s)"):format(tostring(T))

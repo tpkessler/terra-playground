@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -15,8 +17,9 @@ local random = require("random")
 local io = terralib.includec("stdio.h")
 local mathfun = require("mathfuns")
 local err = require("assert")
+local parametrized = require("parametrized")
 
-local ParticleSystem = terralib.memoize(function(T)
+local ParticleSystem = parametrized.type(function(T)
     assert(concepts.Real(T))
     local Allocator = alloc.Allocator
     local DVec = dvector.DynamicVector(T)

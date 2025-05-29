@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -36,11 +38,11 @@ local parametrizedconcept = terralib.memoize(function(name)
         local arg = terralib.newlist({...})
         arg = arg:map(function(T) return template.cast_to_concept(T) end)
         local methods = self:get_methods(unpack(arg))
-        --assert(
-        --    not isempty(methods),
-        --    "No admissible implementation found for " .. tostring(arg) ..
-        --    " in parametrized concept " .. self.name
-        --)
+        -- assert(
+        --     not isempty(methods),
+        --     "No admissible implementation found for " .. tostring(arg) ..
+        --     " in parametrized concept " .. self.name
+        -- )
         local ref = template.paramlist.compress(arg)
         local name = ("%s(%s)"):format(
             self.name, arg:map(function(T) return tostring(T) end):concat(",")

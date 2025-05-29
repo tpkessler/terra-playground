@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -167,10 +169,22 @@ terra cond:wait(mtx: &mutex)
     return thrd.cond_wait(&self.id, &mtx.id)
 end
 
+local C = terralib.includec("stdlib.h")
+terra omp_get_num_threads()
+    var res = C.getenv("OMP_NUM_THREADS")
+    if res ~= nil then
+        var nthreads: uint32 = C.atoi(res)
+        return nthreads
+    else
+        return boost.hardware_concurrency()
+    end
+end
+
 return {
     C = thrd,
     mutex = mutex,
     lock_guard = lock_guard,
     cond = cond,
     hardware_concurrency = boost.hardware_concurrency,
+    omp_get_num_threads = omp_get_num_threads,
 }

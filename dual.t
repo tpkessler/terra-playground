@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -7,10 +9,11 @@ local base = require("base")
 local blend = require("blend")
 local concepts = require("concepts")
 local tmath = require("tmath")
+local parametrized = require("parametrized")
 local io = terralib.includec("stdio.h")
 
 
-local DualNumber = terralib.memoize(function(T)
+local DualNumber = parametrized.type(function(T)
 
     local struct dual{
         val: T

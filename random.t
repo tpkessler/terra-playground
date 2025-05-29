@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -11,6 +13,7 @@ local C = terralib.includecstring[[
 local base = require("base")
 local concepts = require("concepts")
 local err = require("assert")
+local parametrized = require("parametrized")
 
 import "terraform"
 
@@ -46,7 +49,7 @@ local concept RandomDistribution(T) where {T: BLASFloat}
 	Self.traits.rettype = T
 end
 
-local PseudoRandomDistributionBase = terralib.memoize(function(G, F)
+local PseudoRandomDistributionBase = function(G, F)
 	local Integer = concepts.Integer
 	local I = G.traits.inttype
 	assert(I ~= nil, "RNG must have a well-defined return type")
@@ -82,7 +85,7 @@ local PseudoRandomDistributionBase = terralib.memoize(function(G, F)
 
 	local RandomDistribution = RandomDistribution(F)
 	assert(RandomDistribution(G))
-end)
+end
 
 local terraform getrandom(x: &T) where {T}
 	var f = C.fopen("/dev/urandom", "r")
@@ -95,7 +98,7 @@ end
 
 -- Wrapper around the random number generator of the C standard library
 -- TODO Port it to concepts and terraform
-local LibC = terralib.memoize(function(F)
+local LibC = parametrized.type(function(F)
 	local struct libc {}
 	local I = int64
 
@@ -129,7 +132,7 @@ end)
 -- Keep It Simple Stupid, see
 -- https://digitalcommons.wayne.edu/jmasm/vol2/iss1/2/
 -- page 12
-local KISS = terralib.memoize(function(F)
+local KISS = parametrized.type(function(F)
 	local I = uint32
 	local struct kiss {
 		x: I
@@ -173,7 +176,7 @@ end)
 
 -- A minimal, 32 bit implemenation of the PCG generator, see
 -- https://www.pcg-random.org/download.html
-local MinimalPCG = terralib.memoize(function(F)
+local MinimalPCG = parametrized.type(function(F)
 	local I = uint32
 	local struct pcg {
 		state: uint64
@@ -234,7 +237,7 @@ local pcgvar = setmetatable(
 		)
 	}
 )
-local PCG = terralib.memoize(function(F)
+local PCG = parametrized.type(function(F)
 	local I = uint64
 	-- FIXME Terra doesn't parse the definition of the struct corretly,
 	-- possibly because it's included in an ifdef clause. But we know that

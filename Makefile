@@ -21,7 +21,7 @@ all: libexport.$(dyn) libtinymt.$(dyn) libpcg.$(dyn) libhash.$(dyn) libnonlinear
 
 
 libnonlinearbc.$(dyn): nonlinearbc.o
-	$(CC) -fPIC -shared $^ -o $@ -lpthread -lopenblas
+	$(CC) -fPIC -shared $^ -o $@ -lpthread -lopenblas -lm
 
 libhash.$(dyn): hashmap.o
 	$(CC) -fPIC -shared $^ -o $@

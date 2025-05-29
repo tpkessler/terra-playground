@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -73,8 +75,12 @@ testenv "Concrete concepts" do
 
     testset "Floats" do
 		test [Float(Float)]
-        test [Float(double) and Float(float)]
-		test [BLASFloat(double) and BLASFloat(float)]
+        test [Number(double)]
+		test [Number(float)]
+        test [Float(double)]
+		test [Float(float)]
+		test [BLASFloat(double)]
+		test [BLASFloat(float)]
         test [concepts.is_specialized_over(Float, Float)]
         test [Float(int32) == false]
         test [Float(rawstring) == false]
@@ -200,18 +206,17 @@ testenv "Concrete concepts" do
 	end
 
 	testset "Overloaded terra function" do
-		--concept 1
 		local struct A(concepts.Base) {}
 		A.methods.size = {&A} -> {concepts.Integral}
-		--concept 2
+
 		local struct B(concepts.Base) {}
 		B.methods.size = {&B, concepts.Integral} -> {concepts.Integral}
-		--concept 3
+
 		local struct C(concepts.Base) {}
 		C.methods.size = {&C, Float, concepts.Integral} -> {concepts.Integral}
-		--struct definition
+
 		local struct hassize{}
-		--implementation of the size method as an overloaded function
+
 		hassize.methods.size = terralib.overloadedfunction("size",{
 			terra(self : &hassize) return 1 end,
 			terra(self : &hassize, i : int) return i end
@@ -266,6 +271,20 @@ testenv "Concrete concepts" do
 		test [MyVectorNumber(MySpecialVector)]
 		test [MyVectorNumber(MyConcreteVector)]
 		test [MySpecialVector(MyConcreteVector)]
+	end
+
+	testset "Traits with friends" do
+		local struct S(base.AbstractBase) {}
+		concept A
+			Self.traits.iscool = true
+			Self:addfriend(S)
+		end
+		local struct T(base.AbstractBase) {}
+		T.traits.iscool = true
+
+		test [A(T)]
+		-- If A is not a collection, friends are a short cut for concept checks
+		test [A(S)]
 	end
 
 	testset "Entries" do
@@ -542,5 +561,9 @@ testenv "Parametrized concepts" do
 		test [SVec3D(I) == false]
 		test [SVec3D(D) == true]
 		test [SVec3D(E) == false]
+	end
+
+	testset "Parametrized types" do
+
 	end
 end

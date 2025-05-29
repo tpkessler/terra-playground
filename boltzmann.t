@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -24,6 +26,7 @@ local sparse = require("sparse")
 local stack = require("stack")
 local span = require("span")
 local qr = require("qr")
+local parametrized = require("parametrized")
 
 local io = terralib.includec("stdio.h")
 
@@ -218,7 +221,7 @@ do
     range.Base(MonomialBasis, iterator)
 end
 
-local TensorBasis = terralib.memoize(function(T)
+local TensorBasis = parametrized.type(function(T)
     local I = int32
     local iMat = darray.DynamicMatrix(I)
     local CSR = sparse.CSRMatrix(T, I)
@@ -261,27 +264,21 @@ local TensorBasis = terralib.memoize(function(T)
     )
 
     local spanVDIM = span.Span(double, VDIM)
-    terraform tensor_basis.staticmethods.frombuffer(
-        A,
+    terra tensor_basis.staticmethods.frombuffer(
+        A: alloc.Allocator,
         transposed: bool,
-        nq: I1,
-        nx: I2,
-        nnz: I3,
-        data: &S,
-        col: &int32,
+        nq: I,
+        nx: I,
+        nnz: I,
+        data: &double,
+        col: &I,
         rowptr: &I,
-        nv: I4,
+        nv: I,
         ptr: &I,
         rho: double,
         u: spanVDIM,
-        theta: double)
-        where {
-                S: concepts.Number,
-                I1: concepts.Integer,
-                I2: concepts.Integer,
-                I3: concepts.Integer,
-                I4: concepts.Integer
-              }
+        theta: double
+    )
         var cast = Stack.new(A, nnz)
         for i = 0, nnz do
             -- Explicit cast as possibly S ~= T
@@ -439,7 +436,7 @@ testenv "Moments of local Maxwellian" do
     end
 end
 
-local HalfSpaceQuadrature = terralib.memoize(function(T)
+local HalfSpaceQuadrature = parametrized.type(function(T)
     local SVec = sarray.StaticVector(T, VDIM)
     local struct impl {
         normal: SVec
@@ -589,7 +586,7 @@ local HalfSpaceQuadrature = terralib.memoize(function(T)
         var whermite = VecT.new(A, nhalf)
         castvector(&xhermite, &qhermite._0)
         castvector(&whermite, &qhermite._1)
-        whermite:scal(tmath.sqrt(1 / (2 * tmath.pi)))
+        whermite:scal(tmath.sqrt([T](1) / (2 * tmath.pi)))
 
         -- The quadrature is computed for the the reference half space
         -- defined by the normal (1, 0, 0). This configuration is mapped
@@ -1344,7 +1341,7 @@ local GenerateNonLinearBCWrapper = terralib.memoize(function(Transform)
     return impl
 end)
 
-local FixedPressure = terralib.memoize(function(T)
+local FixedPressure = parametrized.type(function(T)
     local struct fixed_pressure{
         pressure: T
     }
@@ -1359,7 +1356,7 @@ local FixedPressure = terralib.memoize(function(T)
     return fixed_pressure
 end)
 
-local FixedMassFlowRate = terralib.memoize(function(T)
+local FixedMassFlowRate = parametrized.type(function(T)
     local struct fixed_mass_flow_rate{
         mflow: T
     }

@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -9,6 +11,7 @@ local darray = require("darray")
 local range = require("range")
 local recdiff = require("recdiff")
 local tmath = require("tmath")
+local parametrized = require("parametrized")
 
 import "terraform"
 
@@ -102,7 +105,7 @@ local function IntervalFactory(T)
     return impl
 end
 
-local ExpMom = terralib.memoize(function(T)
+local ExpMom = parametrized.type(function(T)
     local struct impl {
         a: T
     }
@@ -141,7 +144,7 @@ local ExpMom = terralib.memoize(function(T)
     return impl
 end)
 
-local ConstMom = terralib.memoize(function(T)
+local ConstMom = parametrized.type(function(T)
     local struct impl {}
     base.AbstractBase(impl)
     impl.traits.depth = 3

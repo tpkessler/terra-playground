@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -9,12 +11,13 @@ local alloc = require("alloc")
 local err = require("assert")
 local concepts = require("concepts")
 local range = require("range")
+local parametrized = require("parametrized")
 
 local Allocator = alloc.Allocator
 
 local size_t = uint64
 
-local StackBase = terralib.memoize(function(stack)
+local StackBase = function(stack)
 
     local T = stack.traits.eltype
 
@@ -53,10 +56,10 @@ local StackBase = terralib.memoize(function(stack)
     stack.iterator = iterator
     range.Base(stack, iterator)
 
-end)
+end
 
 
-local DynamicStack = terralib.memoize(function(T)
+local DynamicStack = parametrized.type(function(T)
 
     local S = alloc.SmartBlock(T) --typed memory block
     S:complete() --always complete the implementation of SmartBlock

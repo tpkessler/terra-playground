@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -25,6 +27,7 @@ local C = terralib.includec("stdio.h")
 local base = require("base")
 local tmath = require("tmath")
 local concepts = require("concepts")
+local parametrized = require("parametrized")
 
 local suffix = {64, 128, 192, 256, 384, 512, 1024, 2048, 4096}
 local float_type = {}
@@ -91,7 +94,7 @@ local terra shiftandscale(n : uint64, e : int)
 end
 
 
-local FixedFloat = terralib.memoize(function(N)
+local FixedFloat = parametrized.type(function(N)
     --float_type[N] stores the high-precision number using the following layout
     --local M = N / 64
     --struct float_type

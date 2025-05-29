@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 René Hiemstra <rrhiemstar@gmail.com>
 -- SPDX-FileCopyrightText: 2024 Torsten Keßler <t.kessler@posteo.de>
+-- SPDX-FileCopyrightText: 2025 René Hiemstra <rrhiemstar@gmail.com>
+-- SPDX-FileCopyrightText: 2025 Torsten Keßler <t.kessler@posteo.de>
 --
 -- SPDX-License-Identifier: MIT
 
@@ -123,7 +125,7 @@ for T, tol in pairs(tols) do
                     b:fill([T](2))
                     var c = Mat.new(&alloc, {rows, cols})
                     c:fill([T](3))
-                    matrix.scaledaddmul([T](1), false, &a, false, &b, [T](-1),&c)
+                    matrix.gemm([T](1), &a, &b, [T](-1), &c)
                 end
                 test tmath.isapprox(c(rows - 2, cols - 3), -3 + 2, [tol])
             end
