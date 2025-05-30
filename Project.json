@@ -1,0 +1,14 @@
+{
+  "name": "playground",
+  "uuid": "f09b851a-d75b-4559-a260-3b0a2b1a492c",
+  "authors": [
+    "[rrhiemstar]rrhiemstar@gmail.com"
+  ],
+  "version": "v0.1.0",
+  "deps": {
+    "4510efb2-5399-47b1-a173-7e7c2ca7b288@v1": {
+      "name": "terratest",
+      "version": "v1.0.0"
+    }
+  }
+}
