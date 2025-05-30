@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest/terratest"
+import "terratest"
 
 local alloc = require("alloc")
 local DefaultAllocator = alloc.DefaultAllocator()

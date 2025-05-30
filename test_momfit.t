@@ -11,7 +11,7 @@ local range = require("range")
 local momfit = require("momfit")
 local tmath = require("tmath")
 
-import "terratest/terratest"
+import "terratest"
 
 local tols = {
     [float] = `1e-6f,

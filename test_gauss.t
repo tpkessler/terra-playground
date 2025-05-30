@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest/terratest"
+import "terratest"
 local alloc = require('alloc')
 local gauss = require("gauss")
 local tmath = require("tmath")

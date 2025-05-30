@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest/terratest"
+import "terratest"
 
 local qr = require("qr")
 local alloc = require("alloc")

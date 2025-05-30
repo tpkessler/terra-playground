@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest/terratest"
+import "terratest"
 
 local cho = require("cholesky")
 local alloc = require("alloc")

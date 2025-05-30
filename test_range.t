@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest/terratest"
+import "terratest"
 import "terraform"
 
 local io = terralib.includec("stdio.h")

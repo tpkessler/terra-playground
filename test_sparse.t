@@ -16,7 +16,7 @@ local tmath = require("tmath")
 local complexDouble = complex.complex(double)
 local float256 = nfloat.FixedFloat(256)
 
-import "terratest/terratest"
+import "terratest"
 
 local tols = {
     [float] = `1e-7f,

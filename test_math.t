@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest/terratest"
+import "terratest"
 
 local tmath = require('tmath')
 local io = terralib.includec("stdio.h")

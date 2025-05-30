@@ -10,7 +10,7 @@ local string = terralib.includec("string.h")
 
 local HashMap = hash.HashMap(rawstring, int32)
 
-import "terratest/terratest"
+import "terratest"
 
 testenv "HashMap with strings" do
 	terracode

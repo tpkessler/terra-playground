@@ -7,7 +7,7 @@
 
 local random = require("random")
 
-import "terratest/terratest"
+import "terratest"
 
 for _, GEN in pairs{random.LibC, random.KISS, random.MinimalPCG, random.PCG} do
 	for _, T in pairs{float, double} do

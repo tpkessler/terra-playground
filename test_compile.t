@@ -7,7 +7,7 @@
 
 local compile = require("compile")
 
-import "terratest/terratest"
+import "terratest"
 
 testenv "Generate header file" do
     local header = compile.getCheader{

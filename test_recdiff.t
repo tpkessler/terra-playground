@@ -14,7 +14,7 @@ local recdiff = require("recdiff")
 local tmath = require("tmath")
 
 import "terraform"
-import "terratest/terratest"
+import "terratest"
 
 local tols = {
     [float] = `1e-6f,

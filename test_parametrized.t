@@ -8,7 +8,7 @@
 local parametrized = require("parametrized")
 local concepts = require("concepts")
 
-import "terratest/terratest"
+import "terratest"
 import "terraform"
 
 testenv "Parametrized types" do

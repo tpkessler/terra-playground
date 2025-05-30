@@ -11,7 +11,7 @@ local tmath = require("tmath")
 local nfloat = require("nfloat")
 local complex = require("complex")
 
-import "terratest/terratest"
+import "terratest"
 import "terraform"
 
 local float256 = nfloat.FixedFloat(256)

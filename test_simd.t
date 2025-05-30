@@ -7,7 +7,7 @@
 
 local simd = require("simd")
 
-import "terratest/terratest"
+import "terratest"
 
 for _, T in pairs{int32, int64, float, double} do
     for _, N in pairs{4, 8, 16, 32, 64} do

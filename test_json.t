@@ -7,7 +7,7 @@
 
 local json = require("json")
 
-import "terratest/terratest"
+import "terratest"
 
 testenv "JSON" do
     testset "New" do
