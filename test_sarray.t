@@ -22,7 +22,7 @@ local cfloat = complex.complex(float)
 local cdouble = complex.complex(double)
 local cfloat128 = complex.complex(float128)
 
-import "terratest/terratest"
+import "terratest"
 
 if not __silent__ then
 

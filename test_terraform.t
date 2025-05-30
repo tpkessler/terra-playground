@@ -19,7 +19,7 @@ local Float = concepts.Float
 local Real = concepts.Real
 local Number = concepts.Number
 
-import "terratest/terratest"
+import "terratest"
 
 testenv "terraforming free functions" do
 
