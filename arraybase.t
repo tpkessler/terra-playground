@@ -10,7 +10,7 @@ local err = require("assert")
 local tup = require("tuple")
 local tmath = require("tmath")
 local range = require("range")
-local luafun = require("fun")
+local luafun = require("luafun@v1/luafun")
 
 local size_t = uint64
 

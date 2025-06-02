@@ -8,7 +8,7 @@
 local blend = require("blend")
 local C = terralib.includec("math.h")
 
-import "terratest"
+import "terratest@v1/terratest"
 
 testenv "Math functions" do
     testset "Sinc" do

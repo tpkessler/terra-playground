@@ -6,9 +6,13 @@
   ],
   "version": "v0.1.0",
   "deps": {
+    "06ce5606-8bec-430d-814b-335ce346507b@v1": {
+      "name": "luafun",
+      "version": "v1.0.1"
+    },
     "4510efb2-5399-47b1-a173-7e7c2ca7b288@v1": {
       "name": "terratest",
-      "version": "v1.0.0"
+      "version": "v1.0.1"
     }
   }
 }

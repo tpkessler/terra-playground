@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest"
+import "terratest@v1/terratest"
 
 if not __silent__ then
 

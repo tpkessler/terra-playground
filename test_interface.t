@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest"
+import "terratest@v1/terratest"
 import "terraform"
 
 local base = require("base")

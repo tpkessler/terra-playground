@@ -27,7 +27,7 @@ local float256 = nfloat.FixedFloat(256)
 
 local DefaultAllocator = alloc.DefaultAllocator()
 
-import "terratest"
+import "terratest@v1/terratest"
 
 if not __silent__ then
 

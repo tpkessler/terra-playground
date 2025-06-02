@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest"
+import "terratest@v1/terratest"
 
 local C = terralib.includec("string.h")
 local tmath = require("tmath")

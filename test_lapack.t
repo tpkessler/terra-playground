@@ -36,7 +36,7 @@ local tol = {
 }
 local atol = 1e-14
 
-import "terratest"
+import "terratest@v1/terratest"
 
 local abs = terralib.overloadedfunction("abs", {
     math.fabsf, math.fabs,

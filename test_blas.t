@@ -27,7 +27,7 @@ local unit = {
 	["c"] = `[complexFloat:unit()],
 	["z"] = `[complexDouble:unit()]}
 
-import "terratest"
+import "terratest@v1/terratest"
 
 for prefix, T in pairs(types) do
 	local I = unit[prefix]

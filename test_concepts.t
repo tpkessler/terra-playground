@@ -10,7 +10,7 @@ local concepts = require("concepts")
 local paramlist = require("concept-parametrized").paramlist
 
 import "terraform"
-import "terratest"
+import "terratest@v1/terratest"
 
 local Any = concepts.Any
 local String = concepts.String

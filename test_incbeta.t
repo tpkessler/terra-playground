@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest"
+import "terratest@v1/terratest"
 
 local tmath = require("tmath")
 local incbeta = require("incbeta")

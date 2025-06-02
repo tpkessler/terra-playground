@@ -1,6 +1,6 @@
 local rtti = require("rtti")
 
-import "terratest"
+import "terratest@v1/terratest"
 
 testenv "RTTI" do
     local struct A {

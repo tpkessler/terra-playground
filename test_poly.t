@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest"
+import "terratest@v1/terratest"
 
 local poly = require('poly')
 local io = terralib.includec("stdio.h")

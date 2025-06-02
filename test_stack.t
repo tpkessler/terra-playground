@@ -9,7 +9,7 @@
 local alloc = require('alloc')
 local stack = require("stack")
 
-import "terratest"
+import "terratest@v1/terratest"
 
 
 testenv "DynamicStack" do

@@ -5,8 +5,6 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terraform"
-
 local io = terralib.includec("stdio.h")
 local base = require("base")
 local concepts = require("concepts")
@@ -19,7 +17,8 @@ local Float = concepts.Float
 local Real = concepts.Real
 local Number = concepts.Number
 
-import "terratest"
+import "terraform"
+import "terratest@v1/terratest"
 
 testenv "terraforming free functions" do
 

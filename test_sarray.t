@@ -5,6 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
+
 import "terraform"
 local range = require("range")
 local sarray = require("sarray")
@@ -22,7 +23,8 @@ local cfloat = complex.complex(float)
 local cdouble = complex.complex(double)
 local cfloat128 = complex.complex(float128)
 
-import "terratest"
+import "terratest@v1/terratest"
+
 
 if not __silent__ then
 

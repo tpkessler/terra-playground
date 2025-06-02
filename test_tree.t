@@ -11,7 +11,7 @@ local io = terralib.includec("stdio.h")
 
 local DefaultAllocator = alloc.DefaultAllocator()
 
-import "terratest"
+import "terratest@v1/terratest"
 
 for _, T in pairs{float, double, int32, int64, uint64} do
     local btree = tree.BinaryTree(T)

@@ -14,7 +14,7 @@ local tree = require("tree")
 local thread = require("thread")
 local tmath = require("tmath")
 
-import "terratest"
+import "terratest@v1/terratest"
 
 require("terralibext")
 

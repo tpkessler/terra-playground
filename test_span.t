@@ -9,7 +9,7 @@ local alloc = require("alloc")
 local span = require("span")
 local stack = require("stack")
 
-import "terratest"
+import "terratest@v1/terratest"
 
 local N = 3
 local DefaultAllocator = alloc.DefaultAllocator()

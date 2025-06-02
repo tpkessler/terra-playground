@@ -11,7 +11,7 @@ local tmath = require("tmath")
 local lambda = require("lambda")
 local range = require("range")
 
-import "terratest"
+import "terratest@v1/terratest"
 import "terraform"
 
 local integrate

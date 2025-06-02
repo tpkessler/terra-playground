@@ -5,7 +5,7 @@
 --
 -- SPDX-License-Identifier: MIT
 
-import "terratest"
+import "terratest@v1/terratest"
 
 local alloc = require("alloc")
 local boltzmann = require("boltzmann")
