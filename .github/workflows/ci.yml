@@ -32,9 +32,6 @@ jobs:
             jq -r '.assets[] | select(.name == "cosm-linux-amd64.tar.gz") | .browser_download_url' | \
             wget -i -
 
-          # Verify tarball contents
-          tar -tzf cosm-linux-amd64.tar.gz
-
           # Extract and rename to cosm
           tar -xvzf cosm-linux-amd64.tar.gz
           mv cosm* cosm
