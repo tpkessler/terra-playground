@@ -2,7 +2,7 @@ name: ci-apptainer-archlinux
 
 on:
   push:
-    branches: [main]
+    branches: [main, cosm]
   pull_request:
     branches: [main]
 
