@@ -15,14 +15,34 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm jq wget
+        # Installs jq and wget using pacman (Arch Linux package manager)
+
       - name: Pull Apptainer image
         run: apptainer pull ci-terra.sif oras://ghcr.io/simkinetic/ci-terra:latest
+
       - name: Add Cosm and Terra registries
-        run: | 
-          curl -s https://api.github.com/repos/renehiemstra/cosm/releases/latest | jq -r '.assets[] | select(.name == "cosm-linux-amd64.tar.gz") | .browser_download_url' | wget -i -
+        run: |
+          # Download cosm-linux-amd64.tar.gz
+          curl -s https://api.github.com/repos/renehiemstra/cosm/releases/latest | \
+            jq -r '.assets[] | select(.name == "cosm-linux-amd64.tar.gz") | .browser_download_url' | \
+            wget -i -
+
+          # Verify tarball contents
           tar -tzf cosm-linux-amd64.tar.gz
+
+          # Extract and rename to cosm
+          tar -xvzf cosm-linux-amd64.tar.gz
           mv cosm* cosm
+          chmod +x cosm
+
+          # Clone TerraStandard registry
           ./cosm registry clone git@github.com:simkinetic/TerraStandard.git
+
       - name: Run tests
         id: run-tests
         run: |
@@ -44,6 +64,7 @@ jobs:
           
           # Store exit code for next step
           echo "EXIT_CODE=$EXIT_CODE" >> $GITHUB_ENV
+
       - name: Check test results
         run: |
           # Print test output
@@ -55,9 +76,11 @@ jobs:
             echo "Test failures or execution errors detected"
             exit 1
           fi
+
       - name: Clean Apptainer cache
         run: apptainer cache clean --force
         if: always()
+
       - name: Summarize test results
         run: |
           echo "Test Summary:"
