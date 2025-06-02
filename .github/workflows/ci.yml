@@ -1,0 +1,61 @@
+name: ci-apptainer-archlinux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/simkinetic/arch-apptainer:latest
+      options: --privileged
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Pull Apptainer image
+        run: apptainer pull ci-terra.sif oras://ghcr.io/simkinetic/ci-terra:latest
+      - name: Run tests
+        id: run-tests
+        run: |
+          # Run tests, capture output and exit code
+          OUTPUT=$(apptainer exec --bind $PWD:/app ci-terra.sif bash -c "cosm activate && . /app/.cosm/.env && terra testrunner.t" 2>&1 || echo "Execution failed with exit code $?" >&2)
+          EXIT_CODE=$?
+
+          # Save output to temporary file for parsing
+          echo "$OUTPUT" > test_output.txt
+          
+          # Extract total tests passed and failed
+          PASSED=$(grep -oP 'Total Tests Passed: \K\d+' test_output.txt || echo "0")
+          echo "Total Tests Passed: $PASSED"
+          echo "TESTS_PASSED=$PASSED" >> $GITHUB_ENV
+          
+          FAILED=$(grep -oP 'Total Tests Failed: \K\d+' test_output.txt || echo "0")
+          echo "Total Tests Failed: $FAILED"
+          echo "TESTS_FAILED=$FAILED" >> $GITHUB_ENV
+          
+          # Store exit code for next step
+          echo "EXIT_CODE=$EXIT_CODE" >> $GITHUB_ENV
+      - name: Check test results
+        run: |
+          # Print test output
+          echo "Test Output (Check Step):"
+          cat test_output.txt
+          
+          # Fail if exit code is non-zero or tests failed
+          if [ "${{ env.EXIT_CODE }}" -ne 0 ] || [ "${{ env.TESTS_FAILED }}" -gt 0 ]; then
+            echo "Test failures or execution errors detected"
+            exit 1
+          fi
+      - name: Clean Apptainer cache
+        run: apptainer cache clean --force
+        if: always()
+      - name: Summarize test results
+        run: |
+          echo "Test Summary:"
+          echo "Total Tests Passed: ${{ env.TESTS_PASSED }}"
+          echo "Total Tests Failed: ${{ env.TESTS_FAILED }}"
+          echo "Exit Code: ${{ env.EXIT_CODE }}"
+        if: always()
