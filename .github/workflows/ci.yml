@@ -32,10 +32,37 @@ jobs:
             jq -r '.assets[] | select(.name == "cosm-linux-amd64.tar.gz") | .browser_download_url' | \
             wget -i -
 
-          # Extract and rename to cosm
+          # Verify tarball exists
+          if [ ! -f cosm-linux-amd64.tar.gz ]; then
+            echo "Error: Failed to download cosm-linux-amd64.tar.gz"
+            exit 1
+          fi
+
+          # Verify tarball contents
+          echo "Tarball contents:"
+          tar -tzf cosm-linux-amd64.tar.gz
+
+          # Extract tarball
           tar -xvzf cosm-linux-amd64.tar.gz
-          mv cosm* cosm
+
+          # Check if cosm-linux-amd64 exists and rename to cosm
+          if [ -f cosm-linux-amd64 ]; then
+            mv cosm-linux-amd64 cosm
+            echo "Renamed cosm-linux-amd64 to cosm"
+          else
+            echo "Error: Expected file 'cosm-linux-amd64' not found"
+            ls -la
+            exit 1
+          fi
+
+          # Set executable permissions
           chmod +x cosm
+
+          # Verify cosm exists and is executable
+          if [ ! -x cosm ]; then
+            echo "Error: cosm binary not found or not executable"
+            exit 1
+          fi
 
           # Clone TerraStandard registry
           ./cosm registry clone git@github.com:simkinetic/TerraStandard.git
