@@ -17,11 +17,17 @@ jobs:
         uses: actions/checkout@v4
       - name: Pull Apptainer image
         run: apptainer pull ci-terra.sif oras://ghcr.io/simkinetic/ci-terra:latest
+      - name: Add Cosm and Terra registries
+        run: | 
+          curl -s https://api.github.com/repos/renehiemstra/cosm/releases/latest | jq -r '.assets[] | select(.name == "cosm-linux-amd64.tar.gz") | .browser_download_url' | wget -i -
+          tar -tzf cosm-linux-amd64.tar.gz
+          mv cosm* cosm
+          ./cosm registry clone git@github.com:simkinetic/TerraStandard.git
       - name: Run tests
         id: run-tests
         run: |
           # Run tests, capture output and exit code
-          OUTPUT=$(apptainer exec --bind $PWD:/app ci-terra.sif bash -c "cosm activate && . /app/.cosm/.env && terra testrunner.t" 2>&1 || echo "Execution failed with exit code $?" >&2)
+          OUTPUT=$(apptainer exec --bind $PWD:/app ci-terra.sif bash -c "./cosm activate && . /app/.cosm/.env && terra testrunner.t" 2>&1 || echo "Execution failed with exit code $?" >&2)
           EXIT_CODE=$?
 
           # Save output to temporary file for parsing
