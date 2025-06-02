@@ -65,6 +65,11 @@ jobs:
           fi
 
           # Clone TerraStandard registry
+          # Create the .cosm directory
+          mkdir -p ~/.cosm
+
+          # Set the COSM_DEPOT_PATH environment variable
+          export COSM_DEPOT_PATH=~/.cosm
           ./cosm registry clone git@github.com:simkinetic/TerraStandard.git
 
       - name: Run tests
