@@ -7,7 +7,7 @@
 
 local concepts = require("concept-impl")
 local base = require("base")
-local fun = require("fun")
+local fun = require("luafun@v1/luafun")
 local serde = require("serde")
 
 local Template = {}

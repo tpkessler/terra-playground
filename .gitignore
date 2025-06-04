@@ -49,3 +49,6 @@ testgenerate.h
 
 # configuration file of testrunner
 /config
+
+# cosm package manager local build files
+/.cosm

@@ -16,7 +16,7 @@ local C = terralib.includecstring[[
 
 local prefix = arg[-1]
 local config = "config/testrunner.toml"
-local path = "."
+local path = "test"
 local help = "Testrunner for unit tests in the terratest unit testing framework\n" ..
              "-----------------------------------------------------------------\n" ..
              "-c/--config TOML file for configuration. Defaults to " .. config .. "\n" ..
@@ -110,7 +110,7 @@ terra main()
     var tp = thread.threadpool.new(&alloc, thread.max_threads())
     escape
         for filename in list_tests(config, path) do
-            local execstring = prefix .. " " .. filename .. " --test --silent"
+            local execstring = prefix .. " " .. path .. "/" ..filename .. " --test --silent"
             emit quote
                 tp:submit(
                     &alloc,

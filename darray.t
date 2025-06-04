@@ -20,7 +20,7 @@ local range = require("range")
 local tup = require("tuple")
 local parametrized = require("parametrized")
 
-local luafun = require("fun")
+local luafun = require("luafun@v1/luafun")
 
 local Allocator = alloc.Allocator
 local size_t = uint64

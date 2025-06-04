@@ -6,7 +6,7 @@
 -- SPDX-License-Identifier: MIT
 
 import "terraform"
-import "terratest/terratest"
+import "terratest@v1/terratest"
 
 local alloc = require("alloc")
 local base = require("base")
