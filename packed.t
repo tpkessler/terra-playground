@@ -33,16 +33,17 @@ local SparsePackedFactory = parametrized.type(function(T, I, M, K)
 
     local Integer = concepts.Integer
     terraform sparse_packed:pack(
-        A: &CSR, rowstart: J, colstart: J
+        A: &CSR, beta: T, rowstart: J, colstart: J
     ) where {CSR, J: Integer}
             var i1 = 0
             var i2 = 0
-            for m = 0, M do
-                for k = 0, K do
-                    self.Ap[k + K * m] = 0
-                    self.loc[k + K * m] = 0
-                end
-            end
+            self.Ap[0] = 0
+            self.loc[0] = 0
+            -- escape
+            --     for idx = 0, M * K - 1 do
+            --         emit quote self.loc[idx] = 0 end
+            --     end
+            -- end
             for k = 0, K do
                 self.col[k] = 0
                 self.nnz[k] = 0
@@ -63,7 +64,7 @@ local SparsePackedFactory = parametrized.type(function(T, I, M, K)
                         end
                     end
                     if found_entry then
-                        self.Ap[i1] = data
+                        self.Ap[i1] = beta * data
                         self.loc[i1] = m
                         i1 = i1 + 1
                         cols = cols + 1
@@ -101,7 +102,7 @@ local DensePackedFactory = parametrized.type(function(T, M, K)
     local Matrix = concepts.Matrix(T)
     local Integer = concepts.Integer
     terraform dense_packed:pack(
-        A: &Mat, rowstart: J, colstart: J
+        A: &Mat, beta: T, rowstart: J, colstart: J
     ) where {Mat: Matrix, J: Integer}
         var rows = A:rows()
         var cols = A:cols()
@@ -113,7 +114,7 @@ local DensePackedFactory = parametrized.type(function(T, M, K)
                 if i < rows and j < cols then
                     data = A:get(i, j)
                 end
-                self.A[k + K * m] = data
+                self.A[k + K * m] = beta * data
             end
         end
     end

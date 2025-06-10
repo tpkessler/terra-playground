@@ -233,7 +233,7 @@ local terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
 end
 
 --gemm - blas wrappers
-local gemmsetup = macro(function(A, B, C)
+local gemmsetup = macro(function(alpha, A, B, beta, C)
     return quote
         var na, ma, ptra, lda = A:getblasdenseinfo()
         var nb, mb, ptrb, ldb = B:getblasdenseinfo()
@@ -245,70 +245,56 @@ local gemmsetup = macro(function(A, B, C)
         var n : uint64 = mc
         var k : uint64 = ma
     in
-        n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc
+        m, n, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc
     end
 end)
 
---C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
 terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
         where {T : Real, M1 : BLASMatrix(BLASFloat), M2 : BLASMatrix(BLASFloat), M3 : BLASMatrix(BLASFloat)}
-    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
-    blas.gemm(blas.RowMajor, blas.NoTrans, blas.NoTrans, 
-        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+    var it = gemmsetup(alpha, A, B, beta, C)
+    blas.gemm(blas.RowMajor, blas.NoTrans, blas.NoTrans, unpacktuple(it))
 end
 
---C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
 terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
         where {T : Real, M1 : Transpose(BLASMatrixReal), M2 : BLASMatrixReal, M3 : BLASMatrixReal}
-    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
-    blas.gemm(blas.RowMajor, blas.Trans, blas.NoTrans, 
-        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+    var it = gemmsetup(alpha, A, B, beta, C)
+    blas.gemm(blas.RowMajor, blas.Trans, blas.NoTrans, unpacktuple(it))
 end
 
---C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
 terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
         where {T : Real, M1 : BLASMatrixReal, M2 : Transpose(BLASMatrixReal), M3 : BLASMatrixReal}
-    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
-    blas.gemm(blas.RowMajor, blas.NoTrans, blas.Trans, 
-        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+    var it = gemmsetup(alpha, A, B, beta, C)
+    blas.gemm(blas.RowMajor, blas.NoTrans, blas.Trans, unpacktuple(it))
 end
 
---C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
 terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
         where {T : Real, M1 : Transpose(BLASMatrixReal), M2 : Transpose(BLASMatrixReal), M3 : BLASMatrixReal}
-    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
-    blas.gemm(blas.RowMajor, blas.Trans, blas.Trans, 
-        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+    var it = gemmsetup(alpha, A, B, beta, C)
+    blas.gemm(blas.RowMajor, blas.Trans, blas.Trans, unpacktuple(it))
 end
 
---C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
 terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
         where {T : Number, M1 : BLASMatrixComplex, M2 : BLASMatrixComplex, M3 : BLASMatrixComplex}
-    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
-    blas.gemm(blas.RowMajor, blas.NoTrans, blas.NoTrans, 
-        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+    var it = gemmsetup(alpha, A, B, beta, C)
+    blas.gemm(blas.RowMajor, blas.NoTrans, blas.NoTrans, unpacktuple(it))
 end
 
---C[i,j] = alpha * A[i,k] * B[k,j] + beta * C[i,j]
 terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
         where {T : Number, M1 : Transpose(BLASMatrixComplex), M2 : BLASMatrixComplex, M3 : BLASMatrixComplex}
-    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
-    blas.gemm(blas.RowMajor, blas.ConjTrans, blas.NoTrans, 
-        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+    var it = gemmsetup(alpha, A, B, beta, C)
+    blas.gemm(blas.RowMajor, blas.ConjTrans, blas.NoTrans, unpacktuple(it))
 end
 
 terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
         where {T : Number, M1 : BLASMatrixComplex, M2 : Transpose(BLASMatrixComplex), M3 : BLASMatrixComplex}
-    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
-    blas.gemm(blas.RowMajor, blas.NoTrans, blas.ConjTrans, 
-        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+    var it = gemmsetup(alpha, A, B, beta, C)
+    blas.gemm(blas.RowMajor, blas.NoTrans, blas.ConjTrans, unpacktuple(it))
 end
 
 terraform gemm(alpha : T, A : &M1, B : &M2, beta : T, C : &M3)
         where {T : Number, M1 : Transpose(BLASMatrixComplex), M2 : Transpose(BLASMatrixComplex), M3 : BLASMatrixComplex}
-    var n, m, k, ptra, lda, ptrb, ldb, ptrc, ldc = gemmsetup(A, B, C)
-    blas.gemm(blas.RowMajor, blas.ConjTrans, blas.ConjTrans, 
-        n, m, k, alpha, ptra, lda, ptrb, ldb, beta, ptrc, ldc)
+    var it = gemmsetup(alpha, A, B, beta, C)
+    blas.gemm(blas.RowMajor, blas.ConjTrans, blas.ConjTrans, unpacktuple(it))
 end
 
 return {

@@ -109,8 +109,8 @@ for T, tol in pairs(tols) do
 
             testset "Mult" do
                 terracode
-                    var rows = 250
-                    var cols = 200
+                    var rows = 1500
+                    var cols = 1000
                     var a = CSR.new(&alloc, rows, rows)
                     for i = 0, rows do
                         a:set(i, i, 3)

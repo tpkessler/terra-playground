@@ -17,6 +17,7 @@ local lambda = require("lambda")
 local thread = require("thread")
 local range = require("range")
 local parametrized = require("parametrized")
+local timeit = require("timeit")
 
 import "terraform"
 
@@ -100,20 +101,16 @@ local CSRMatrix = parametrized.type(function(T, I)
 
     terraform csr:apply(trans: bool, alpha: T, x: &V1, beta: T, y: &V2)
         where {V1: Vector, V2: Vector}
-        if beta == 0 then
-            y:fill(0)
-        else
-            y:scal(beta)
-        end
         if not trans then
             for i = 0, self.rows do
                 var res = [T](0)
                 for idx = self.rowptr(i), self.rowptr(i + 1) do
                     res = res + self.data(idx) * x:get(self.col(idx))
                 end
-                y:set(i, alpha * res + y:get(i))
+                y:set(i, alpha * res + beta * y:get(i))
             end
         else
+            y:scal(beta)
             for i = 0, self.rows do
                 for idx = self.rowptr(i), self.rowptr(i + 1) do
                     var j = self.col(idx)
@@ -138,11 +135,6 @@ local CSRMatrix = parametrized.type(function(T, I)
                 beta: T,
                 y: &V2
             ) where {V1: Vector, V2: Vector}
-                if beta == 0 then
-                    y:fill(0)
-                else
-                    y:scal(beta)
-                end
                 if not trans then
                     for i = 0, self.rows do
                         var first = self.rowptr(i)
@@ -167,9 +159,10 @@ local CSRMatrix = parametrized.type(function(T, I)
                         for idx = first + veclen, first + len do
                             res = res + self.data(idx) * x:get(self.col(idx))
                         end
-                        y:set(i, y:get(i) + alpha * res)
+                        y:set(i, beta * y:get(i) + alpha * res)
                     end
                 else
+                    y:scal(beta)
                     for i = 0, self.rows do
                         for idx = self.rowptr(i), self.rowptr(i + 1) do
                             var j = self.col(idx)
@@ -284,9 +277,9 @@ local CSRMatrix = parametrized.type(function(T, I)
         end
     end
 
-    local ARows = math.floor(128 * sizeof(double) / sizeof(T))
-    local ACols = math.floor(128 * sizeof(double) / sizeof(T))
-    local BCols = math.floor(128 * sizeof(double) / sizeof(T))
+    local ARows = math.floor(256 * sizeof(double) / sizeof(T))
+    local ACols = math.floor(256 * sizeof(double) / sizeof(T))
+    local BCols = math.floor(256 * sizeof(double) / sizeof(T))
     local Matrix = concepts.Matrix(T)
     -- TODO Implement missing cases
     terraform matrix.gemm(
@@ -308,12 +301,6 @@ local CSRMatrix = parametrized.type(function(T, I)
         var nblocka: I = (na + ARows - 1) / ARows
         var mblocka: I = (ma + ACols - 1) / ACols
         var mblockb: I = (mb + BCols - 1) / BCols
-
-        if beta == 0 then
-            C:fill(0)
-        else
-            C:scal(beta)
-        end
 
         -- CAKE: matrix multiplication using constant-bandwidth blocks
         -- https://dl.acm.org/doi/abs/10.1145/3458817.3476166
@@ -337,11 +324,11 @@ local CSRMatrix = parametrized.type(function(T, I)
                     var bp: packed.DensePackedFactory(T, ACols, BCols)
                     var cp: packed.DensePackedFactory(T, ARows, BCols)
 
-                    cp:pack(C, idx * ARows, jdx * BCols)
+                    cp:pack(C, beta, idx * ARows, jdx * BCols)
                     for k = 0, mblocka do
                         var kdx = k
-                        ap:pack(A, idx * ARows, kdx * ACols)
-                        bp:pack(B, kdx * ACols, jdx * BCols)
+                        ap:pack(A, [T](1), idx * ARows, kdx * ACols)
+                        bp:pack(B, [T](1), kdx * ACols, jdx * BCols)
                         blocked_outer_product(alpha, &ap, &bp, &cp)
                     end
                     cp:unpack(C, idx * ARows, jdx * BCols)
@@ -353,6 +340,12 @@ local CSRMatrix = parametrized.type(function(T, I)
         -- for the sparse matrix.
         var allocator: alloc.DefaultAllocator()
         thread.parfor(&allocator, rn, go)
+        -- timeit.timeit([quote
+        --     for it in rn do
+        --         go(it)
+        --     end
+        --     end], true
+        -- )
     end
 
     local Alloc = alloc.Allocator
