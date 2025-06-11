@@ -2,6 +2,6 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
-void halfspace(double, double *, double, int32_t, int32_t, int32_t *, int32_t *, double, double *, double, double *, bool, double *);
+void halfspace(double *, double, double *, double, int32_t, int32_t, int32_t *, int32_t *, double, double *, double, double *, bool, double *);
 void massflowbc(int32_t, int32_t, int32_t, int32_t, double *, double *, int32_t, int32_t, double *, int32_t, double *, int32_t *, int32_t *, int32_t, double *, int32_t *, int32_t *, double, double *, double, int32_t *, int32_t *, double *, double *, double);
 void pressurebc(int32_t, int32_t, int32_t, int32_t, double *, double *, int32_t, int32_t, double *, int32_t, double *, int32_t *, int32_t *, int32_t, double *, int32_t *, int32_t *, double, double *, double, int32_t *, int32_t *, double *, double *, double);

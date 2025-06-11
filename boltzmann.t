@@ -1130,10 +1130,12 @@ local PrepareLinearInput = terralib.memoize(function(T, I)
     local tMat = darray.DynamicMatrix(T)
     local iMat = darray.DynamicMatrix(I)
     local terra prepare_linear_input(
-        -- Scaling of the background Maxwellian
-        ensrho: T,
-        ensU: &T,
-        enstheta: T,
+        -- Scaling of the test functions
+        testU: &T,
+        testtheta: T,
+        -- Scaling of the trial functions
+        trialU: &T,
+        trialtheta: T,
         -- Number of test functions in velocity
         ntestv: int32,
         -- Number of trial function in velocity
@@ -1151,12 +1153,13 @@ local PrepareLinearInput = terralib.memoize(function(T, I)
         -- Pointer to matrix of size ntestv x ntrialv
         res: &T
     )
-        var ensbg = background.new(ensrho, ensU, enstheta)
+        var testbg = background.new(1, testU, testtheta)
+        var trialbg = background.new(1, trialU, trialtheta)
         var btest = MonomialBasis.new(
-            __move__(iMat.frombuffer({ntestv, VDIM}, test_powers)), ensbg
+            __move__(iMat.frombuffer({ntestv, VDIM}, test_powers)), testbg
         )
         var btrial = MonomialBasis.new(
-            __move__(iMat.frombuffer({ntrialv, VDIM}, trial_powers)), ensbg
+            __move__(iMat.frombuffer({ntrialv, VDIM}, trial_powers)), trialbg
         )
         var bndbg = background.new(bndrho, bndU, bndtheta)
         var resmat = tMat.frombuffer({ntestv, ntrialv}, res)

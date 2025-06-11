@@ -298,7 +298,8 @@ testenv "Half space integral interface" do
         var bndU = arrayof(double, 1e-2, 0.0, 0.0)
         var bndtheta = 1.375
         bc.halfspace(
-            ensrho,
+            &ensU[0],
+            enstheta,
             &ensU[0],
             enstheta,
             pte:rows(),
